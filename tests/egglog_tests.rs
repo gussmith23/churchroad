@@ -139,7 +139,7 @@ fn create_rewrites(
 
 egglog_test!(agilex_alm, "tests/egglog_tests/agilex_alm.egg", egraph, {
     let (sort, value) = egraph
-        .eval_expr(&egglog::ast::Expr::Var("lut6out".into()), None, true)
+        .eval_expr(&egglog::ast::Expr::Var((), "lut6out".into()))
         .unwrap();
     create_rewrites(
         &egraph,
@@ -149,35 +149,35 @@ egglog_test!(agilex_alm, "tests/egglog_tests/agilex_alm.egg", egraph, {
         &vec![
             (
                 ExprParser::new().parse("(Var \"a\" 1)").unwrap(),
-                Expr::Var("a".into()),
+                Expr::Var((), "a".into()),
             ),
             (
                 ExprParser::new().parse("(Var \"b\" 1)").unwrap(),
-                Expr::Var("b".into()),
+                Expr::Var((), "b".into()),
             ),
             (
                 ExprParser::new().parse("(Var \"c0\" 1)").unwrap(),
-                Expr::Var("c0".into()),
+                Expr::Var((), "c0".into()),
             ),
             (
                 ExprParser::new().parse("(Var \"c1\" 1)").unwrap(),
-                Expr::Var("c1".into()),
+                Expr::Var((), "c1".into()),
             ),
             (
                 ExprParser::new().parse("(Var \"d0\" 1)").unwrap(),
-                Expr::Var("d0".into()),
+                Expr::Var((), "d0".into()),
             ),
             (
                 ExprParser::new().parse("(Var \"d1\" 1)").unwrap(),
-                Expr::Var("d1".into()),
+                Expr::Var((), "d1".into()),
             ),
             (
                 ExprParser::new().parse("(Var \"e\" 1)").unwrap(),
-                Expr::Var("e".into()),
+                Expr::Var((), "e".into()),
             ),
             (
                 ExprParser::new().parse("(Var \"f\" 1)").unwrap(),
-                Expr::Var("f".into()),
+                Expr::Var((), "f".into()),
             ),
             (
                 ExprParser::new().parse("(Var \"lut4_g0_mem\" 16)").unwrap(),
