@@ -66,5 +66,14 @@ ADD --keep-git-dir=false . .
 WORKDIR /root/churchroad
 RUN cargo build
 
+# Build Yosys.
+WORKDIR /root
+RUN source /root/dependencies.sh \
+  && mkdir yosys && cd yosys \
+  && wget -qO- https://github.com/YosysHQ/yosys/archive/$YOSYS_COMMIT_HASH.tar.gz | tar xz --strip-components=1 \
+  && PREFIX="/root/.local" CPLUS_INCLUDE_PATH="/usr/include/tcl8.6/:$CPLUS_INCLUDE_PATH" make config-gcc \
+  && PREFIX="/root/.local" CPLUS_INCLUDE_PATH="/usr/include/tcl8.6/:$CPLUS_INCLUDE_PATH" make -j ${MAKE_JOBS} install \
+  && rm -rf /root/yosys
+
 WORKDIR /root/churchroad
 CMD [ "/bin/bash", "run-tests.sh" ]
