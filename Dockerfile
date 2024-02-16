@@ -76,5 +76,9 @@ RUN source /root/dependencies.sh \
   && PREFIX="/root/.local" CPLUS_INCLUDE_PATH="/usr/include/tcl8.6/:$CPLUS_INCLUDE_PATH" make -j ${MAKE_JOBS} install \
   && rm -rf /root/yosys
 
+# Build Yosys plugin.
+WORKDIR /root/churchroad/yosys-plugin
+RUN make -j ${MAKE_JOBS}
+
 WORKDIR /root/churchroad
 CMD [ "/bin/bash", "run-tests.sh" ]
