@@ -1,4 +1,4 @@
-// RUN: "$YOSYS" -p 'read_verilog -sv %s; prep -top test; write_lakeroad' \
+// RUN: yosys -p 'read_verilog -sv %s; prep -top test; write_lakeroad' \
 // RUN:   | FileCheck %s
 module test(input a, b, output out);
   assign out = a & b;
