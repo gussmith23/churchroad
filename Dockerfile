@@ -68,6 +68,7 @@ RUN cargo build
 
 # Build Yosys.
 WORKDIR /root
+ARG MAKE_JOBS=2
 RUN source /root/dependencies.sh \
   && mkdir yosys && cd yosys \
   && wget -qO- https://github.com/YosysHQ/yosys/archive/$YOSYS_COMMIT_HASH.tar.gz | tar xz --strip-components=1 \
