@@ -114,4 +114,4 @@ jobs:
       - name: Project-wide formatting check
         run: |
           docker run ${{ env.IMAGE_TAG }} \
-            bash -c './fmt.sh && git diff && [ -z "$(git status --porcelain)" ]'
+            bash -c './fmt.sh && git status && [ -z "$(git status --porcelain)" ]'
