@@ -53,7 +53,12 @@ ENV PATH="/root/.cargo/bin:$PATH"
 
 # Build Rust package.
 WORKDIR /root/churchroad
-ADD egglog_src src tests Cargo.toml ./
+# ADD has weird behavior when it comes to directories. That's why we need so
+# many ADDs.
+ADD egglog_src egglog_src
+ADD src src
+ADD tests tests
+ADD Cargo.toml .
 RUN cargo build
 
 # Build Yosys.
@@ -72,7 +77,7 @@ ENV PATH="/root/.local/bin:$PATH"
 
 # Build Yosys plugin.
 WORKDIR /root/churchroad/yosys-plugin
-ADD yosys-plugin/* .
+ADD yosys-plugin .
 RUN make -j ${MAKE_JOBS}
 
 # Make a binary for `lit`. If you're on Mac, you can install lit via Brew.
