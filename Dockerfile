@@ -100,5 +100,10 @@ RUN mkdir -p /root/.local/bin \
 # `llvm-config` on your PATH.
 ENV LLVM_CONFIG=llvm-config-14
 
+# Python dependencies.
+WORKDIR /root
+ADD requirements.txt .
+RUN pip install -r requirements.txt
+
 WORKDIR /root/churchroad
 CMD [ "/bin/bash", "run-tests.sh" ]
