@@ -1,5 +1,3 @@
-// DO NOT MERGE: need to get permission to use this file.
-//
 // Copyright 2023 Intel Corporation.
 //
 // This reference design file is subject licensed to you by the terms and
@@ -20,6 +18,8 @@
 // In the event that you do not agree with such terms and conditions, do not
 // use the reference design file.
 /////////////////////////////////////////////////////////////////////////////
+//
+// TODO(@gussmith23): are we in line with this license?
 
 // RUN: $YOSYS -m $CHURCHROAD_DIR/yosys-plugin/churchroad.so %s \
 // RUN:   -p 'read_verilog -sv %s; prep -top permuter_4x4_sim; pmuxtree; prep; write_lakeroad' \
