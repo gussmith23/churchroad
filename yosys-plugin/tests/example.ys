@@ -1,3 +1,5 @@
+// RUN: yosys %s
+
 read_verilog <<EOF
 module test(input [1:0] a, input b, output o);
   assign o = a & b;

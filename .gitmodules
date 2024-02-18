@@ -1,3 +1,0 @@
-[submodule "lakeroad-egglog/yosys"]
-	path = yosys
-	url = git@github.com:uwsampl/yosys
