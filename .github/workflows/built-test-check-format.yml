@@ -1,4 +1,4 @@
-name: Build Docker image, format check, and run tests
+name: Build, Test, Check Format
 
 on:
   push:
