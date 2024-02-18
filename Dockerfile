@@ -99,6 +99,8 @@ WORKDIR /root
 ADD requirements.txt .
 RUN pip install -r requirements.txt
 
+ENV CHURCHROAD_DIR=/root/churchroad
+
 WORKDIR /root/churchroad
 ADD fmt.sh run-tests.sh ./
 CMD [ "/bin/bash", "run-tests.sh" ]
