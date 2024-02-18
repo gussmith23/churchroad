@@ -1,4 +1,4 @@
-// RUN: yosys -m $CHURCHROAD_DIR/yosys-plugin/churchroad.so %s \
+// RUN: $YOSYS -m $CHURCHROAD_DIR/yosys-plugin/churchroad.so %s \
 // RUN:   -p 'read_verilog -sv %s; prep -top test; write_lakeroad' \
 // RUN:   | FileCheck %s
 module test(input a, b, output out);

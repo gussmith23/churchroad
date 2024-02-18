@@ -21,7 +21,7 @@
 // use the reference design file.
 /////////////////////////////////////////////////////////////////////////////
 
-// RUN: yosys -m $CHURCHROAD_DIR/yosys-plugin/churchroad.so %s \
+// RUN: $YOSYS -m $CHURCHROAD_DIR/yosys-plugin/churchroad.so %s \
 // RUN:   -p 'read_verilog -sv %s; prep -top permuter_4x4_sim; pmuxtree; prep; write_lakeroad' \
 // RUN:   | FileCheck %s
 

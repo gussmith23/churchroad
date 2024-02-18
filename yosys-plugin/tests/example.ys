@@ -1,4 +1,4 @@
-// RUN: yosys -m $CHURCHROAD_DIR/yosys-plugin/churchroad.so %s
+// RUN: $YOSYS -m $CHURCHROAD_DIR/yosys-plugin/churchroad.so %s
 
 read_verilog <<EOF
 module test(input [1:0] a, input b, output o);
