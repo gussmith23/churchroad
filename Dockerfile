@@ -83,5 +83,15 @@ ENV PATH="/root/.local/bin:$PATH"
 WORKDIR /root/churchroad/yosys-plugin
 RUN make -j ${MAKE_JOBS}
 
+# Make a binary for `lit`. If you're on Mac, you can install lit via Brew.
+# Ubuntu doesn't have a binary for it, but it is available on pip and is
+# installed later in this Dockerfile.
+WORKDIR /root
+RUN mkdir -p /root/.local/bin \
+  && echo "#!/usr/bin/env python3" >> /root/.local/bin/lit \
+  && echo "from lit.main import main" >> /root/.local/bin/lit \
+  && echo "if __name__ == '__main__': main()" >> /root/.local/bin/lit \
+  && chmod +x /root/.local/bin/lit
+
 WORKDIR /root/churchroad
 CMD [ "/bin/bash", "run-tests.sh" ]
