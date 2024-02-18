@@ -48,8 +48,9 @@ RUN apt install -y \
   zlib1g-dev
 
 # Install Rust
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:$PATH"
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y \
+  && cargo install cargo-chef
 
 # Add other Churchroad files. It's useful to put this as far down as possible.
 # In general, only ADD files just before they're needed. This maximizes the
@@ -64,7 +65,9 @@ ADD --keep-git-dir=false . .
 
 # Build Rust package.
 WORKDIR /root/churchroad
-RUN cargo build
+RUN cargo chef prepare --recipe-path recipe.json \
+  && cargo chef cook --recipe-path recipe.json \
+  && cargo build
 
 # Build Yosys.
 WORKDIR /root
