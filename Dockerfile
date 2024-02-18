@@ -93,5 +93,9 @@ RUN mkdir -p /root/.local/bin \
   && echo "if __name__ == '__main__': main()" >> /root/.local/bin/lit \
   && chmod +x /root/.local/bin/lit
 
+# Point to llvm-config binary. Alternatively, make sure you have a binary called
+# `llvm-config` on your PATH.
+ENV LLVM_CONFIG=llvm-config-14
+
 WORKDIR /root/churchroad
 CMD [ "/bin/bash", "run-tests.sh" ]
