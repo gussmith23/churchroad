@@ -13,3 +13,6 @@
 target
 Cargo.lock
 .env
+
+**/*.so*
+**/*.d
