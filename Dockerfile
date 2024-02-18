@@ -95,11 +95,22 @@ RUN mkdir -p /root/.local/bin \
 ENV LLVM_CONFIG=llvm-config-14
 
 # Python dependencies.
-WORKDIR /root
+WORKDIR /root/churchroad
 ADD requirements.txt .
 RUN pip install -r requirements.txt
 
 ENV CHURCHROAD_DIR=/root/churchroad
+
+# Add other Churchroad files. It's useful to put this as far down as possible.
+# In general, only ADD files just before they're needed. This maximizes the
+# ability to cache intermediate containers and minimizes rebuilding.
+#
+# We use the git functionality of ADD (enabled in our case via the optional flag
+# --keep-git-dir) to add all of the checked-in files of the Churchroad repo (but
+# not including the .git directory itself). We could cut this down further if we
+# wanted, but I think this is a clean approach for now.
+WORKDIR /root/churchroad
+ADD --keep-git-dir=false . .
 
 WORKDIR /root/churchroad
 ADD fmt.sh run-tests.sh ./
