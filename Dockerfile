@@ -76,6 +76,9 @@ RUN source /root/churchroad/dependencies.sh \
   && PREFIX="/root/.local" CPLUS_INCLUDE_PATH="/usr/include/tcl8.6/:$CPLUS_INCLUDE_PATH" make -j ${MAKE_JOBS} install \
   && rm -rf /root/yosys
 
+# Add /root/.local/bin to PATH.
+ENV PATH="/root/.local/bin:$PATH"
+
 # Build Yosys plugin.
 WORKDIR /root/churchroad/yosys-plugin
 RUN make -j ${MAKE_JOBS}
