@@ -51,25 +51,16 @@ RUN apt install -y \
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:$PATH"
 
-# Add other Churchroad files. It's useful to put this as far down as possible.
-# In general, only ADD files just before they're needed. This maximizes the
-# ability to cache intermediate containers and minimizes rebuilding.
-#
-# In reality, we use the git functionality of ADD (enabled in our case via the
-# optional flag --keep-git-dir) to add all of the checked-in files of the
-# Churchroad repo (but not including the .git directory itself). We could cut
-# this down further if we wanted, but I think this is a clean approach for now.
-WORKDIR /root/churchroad
-ADD --keep-git-dir=false . .
-
 # Build Rust package.
 WORKDIR /root/churchroad
+ADD egglog_src src tests Cargo.toml ./
 RUN cargo build
 
 # Build Yosys.
 WORKDIR /root
 ARG MAKE_JOBS=2
-RUN source /root/churchroad/dependencies.sh \
+ADD dependencies.sh .
+RUN source /root/dependencies.sh \
   && mkdir yosys && cd yosys \
   && wget -qO- https://github.com/YosysHQ/yosys/archive/$YOSYS_COMMIT_HASH.tar.gz | tar xz --strip-components=1 \
   && PREFIX="/root/.local" CPLUS_INCLUDE_PATH="/usr/include/tcl8.6/:$CPLUS_INCLUDE_PATH" make config-gcc \
@@ -81,6 +72,7 @@ ENV PATH="/root/.local/bin:$PATH"
 
 # Build Yosys plugin.
 WORKDIR /root/churchroad/yosys-plugin
+ADD yosys-plugin/* .
 RUN make -j ${MAKE_JOBS}
 
 # Make a binary for `lit`. If you're on Mac, you can install lit via Brew.
@@ -103,4 +95,5 @@ ADD requirements.txt .
 RUN pip install -r requirements.txt
 
 WORKDIR /root/churchroad
+ADD fmt.sh run-tests.sh ./
 CMD [ "/bin/bash", "run-tests.sh" ]
