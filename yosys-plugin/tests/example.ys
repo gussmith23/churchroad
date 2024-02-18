@@ -1,4 +1,4 @@
-// RUN: $YOSYS -m $CHURCHROAD_DIR/yosys-plugin/churchroad.so %s
+# RUN: $YOSYS -m $CHURCHROAD_DIR/yosys-plugin/churchroad.so %s
 
 read_verilog <<EOF
 module test(input [1:0] a, input b, output o);
@@ -7,3 +7,17 @@ endmodule
 EOF
 
 write_lakeroad
+
+# CHECK: (let v0 (Wire "v0" 2))
+# CHECK: (let v1 (Extract 0 0 v0))
+# CHECK: (let v2 (Wire "v2" 1))
+# CHECK: (let v3 (Wire "v3" 2))
+# CHECK: (union v0 (Op2 (And) v3 v2))
+# CHECK: (let b (Var "b" 1))
+# CHECK: (union v2 b)
+# CHECK: (let a (Var "a" 2))
+# CHECK: (union v3 a)
+# CHECK: (let o v1)
+# CHECK: (delete (Wire "v0" 2))
+# CHECK: (delete (Wire "v2" 1))
+# CHECK: (delete (Wire "v3" 2))
