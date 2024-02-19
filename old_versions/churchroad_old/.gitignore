@@ -1,3 +1,2 @@
-target
-# For now, adding Cargo.lock to repo.
-# Cargo.lock
+/target
+Cargo.lock

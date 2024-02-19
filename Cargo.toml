@@ -1,5 +1,5 @@
 [package]
-name = "lakeroad-egglog"
+name = "churchroad"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 egglog = { git = "https://github.com/egraphs-good/egglog", rev = "41562802315eccc9136c9d2ae6967d2df4071420" }
 log = "0.4.20"
+lexpr = "0.2.6"
