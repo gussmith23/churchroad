@@ -1,6 +1,14 @@
-use std::collections::HashSet;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
-use egglog::{ast::Literal, Term, TermDag};
+use egglog::{
+    ast::{Literal, Symbol},
+    constraint::{SimpleTypeConstraint, TypeConstraint},
+    sort::{FromSort, I64Sort, IntoSort, Sort, VecSort},
+    EGraph, PrimitiveLike, Term, TermDag, Value,
+};
 
 pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
     // let mut wires = HashMap::default();
@@ -205,10 +213,251 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
     )
 }
 
+/// Import Churchroad language into an EGraph.
+///
+/// TODO(@gussmith23): Ideally, this would be done via an `import` statement.
+/// That's not currently possible because of the Rust-defined primitive
+/// `debruijnify` in Churchroad.
+pub fn import_churchroad(egraph: &mut EGraph) {
+    egraph
+        .parse_and_run_program(
+            r#"
+(include "egglog_src/lakeroad.egg")
+    "#,
+        )
+        .unwrap();
+
+    struct DeBruijnify {
+        in_sort: Arc<VecSort>,
+        out_sort: Arc<VecSort>,
+        i64_sort: Arc<I64Sort>,
+    }
+
+    impl PrimitiveLike for DeBruijnify {
+        fn name(&self) -> Symbol {
+            "debruijnify".into()
+        }
+
+        fn get_type_constraints(&self) -> Box<dyn TypeConstraint> {
+            Box::new(SimpleTypeConstraint::new(
+                self.name(),
+                vec![self.in_sort.clone(), self.out_sort.clone()],
+            ))
+        }
+
+        fn apply(&self, values: &[crate::Value], egraph: &EGraph) -> Option<crate::Value> {
+            let in_vec = Vec::<Value>::load(&self.in_sort, &values[0]);
+
+            let mut seen_values: HashMap<Value, i64> = HashMap::new();
+            let mut next_id = 0;
+            let mut out = vec![];
+
+            for value in in_vec {
+                // Get representative value.
+                let value = egraph.find(value);
+
+                // If we haven't assinged it a number yet, give it the next one.
+                if !seen_values.contains_key(&value) {
+                    seen_values.insert(value, next_id);
+                    next_id += 1;
+                }
+
+                // Add the number to the output vector.
+                out.push(seen_values[&value].store(&self.i64_sort).unwrap());
+            }
+
+            out.store(&self.out_sort)
+        }
+    }
+
+    egraph.add_primitive(DeBruijnify {
+        i64_sort: egraph.get_sort().unwrap(),
+        in_sort: egraph
+            .get_sort_by(|s: &Arc<VecSort>| s.name() == "ExprVec".into())
+            .unwrap(),
+        out_sort: egraph
+            .get_sort_by(|s: &Arc<VecSort>| s.name() == "IVec".into())
+            .unwrap(),
+    });
+
+    let enumeration_ruleset_name = "enumerate-modules";
+    egraph
+        .parse_and_run_program(&format!(
+            "
+(ruleset {enumeration_ruleset_name})
+{rewrites}",
+            enumeration_ruleset_name = enumeration_ruleset_name,
+            rewrites = vec![
+                // Var
+                // Note that this puts a loop in the graph, because a Var
+                // becomes a hole applied to itself. We just need to be careful
+                // about that during extraction.
+                format!("(rewrite (Var name bw) (apply (MakeModule (Hole) (vec-of 0)) (vec-of (Var_ name bw))) :ruleset {})", enumeration_ruleset_name),
+
+                // 0-ary
+                generate_module_enumeration_rewrite(&[], Some(enumeration_ruleset_name)),
+                // 1-ary
+                generate_module_enumeration_rewrite(&[true], Some(enumeration_ruleset_name)),
+                generate_module_enumeration_rewrite(&[false], Some(enumeration_ruleset_name)),
+                // 2-ary
+                generate_module_enumeration_rewrite(&[true, true], Some(enumeration_ruleset_name)),
+                generate_module_enumeration_rewrite(&[true, false], Some(enumeration_ruleset_name)),
+                generate_module_enumeration_rewrite(&[false, true], Some(enumeration_ruleset_name)),
+                generate_module_enumeration_rewrite(
+                    &[false, false],
+                    Some(enumeration_ruleset_name)
+                ),
+                // 3-ary
+                generate_module_enumeration_rewrite(
+                    &[true, true, true],
+                    Some(enumeration_ruleset_name)
+                ),
+                generate_module_enumeration_rewrite(
+                    &[true, true, false],
+                    Some(enumeration_ruleset_name)
+                ),
+                generate_module_enumeration_rewrite(
+                    &[true, false, true],
+                    Some(enumeration_ruleset_name)
+                ),
+                generate_module_enumeration_rewrite(
+                    &[true, false, false],
+                    Some(enumeration_ruleset_name)
+                ),
+                generate_module_enumeration_rewrite(
+                    &[false, true, true],
+                    Some(enumeration_ruleset_name)
+                ),
+                generate_module_enumeration_rewrite(
+                    &[false, true, false],
+                    Some(enumeration_ruleset_name)
+                ),
+                generate_module_enumeration_rewrite(
+                    &[false, false, true],
+                    Some(enumeration_ruleset_name)
+                ),
+                generate_module_enumeration_rewrite(
+                    &[false, false, false],
+                    Some(enumeration_ruleset_name)
+                ),
+                // clang-format on
+            ]
+            .join("\n"),
+        ))
+        .unwrap();
+}
+
+/// Generate module enumeration rewrite.
+///
+/// - hole_indicator: a list of booleans indicating whether the Op's
+///   argument at the given index is a hole. If true, the argument will
+///   become a `(Hole)`. If not, it will expect a module application:
+///   `(apply (MakeModule graph indices) args)`.
+///
+/// ```
+/// use churchroad::generate_module_enumeration_rewrite;
+/// assert_eq!(generate_module_enumeration_rewrite(&[true, false, true], None),
+///           "(rewrite
+///   (Op3 op expr0 (apply (MakeModule graph1 _) args1) expr2)
+///   (apply (MakeModule (Op3_ op (Hole) graph1 (Hole)) (debruijnify (vec-append (vec-pop (vec-of (Var \"unused\" 0))) (vec-of expr0) args1 (vec-of expr2)))) (vec-append (vec-pop (vec-of (Var \"unused\" 0))) (vec-of expr0) args1 (vec-of expr2)))
+/// )");
+/// ```
+pub fn generate_module_enumeration_rewrite(
+    hole_indicator: &[bool],
+    ruleset: Option<&str>,
+) -> String {
+    let arity: usize = hole_indicator.len();
+
+    fn make_apply_pattern(idx: usize) -> String {
+        format!("(apply (MakeModule graph{idx} _) args{idx})", idx = idx)
+    }
+
+    fn make_opaque_expr_pattern(idx: usize) -> String {
+        format!("expr{idx}", idx = idx)
+    }
+
+    let arg_patterns = hole_indicator
+        .iter()
+        .enumerate()
+        .map(|(idx, is_hole)| {
+            if *is_hole {
+                make_opaque_expr_pattern(idx)
+            } else {
+                make_apply_pattern(idx)
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let lhs = format!(
+        "(Op{arity} op {args})",
+        arity = arity,
+        args = arg_patterns.join(" ")
+    );
+
+    let args_rhs_patterns = hole_indicator
+        .iter()
+        .enumerate()
+        .map(|(idx, is_hole)| {
+            if *is_hole {
+                "(Hole)".to_string()
+            } else {
+                format!("graph{idx}", idx = idx).to_string()
+            }
+        })
+        .collect::<Vec<_>>();
+
+    // Creates the list of arguments for the module application.
+    // the (vec-pop (vec-of ..)) thing is a hack for type inference not working
+    let args_list_expr = format!(
+        "(vec-append (vec-pop (vec-of (Var \"unused\" 0))) {args})",
+        args = hole_indicator
+            .iter()
+            .enumerate()
+            .map(|(idx, is_hole)| {
+                if *is_hole {
+                    format!("(vec-of expr{idx})", idx = idx)
+                } else {
+                    format!("args{idx}", idx = idx)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+
+    let rhs = format!(
+        "(apply (MakeModule (Op{arity}_ op {graphs}) (debruijnify {args})) {args})",
+        arity = arity,
+        graphs = args_rhs_patterns.join(" "),
+        args = args_list_expr,
+    );
+
+    format!(
+        "(rewrite
+  {lhs}
+  {rhs}
+{ruleset_flag})",
+        lhs = lhs,
+        rhs = rhs,
+        ruleset_flag = match ruleset {
+            Some(ruleset) => format!(":ruleset {}\n", ruleset),
+            None => "".to_string(),
+        },
+    )
+}
+
+/// List all modules present in the egraph.
+pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
+    for s in egraph
+        .parse_and_run_program(
+            format!("(query-extract :variants {num_variants} (MakeModule mod args))").as_str(),
+        )
+        .unwrap()
+    {
+        println!("{}", s);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // use super::*;
-
-    #[test]
-    fn it_works() {}
 }
