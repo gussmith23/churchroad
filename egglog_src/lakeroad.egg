@@ -1,4 +1,4 @@
-;;; Lakeroad language definition with antiunification experiments.
+;;; Churchroad language definition with antiunification experiments.
 
 (sort IVec (Vec i64))
 
@@ -57,39 +57,36 @@
 (function MakeModule (Graph IVec) Module)
 
 ; Our language. Note that we do not explicitly use IDs as in the Lakeroad paper
-; formalization. The IDs are still there, though: they're the 
-; eclass IDs!
-;(datatype Expr
+; (FPGA Technology Mapping via Program Synthesis, Smith et. al., ASPLOS 2024)
+; formalization. The IDs are still there, though: they're the eclass IDs!
 
-  ; (Var name bitwidth)
-  (function Var (String i64) Expr)
-  ;;; I'm unsure whether we need this. This is the variant of Var we use as
-  ;;; arguments to `apply` nodes. This prevents the loop induced by putting
-  ;;; `(Var a 8) = (apply (MakeModule (Hole) [0]) [(Var a 8)])`
-  ;;; into the graph. If we put this in the graph, you could infinitely extract
-  ;;; `(apply (MakeModule ...) (apply (MakeModule ...) (apply (MakeModule ...) ...)))`
-  ;;; (which captures the fact that you can apply the identity function as many
-  ;;; times as you want).
-  (function Var_ (String i64) Expr)
-  
-  ;;; "Direct" representation of programs:
-  ;;; Expressing programs via direct application of Ops to leaf nodes (Vars
-  ;;; and Consts).
-  ; (OpN op input-expr...)
-  (function Op0 (Op) Expr)
-  (function Op1 (Op Expr) Expr)
-  (function Op2 (Op Expr Expr) Expr)
-  (function Op3 (Op Expr Expr Expr) Expr)
+; (Var name bitwidth)
+(function Var (String i64) Expr)
+;;; I'm unsure whether we need this. This is the variant of Var we use as
+;;; arguments to `apply` nodes. This prevents the loop induced by putting
+;;; `(Var a 8) = (apply (MakeModule (Hole) [0]) [(Var a 8)])`
+;;; into the graph. If we put this in the graph, you could infinitely extract
+;;; `(apply (MakeModule ...) (apply (MakeModule ...) (apply (MakeModule ...) ...)))`
+;;; (which captures the fact that you can apply the identity function as many
+;;; times as you want).
+(function Var_ (String i64) Expr)
+
+;;; "Direct" representation of programs:
+;;; Expressing programs via direct application of Ops to leaf nodes (Vars
+;;; and Consts).
+; (OpN op input-expr...)
+(function Op0 (Op) Expr)
+(function Op1 (Op Expr) Expr)
+(function Op2 (Op Expr Expr) Expr)
+(function Op3 (Op Expr Expr Expr) Expr)
 
 
-  ; (Wire name bitwidth)
-  (function Wire (String i64) Expr)
-  
-  ;;; 
-  (function apply (Module ExprVec) Expr)
-  ;)
+; (Wire name bitwidth)
+(function Wire (String i64) Expr)
 
-;;; Types for Lakeroad expressions.
+(function apply (Module ExprVec) Expr)
+
+;;; Types for Churchroad expressions.
 (datatype Type
   ;;; Bitvector type.
   (Bitvector i64)
@@ -98,7 +95,7 @@
   ;;; types.
   (ModuleType Type))
 
-;;; Indicates that a Lakeroad expression has a given type.
+;;; Indicates that a Churchroad expression has a given type.
 (relation HasType (Expr Type))
 
 ;;; Indicates that all input and output bitwidths must match for this type of 
