@@ -218,6 +218,7 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
 /// TODO(@gussmith23): Ideally, this would be done via an `import` statement.
 /// That's not currently possible because of the Rust-defined primitive
 /// `debruijnify` in Lakeroad.
+pub fn import_lakeroad(egraph: &mut EGraph) {
     egraph
         .parse_and_run_program(
             r#"
@@ -354,7 +355,7 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
 ///   `(apply (MakeModule graph indices) args)`.
 ///
 /// ```
-/// use lakeroad_egglog::generate_module_enumeration_rewrite;
+/// use churchroad::generate_module_enumeration_rewrite;
 /// assert_eq!(generate_module_enumeration_rewrite(&[true, false, true], None),
 ///           "(rewrite
 ///   (Op3 op expr0 (apply (MakeModule graph1 _) args1) expr2)
@@ -459,5 +460,4 @@ pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
 #[cfg(test)]
 mod tests {
     // use super::*;
-
 }

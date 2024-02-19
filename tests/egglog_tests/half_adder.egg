@@ -1,4 +1,4 @@
-; Handled by calling lakeroad_egglog::import_lakeroad(&mut egraph) in the macro.
+; Handled by calling churchroad::import_lakeroad(&mut egraph) in the macro.
 ; (include "egglog_src/lakeroad.egg")
 
 ; wire declarations

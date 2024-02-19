@@ -13,7 +13,7 @@ macro_rules! egglog_test {
         #[test]
         fn $name() {
             let mut egraph = egglog::EGraph::default();
-            lakeroad_egglog::import_lakeroad(&mut egraph);
+            churchroad::import_lakeroad(&mut egraph);
             egraph
                 .parse_and_run_program(
                     &std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join($path))
@@ -113,7 +113,7 @@ egglog_test!(
     "tests/egglog_tests/agilex_alm.egg",
     |egraph: &mut EGraph| {
         let (sort, value) = egraph
-            .eval_expr(&egglog::ast::Expr::Var("lut6out".into()), None, true)
+            .eval_expr(&egglog::ast::Expr::Var((), "lut6out".into()))
             .unwrap();
         create_rewrites(
             &egraph,
@@ -123,35 +123,35 @@ egglog_test!(
             &vec![
                 (
                     ExprParser::new().parse("(Var \"a\" 1)").unwrap(),
-                    Expr::Var("a".into()),
+                    Expr::Var((), "a".into()),
                 ),
                 (
                     ExprParser::new().parse("(Var \"b\" 1)").unwrap(),
-                    Expr::Var("b".into()),
+                    Expr::Var((), "b".into()),
                 ),
                 (
                     ExprParser::new().parse("(Var \"c0\" 1)").unwrap(),
-                    Expr::Var("c0".into()),
+                    Expr::Var((), "c0".into()),
                 ),
                 (
                     ExprParser::new().parse("(Var \"c1\" 1)").unwrap(),
-                    Expr::Var("c1".into()),
+                    Expr::Var((), "c1".into()),
                 ),
                 (
                     ExprParser::new().parse("(Var \"d0\" 1)").unwrap(),
-                    Expr::Var("d0".into()),
+                    Expr::Var((), "d0".into()),
                 ),
                 (
                     ExprParser::new().parse("(Var \"d1\" 1)").unwrap(),
-                    Expr::Var("d1".into()),
+                    Expr::Var((), "d1".into()),
                 ),
                 (
                     ExprParser::new().parse("(Var \"e\" 1)").unwrap(),
-                    Expr::Var("e".into()),
+                    Expr::Var((), "e".into()),
                 ),
                 (
                     ExprParser::new().parse("(Var \"f\" 1)").unwrap(),
-                    Expr::Var("f".into()),
+                    Expr::Var((), "f".into()),
                 ),
                 (
                     ExprParser::new().parse("(Var \"lut4_g0_mem\" 16)").unwrap(),
@@ -189,7 +189,7 @@ egglog_test!(half_adder, "tests/egglog_tests/half_adder.egg");
 #[test]
 fn antiunify() {
     let mut egraph = egglog::EGraph::default();
-    lakeroad_egglog::import_lakeroad(&mut egraph);
+    churchroad::import_lakeroad(&mut egraph);
 
     egraph
         .parse_and_run_program(
@@ -255,7 +255,7 @@ fn antiunify() {
 #[test]
 fn antiunify_permuter() {
     let mut egraph = egglog::EGraph::default();
-    lakeroad_egglog::import_lakeroad(&mut egraph);
+    churchroad::import_lakeroad(&mut egraph);
 
     egraph
         .parse_and_run_program(
@@ -286,7 +286,7 @@ fn antiunify_permuter() {
 #[test]
 fn find_loop() {
     let mut egraph = egglog::EGraph::default();
-    lakeroad_egglog::import_lakeroad(&mut egraph);
+    churchroad::import_lakeroad(&mut egraph);
 
     egraph
         .parse_and_run_program(
@@ -346,5 +346,5 @@ fn find_loop() {
         )
         .unwrap();
 
-    lakeroad_egglog::list_modules(&mut egraph, 1000);
+    churchroad::list_modules(&mut egraph, 1000);
 }
