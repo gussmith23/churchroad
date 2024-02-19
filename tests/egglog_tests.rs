@@ -13,7 +13,7 @@ macro_rules! egglog_test {
         #[test]
         fn $name() {
             let mut egraph = egglog::EGraph::default();
-            churchroad::import_lakeroad(&mut egraph);
+            churchroad::import_churchroad(&mut egraph);
             egraph
                 .parse_and_run_program(
                     &std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join($path))
@@ -189,7 +189,7 @@ egglog_test!(half_adder, "tests/egglog_tests/half_adder.egg");
 #[test]
 fn antiunify() {
     let mut egraph = egglog::EGraph::default();
-    churchroad::import_lakeroad(&mut egraph);
+    churchroad::import_churchroad(&mut egraph);
 
     egraph
         .parse_and_run_program(
@@ -255,7 +255,7 @@ fn antiunify() {
 #[test]
 fn antiunify_permuter() {
     let mut egraph = egglog::EGraph::default();
-    churchroad::import_lakeroad(&mut egraph);
+    churchroad::import_churchroad(&mut egraph);
 
     egraph
         .parse_and_run_program(
@@ -286,7 +286,7 @@ fn antiunify_permuter() {
 #[test]
 fn find_loop() {
     let mut egraph = egglog::EGraph::default();
-    churchroad::import_lakeroad(&mut egraph);
+    churchroad::import_churchroad(&mut egraph);
 
     egraph
         .parse_and_run_program(

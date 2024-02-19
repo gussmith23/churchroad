@@ -213,12 +213,12 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
     )
 }
 
-/// Import Lakeroad language into an EGraph.
+/// Import Churchroad language into an EGraph.
 ///
 /// TODO(@gussmith23): Ideally, this would be done via an `import` statement.
 /// That's not currently possible because of the Rust-defined primitive
-/// `debruijnify` in Lakeroad.
-pub fn import_lakeroad(egraph: &mut EGraph) {
+/// `debruijnify` in Churchroad.
+pub fn import_churchroad(egraph: &mut EGraph) {
     egraph
         .parse_and_run_program(
             r#"
