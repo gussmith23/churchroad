@@ -4,7 +4,7 @@
 
 ## Yosys Plugin
 
-[`./yosys-plugin/](./yosys-plugin/)
+[`./yosys-plugin/`](./yosys-plugin/)
 
 We provide a Yosys plugin,
   which can output Churchroad IR
