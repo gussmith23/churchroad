@@ -219,14 +219,25 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
 /// That's not currently possible because of the Rust-defined primitive
 /// `debruijnify` in Churchroad.
 pub fn import_churchroad(egraph: &mut EGraph) {
+    // STEP 1: import primary language definitions.
     egraph
-        .parse_and_run_program(
-            r#"
-(include "egglog_src/churchroad.egg")
-    "#,
-        )
+        .parse_and_run_program(r#"(include "egglog_src/churchroad.egg")"#)
         .unwrap();
 
+    // STEP 2: add the `debruijnify` primitive to the egraph. This depends on
+    // the above language definitions, but it's not possible to do it in egglog,
+    // hence it's a Rust function.
+    add_debruijnify(egraph);
+
+    // STEP 3: import module enumeration rewrites. These depend on the
+    // `debruijnify` primitive.
+    egraph
+        .parse_and_run_program(r#"(include "egglog_src/module_enumeration_rewrites.egg")"#)
+        .unwrap();
+}
+
+/// Add the `debruijnify` primitive to an [`EGraph`].
+fn add_debruijnify(egraph: &mut EGraph) {
     struct DeBruijnify {
         in_sort: Arc<VecSort>,
         out_sort: Arc<VecSort>,
@@ -279,14 +290,6 @@ pub fn import_churchroad(egraph: &mut EGraph) {
             .get_sort_by(|s: &Arc<VecSort>| s.name() == "IVec".into())
             .unwrap(),
     });
-
-    egraph
-        .parse_and_run_program(
-            r#"
-(include "egglog_src/module_enumeration_rewrites.egg")
-    "#,
-        )
-        .unwrap();
 }
 
 /// Generate all module enumeration rewrites used by Churchroad.
