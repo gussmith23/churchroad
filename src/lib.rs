@@ -280,70 +280,12 @@ pub fn import_churchroad(egraph: &mut EGraph) {
             .unwrap(),
     });
 
-    let enumeration_ruleset_name = "enumerate-modules";
     egraph
-        .parse_and_run_program(&format!(
-            "
-(ruleset {enumeration_ruleset_name})
-{rewrites}",
-            enumeration_ruleset_name = enumeration_ruleset_name,
-            rewrites = vec![
-                // Var
-                // Note that this puts a loop in the graph, because a Var
-                // becomes a hole applied to itself. We just need to be careful
-                // about that during extraction.
-                format!("(rewrite (Var name bw) (apply (MakeModule (Hole) (vec-of 0)) (vec-of (Var_ name bw))) :ruleset {})", enumeration_ruleset_name),
-
-                // 0-ary
-                generate_module_enumeration_rewrite(&[], Some(enumeration_ruleset_name)),
-                // 1-ary
-                generate_module_enumeration_rewrite(&[true], Some(enumeration_ruleset_name)),
-                generate_module_enumeration_rewrite(&[false], Some(enumeration_ruleset_name)),
-                // 2-ary
-                generate_module_enumeration_rewrite(&[true, true], Some(enumeration_ruleset_name)),
-                generate_module_enumeration_rewrite(&[true, false], Some(enumeration_ruleset_name)),
-                generate_module_enumeration_rewrite(&[false, true], Some(enumeration_ruleset_name)),
-                generate_module_enumeration_rewrite(
-                    &[false, false],
-                    Some(enumeration_ruleset_name)
-                ),
-                // 3-ary
-                generate_module_enumeration_rewrite(
-                    &[true, true, true],
-                    Some(enumeration_ruleset_name)
-                ),
-                generate_module_enumeration_rewrite(
-                    &[true, true, false],
-                    Some(enumeration_ruleset_name)
-                ),
-                generate_module_enumeration_rewrite(
-                    &[true, false, true],
-                    Some(enumeration_ruleset_name)
-                ),
-                generate_module_enumeration_rewrite(
-                    &[true, false, false],
-                    Some(enumeration_ruleset_name)
-                ),
-                generate_module_enumeration_rewrite(
-                    &[false, true, true],
-                    Some(enumeration_ruleset_name)
-                ),
-                generate_module_enumeration_rewrite(
-                    &[false, true, false],
-                    Some(enumeration_ruleset_name)
-                ),
-                generate_module_enumeration_rewrite(
-                    &[false, false, true],
-                    Some(enumeration_ruleset_name)
-                ),
-                generate_module_enumeration_rewrite(
-                    &[false, false, false],
-                    Some(enumeration_ruleset_name)
-                ),
-                // clang-format on
-            ]
-            .join("\n"),
-        ))
+        .parse_and_run_program(
+            r#"
+(include "egglog_src/module_enumeration_rewrites.egg")
+    "#,
+        )
         .unwrap();
 }
 
