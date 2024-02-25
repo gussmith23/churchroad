@@ -1,5 +1,5 @@
 ; Handled by calling churchroad::import_churchroad(&mut egraph) in the macro.
-; (include "egglog_src/lakeroad.egg")
+; (include "egglog_src/churchroad.egg")
 
 (let clk (Var "clk" 1))
 (let a (Var "a" 8))
