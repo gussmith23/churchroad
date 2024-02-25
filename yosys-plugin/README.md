@@ -4,6 +4,14 @@ We provide a plugin
   for Yosys
   which produces Churchroad code.
 
+To use the Churchroad plugin:
+
+```sh
+cd yosys-plugin/
+make
+yosys -m churchroad.so
+```
+
 ## Note on Building
 
 Yosys plugins are simply shared libraries
