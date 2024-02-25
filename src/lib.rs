@@ -222,7 +222,7 @@ pub fn import_churchroad(egraph: &mut EGraph) {
     egraph
         .parse_and_run_program(
             r#"
-(include "egglog_src/lakeroad.egg")
+(include "egglog_src/churchroad.egg")
     "#,
         )
         .unwrap();
