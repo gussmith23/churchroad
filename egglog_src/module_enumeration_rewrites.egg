@@ -1,0 +1,78 @@
+
+(ruleset enumerate-modules)
+(rewrite (Var name bw) (apply (MakeModule (Hole) (vec-of 0)) (vec-of (Var_ name bw))) :ruleset enumerate-modules)
+(rewrite
+  (Op0 op )
+  (apply (MakeModule (Op0_ op ) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) ))) (vec-append (vec-pop (vec-of (Var "unused" 0))) ))
+:ruleset enumerate-modules
+)
+(rewrite
+  (Op1 op expr0)
+  (apply (MakeModule (Op1_ op (Hole)) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) (vec-of expr0)))) (vec-append (vec-pop (vec-of (Var "unused" 0))) (vec-of expr0)))
+:ruleset enumerate-modules
+)
+(rewrite
+  (Op1 op (apply (MakeModule graph0 _) args0))
+  (apply (MakeModule (Op1_ op graph0) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) args0))) (vec-append (vec-pop (vec-of (Var "unused" 0))) args0))
+:ruleset enumerate-modules
+)
+(rewrite
+  (Op2 op expr0 expr1)
+  (apply (MakeModule (Op2_ op (Hole) (Hole)) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) (vec-of expr0) (vec-of expr1)))) (vec-append (vec-pop (vec-of (Var "unused" 0))) (vec-of expr0) (vec-of expr1)))
+:ruleset enumerate-modules
+)
+(rewrite
+  (Op2 op expr0 (apply (MakeModule graph1 _) args1))
+  (apply (MakeModule (Op2_ op (Hole) graph1) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) (vec-of expr0) args1))) (vec-append (vec-pop (vec-of (Var "unused" 0))) (vec-of expr0) args1))
+:ruleset enumerate-modules
+)
+(rewrite
+  (Op2 op (apply (MakeModule graph0 _) args0) expr1)
+  (apply (MakeModule (Op2_ op graph0 (Hole)) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) args0 (vec-of expr1)))) (vec-append (vec-pop (vec-of (Var "unused" 0))) args0 (vec-of expr1)))
+:ruleset enumerate-modules
+)
+(rewrite
+  (Op2 op (apply (MakeModule graph0 _) args0) (apply (MakeModule graph1 _) args1))
+  (apply (MakeModule (Op2_ op graph0 graph1) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) args0 args1))) (vec-append (vec-pop (vec-of (Var "unused" 0))) args0 args1))
+:ruleset enumerate-modules
+)
+(rewrite
+  (Op3 op expr0 expr1 expr2)
+  (apply (MakeModule (Op3_ op (Hole) (Hole) (Hole)) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) (vec-of expr0) (vec-of expr1) (vec-of expr2)))) (vec-append (vec-pop (vec-of (Var "unused" 0))) (vec-of expr0) (vec-of expr1) (vec-of expr2)))
+:ruleset enumerate-modules
+)
+(rewrite
+  (Op3 op expr0 expr1 (apply (MakeModule graph2 _) args2))
+  (apply (MakeModule (Op3_ op (Hole) (Hole) graph2) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) (vec-of expr0) (vec-of expr1) args2))) (vec-append (vec-pop (vec-of (Var "unused" 0))) (vec-of expr0) (vec-of expr1) args2))
+:ruleset enumerate-modules
+)
+(rewrite
+  (Op3 op expr0 (apply (MakeModule graph1 _) args1) expr2)
+  (apply (MakeModule (Op3_ op (Hole) graph1 (Hole)) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) (vec-of expr0) args1 (vec-of expr2)))) (vec-append (vec-pop (vec-of (Var "unused" 0))) (vec-of expr0) args1 (vec-of expr2)))
+:ruleset enumerate-modules
+)
+(rewrite
+  (Op3 op expr0 (apply (MakeModule graph1 _) args1) (apply (MakeModule graph2 _) args2))
+  (apply (MakeModule (Op3_ op (Hole) graph1 graph2) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) (vec-of expr0) args1 args2))) (vec-append (vec-pop (vec-of (Var "unused" 0))) (vec-of expr0) args1 args2))
+:ruleset enumerate-modules
+)
+(rewrite
+  (Op3 op (apply (MakeModule graph0 _) args0) expr1 expr2)
+  (apply (MakeModule (Op3_ op graph0 (Hole) (Hole)) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) args0 (vec-of expr1) (vec-of expr2)))) (vec-append (vec-pop (vec-of (Var "unused" 0))) args0 (vec-of expr1) (vec-of expr2)))
+:ruleset enumerate-modules
+)
+(rewrite
+  (Op3 op (apply (MakeModule graph0 _) args0) expr1 (apply (MakeModule graph2 _) args2))
+  (apply (MakeModule (Op3_ op graph0 (Hole) graph2) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) args0 (vec-of expr1) args2))) (vec-append (vec-pop (vec-of (Var "unused" 0))) args0 (vec-of expr1) args2))
+:ruleset enumerate-modules
+)
+(rewrite
+  (Op3 op (apply (MakeModule graph0 _) args0) (apply (MakeModule graph1 _) args1) expr2)
+  (apply (MakeModule (Op3_ op graph0 graph1 (Hole)) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) args0 args1 (vec-of expr2)))) (vec-append (vec-pop (vec-of (Var "unused" 0))) args0 args1 (vec-of expr2)))
+:ruleset enumerate-modules
+)
+(rewrite
+  (Op3 op (apply (MakeModule graph0 _) args0) (apply (MakeModule graph1 _) args1) (apply (MakeModule graph2 _) args2))
+  (apply (MakeModule (Op3_ op graph0 graph1 graph2) (debruijnify (vec-append (vec-pop (vec-of (Var "unused" 0))) args0 args1 args2))) (vec-append (vec-pop (vec-of (Var "unused" 0))) args0 args1 args2))
+:ruleset enumerate-modules
+)

@@ -347,6 +347,76 @@ pub fn import_churchroad(egraph: &mut EGraph) {
         .unwrap();
 }
 
+/// Generate all module enumeration rewrites used by Churchroad.
+///
+/// This function is used to generate the contents of the the
+/// `egglog_src/module_enumeration_rewrites.egg` file. A test in this file
+/// ensures that the generated file matches what this function produces.
+pub fn generate_module_enumeration_rewrites(enumeration_ruleset_name: &str) -> String {
+    format!(
+            "
+(ruleset {enumeration_ruleset_name})
+{rewrites}",
+            enumeration_ruleset_name = enumeration_ruleset_name,
+            rewrites = vec![
+                // Var
+                // Note that this puts a loop in the graph, because a Var
+                // becomes a hole applied to itself. We just need to be careful
+                // about that during extraction.
+                format!("(rewrite (Var name bw) (apply (MakeModule (Hole) (vec-of 0)) (vec-of (Var_ name bw))) :ruleset {})", enumeration_ruleset_name),
+
+                // 0-ary
+                generate_module_enumeration_rewrite(&[], Some(enumeration_ruleset_name)),
+                // 1-ary
+                generate_module_enumeration_rewrite(&[true], Some(enumeration_ruleset_name)),
+                generate_module_enumeration_rewrite(&[false], Some(enumeration_ruleset_name)),
+                // 2-ary
+                generate_module_enumeration_rewrite(&[true, true], Some(enumeration_ruleset_name)),
+                generate_module_enumeration_rewrite(&[true, false], Some(enumeration_ruleset_name)),
+                generate_module_enumeration_rewrite(&[false, true], Some(enumeration_ruleset_name)),
+                generate_module_enumeration_rewrite(
+                    &[false, false],
+                    Some(enumeration_ruleset_name)
+                ),
+                // 3-ary
+                generate_module_enumeration_rewrite(
+                    &[true, true, true],
+                    Some(enumeration_ruleset_name)
+                ),
+                generate_module_enumeration_rewrite(
+                    &[true, true, false],
+                    Some(enumeration_ruleset_name)
+                ),
+                generate_module_enumeration_rewrite(
+                    &[true, false, true],
+                    Some(enumeration_ruleset_name)
+                ),
+                generate_module_enumeration_rewrite(
+                    &[true, false, false],
+                    Some(enumeration_ruleset_name)
+                ),
+                generate_module_enumeration_rewrite(
+                    &[false, true, true],
+                    Some(enumeration_ruleset_name)
+                ),
+                generate_module_enumeration_rewrite(
+                    &[false, true, false],
+                    Some(enumeration_ruleset_name)
+                ),
+                generate_module_enumeration_rewrite(
+                    &[false, false, true],
+                    Some(enumeration_ruleset_name)
+                ),
+                generate_module_enumeration_rewrite(
+                    &[false, false, false],
+                    Some(enumeration_ruleset_name)
+                ),
+                // clang-format on
+            ]
+            .join("\n"),
+        )
+}
+
 /// Generate module enumeration rewrite.
 ///
 /// - hole_indicator: a list of booleans indicating whether the Op's
@@ -460,4 +530,24 @@ pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
 #[cfg(test)]
 mod tests {
     // use super::*;
+
+    use std::path::Path;
+
+    #[test]
+    fn test_module_enumeration_rewrites_up_to_date() {
+        // Read in egglog_src/module_enumeration_rewrites.egg and check that it
+        // matches the output of generate_module_enumeration_rewrites.
+        let actual = std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("egglog_src")
+                .join("module_enumeration_rewrites.egg"),
+        )
+        .unwrap();
+        let expected = super::generate_module_enumeration_rewrites("enumerate-modules");
+        assert_eq!(
+            expected, actual,
+            "Copy and paste this up-to-date source into module_enumeartion_rewrites.egg:\n{}",
+            expected
+        );
+    }
 }
