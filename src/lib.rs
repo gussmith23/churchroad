@@ -474,9 +474,11 @@ pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
+    use super::*;
 
     use std::path::Path;
+
+    use egglog::EGraph;
 
     #[test]
     fn test_module_enumeration_rewrites_up_to_date() {
@@ -494,5 +496,149 @@ mod tests {
             "Copy and paste this up-to-date source into module_enumeartion_rewrites.egg:\n{}",
             expected
         );
+    }
+
+    #[test]
+    fn demo_2024_02_06() {
+        // Set the environment variable DEMO_2024_02_06_WRITE_SVGS to anything
+        // to produce SVGs.
+        fn write_svg(egraph: &EGraph, path: &str) {
+            if std::env::var("DEMO_2024_02_06_WRITE_SVGS").is_err() {
+                return;
+            }
+            let serialized = egraph.serialize_for_graphviz(true);
+            let svg_path = Path::new(path).with_extension("svg");
+            serialized.to_svg_file(svg_path).unwrap();
+        }
+
+        ///////////////////////////// BEGIN DEMO ///////////////////////////////
+
+        // We currently need to import Churchroad via Rust (rather than using an
+        // egglog `include`) because it depends on a custom primitive.
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+
+        // Churchroad programs can be very simple circuits, e.g. this one-bit and:
+        egraph
+            .parse_and_run_program(
+                r#"
+
+                (let one-bit-and (Op2 (And) (Var "a" 1) (Var "b" 1)))
+
+            "#,
+            )
+            .unwrap();
+        write_svg(&egraph, "1.svg");
+
+        // Clean up the last example...
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+
+        // The first interesting feature of Churchroad is that it can represent
+        // cyclic circuits using the native features of the egraph. For example,
+        // a simple counter circuit looks like this:
+        //
+        //        ┌────┐
+        //      ┌─▼─┐ ┌┴─┐
+        //      │reg│ │+1│
+        //      └─┬─┘ └▲─┘
+        //        └────┘
+        //
+        // In Churchroad, we can capture this easily using the following
+        // commands:
+        egraph
+            .parse_and_run_program(
+                r#"
+
+                ; Instantiate a placeholder wire, which will be connected later.
+                (let placeholder (Wire "placeholder" 8))
+
+                ; Generate the +1 box, but feed it with a temporary placeholder.
+                (let plusone  (Op2 (Add) placeholder (Op0 (BV 1 8))))
+
+                ; Generate the register, whose input is the output of +1.
+                (let reg (Op1 (Reg 0) plusone))
+
+                ; Finally, connect the placeholder to the output of the register
+                ; and delete the placeholder.
+                (union placeholder reg)
+                (delete (Wire "placeholder" 8))
+
+            "#,
+            )
+            .unwrap();
+        write_svg(&egraph, "2.svg");
+
+        // Clean up the last example...
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+
+        // The next interesting feature of Churchroad is that the representation
+        // and its rewrites allow it to find repeated patterns across the
+        // egraph.
+        //
+        // First, let's discuss the underlying representation that allows this.
+        // As we saw in the first example, Churchroad can represent circuits
+        // directly. However, Churchroad can also represent circuits as
+        // applications of abstract modules to concrete inputs:
+        egraph
+            .parse_and_run_program(
+                r#"
+
+                ; An abstract `and` module.
+                (let and-module (MakeModule (Op2_ (And) (Hole) (Hole)) (vec-of 0 1)))
+
+                ; We can represent a concrete `and` by applying the abstract
+                ; module to concrete inputs.
+                (let and (apply and-module (vec-of (Var "a" 1) (Var "b" 1))))
+
+            "#,
+            )
+            .unwrap();
+        write_svg(&egraph, "3.svg");
+
+        // Clean up the last example...
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+
+        // Translating from the first form to the second (`apply`-based) form is
+        // achieved simply with rewrites!
+        egraph
+            .parse_and_run_program(
+                r#"
+
+                ; First, "direct" form.
+                (let and (Op2 (And) (Var "a" 1) (Var "b" 1)))
+
+                ; Run module enumeration rewrites to convert to "apply" form.
+                (run-schedule (repeat 1 enumerate-modules))
+    
+            "#,
+            )
+            .unwrap();
+        write_svg(&egraph, "4.svg");
+
+        // Clean up the last example...
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+
+        // So why do this? Well the `apply`-based form allows us to find
+        // repeated patterns in the egraph. As a simple example, imagine we have
+        // a series of two `and` gates in a row. This form will allow us to
+        // discover that the two `and` gates are the same:
+        egraph
+            .parse_and_run_program(
+                r#"
+
+                ; First, "direct" form.
+                (let and (Op2 (And) (Var "a" 1) (Op2 (And) (Var "b" 1) (Var "c" 1))))
+
+                ; Run module enumeration rewrites to convert to "apply" form.
+                (run-schedule (saturate enumerate-modules))
+    
+            "#,
+            )
+            .unwrap();
+        write_svg(&egraph, "5.svg");
     }
 }
