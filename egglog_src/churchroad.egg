@@ -9,6 +9,7 @@
 ; Ops
 (datatype Op
   (And)
+  (Add)
   (Or)
   (Xor)
   (Shr)
@@ -102,6 +103,7 @@
 ;;; op.
 (relation AllBitwidthsMatch (Op))
 (AllBitwidthsMatch (And))
+(AllBitwidthsMatch (Add))
 (AllBitwidthsMatch (Or))
 (AllBitwidthsMatch (Xor))
 (AllBitwidthsMatch (Shr))
