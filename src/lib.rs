@@ -480,6 +480,45 @@ mod tests {
 
     use egglog::EGraph;
 
+    /// Doing some exploration of where cyclic extraction breaks in egglog with
+    /// Andrew and Vishal.
+    #[test]
+    fn generate_loop() {
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+
+        egraph
+            .parse_and_run_program(
+                r#"
+                (let placeholder (Wire "placeholder" 8))
+                (let reg (Op1 (Reg 0) placeholder))
+                (union placeholder reg)
+                (delete (Wire "placeholder" 8))
+            "#,
+            )
+            .unwrap();
+
+        // Uncomment to write out the SVG.
+        // let serialized = egraph.serialize_for_graphviz(true);
+        // let svg_path = Path::new("tmp").with_extension("svg");
+        // serialized.to_svg_file(svg_path).unwrap();
+
+        // Extract reg from Egraph.
+        let mut _termdag = TermDag::default();
+        let (_sort, _value) = egraph
+            .eval_expr(&egglog::ast::Expr::Var((), "reg".into()))
+            .unwrap();
+        // This will panic, which is what we were trying to get to.
+        // It panics with `No cost for Value { tag: "Expr", bits: 6 }`
+        // which is basically egglog saying that it can't get a cost because
+        // of the cycle. I expected it to loop infinitely, but it's smarter than
+        // that.
+        //let (_, extracted) = egraph.extract(value, &mut termdag, &sort);
+
+        // Next: can we serialize the egraph? That's the first step to building
+        // a new extraction algorithm.
+    }
+
     #[test]
     fn test_module_enumeration_rewrites_up_to_date() {
         // Read in egglog_src/module_enumeration_rewrites.egg and check that it
