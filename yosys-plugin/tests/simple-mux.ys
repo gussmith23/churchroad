@@ -1,0 +1,21 @@
+read_verilog -sv <<EOF
+module test(input [2:0] a, output [2:0] out);
+  // assign out = ~ a;
+  always_comb begin
+	  case (a)
+		  2'b01: out = 2'b10;
+		  2'b00: out = 2'b10;
+		  2'b10: out = 2'b00;
+		  2'b11: out = 2'b01;
+		  default: out = 2'b01;
+	  endcase
+  end
+endmodule
+EOF
+# Optimize out the mux to simple gates.
+prep -top test; pmuxtree;
+proc; opt; memory; opt;
+abc; opt;
+write_lakeroad
+# Writing the verilog first with "-noattr" doesn't cause infinite loop
+# write_verilog -noattr simple-mux.v
