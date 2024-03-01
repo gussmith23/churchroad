@@ -9,6 +9,9 @@ endmodule
 EOF
 
 write_lakeroad
+# Write output to file.egg
+write_lakeroad file.egg
+!rm file.egg
 
 # CHECK: (let v0 (Wire "v0" 2))
 # CHECK: (let v1 (Op1 (Extract 0 0) v0))

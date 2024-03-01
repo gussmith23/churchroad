@@ -1437,7 +1437,7 @@ struct LakeroadWorker
 		for (auto cell : module->cells())
 		{
 
-			if (cell->type.in(ID($logic_not)))
+			if (cell->type.in(ID($logic_not), ID($not)))
 			{
 				// Unary ops.
 				assert(cell->connections().size() == 2);
@@ -1448,6 +1448,8 @@ struct LakeroadWorker
 				std::string op_str;
 				if (cell->type == ID($logic_not))
 					op_str = "(LogicNot)";
+				if (cell->type == ID($not))
+					op_str = "(Not)";
 				else
 					log_error("This should be unreachable. You are missing an else if branch.\n");
 
@@ -1876,8 +1878,18 @@ struct BtorBackend : public Backend
 
 		RTLIL::Module *topmod = design->top_module();
 
+		size_t argidx = args.size();
+
+                if (filename == "") {
+			// The command itself is given as an arg
+			if (argidx > 1 && args[argidx - 1][0] != '-') {
+				// extra_args and friends need to see this argument.
+				argidx -= 1;
+				filename = args[argidx];
+			}
+		}
 		// Has to come after other arg parsing.
-		extra_args(f, filename, args, args.size());
+		extra_args(f, filename, args, argidx);
 
 		if (topmod == nullptr)
 			log_cmd_error("No top module found.\n");
