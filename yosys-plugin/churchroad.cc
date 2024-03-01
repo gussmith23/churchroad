@@ -1293,6 +1293,7 @@ struct LakeroadWorker
 		vector<std::string> wire_exprs;
 
 		// Generate wire expression.
+                //
 		auto wire_expr = [&](const std::string &name, const int bitwidth)
 		{
 			auto s = stringf("(Wire \"%s\" %d)", name.c_str(), bitwidth);
@@ -1301,7 +1302,12 @@ struct LakeroadWorker
 		};
 
 		std::map<RTLIL::SigSpec, std::string> signal_let_bound_name;
-
+//
+		// Note: we `sigmap` all wires here, so there's no need to `sigmap` them
+		// recursively within get_expression_for_signal. This was a source of an
+		// infinite loop: https://github.com/uwsampl/yosys/issues/10
+                //
+                //
 		// Does not sigmap the signal; you should sigmap the signal if you need it
 		// sigmapped.
 		//
@@ -1384,7 +1390,7 @@ struct LakeroadWorker
 				}
 
 				// The let-bound ID string of the expression to extract from.
-				auto extract_from_expr = get_expression_for_signal(sigmap(sig.chunks()[0].wire), -1);
+                                auto extract_from_expr = get_expression_for_signal(sig.chunks()[0].wire, -1);
 				auto new_id = get_new_id_str();
 				auto extract_expr = stringf("(Op1 (Extract %d %d) %s)", (chunk.offset + chunk.width - 1) + chunk.wire->start_offset,
 																		chunk.offset + chunk.wire->start_offset, extract_from_expr.c_str());
