@@ -1327,7 +1327,7 @@ struct LakeroadWorker
 			if (sig.is_fully_const())
 			{
 				// If the signal is a constant, we can just use the constant.
-				auto const_str = stringf("(BV %d %d)", Const(sig.as_const()).as_int(), sig.size());
+				auto const_str = stringf("(Op0 (BV %d %d))", Const(sig.as_const()).as_int(), sig.size());
 				auto new_id = get_new_id_str();
 				auto let_expr = let(new_id, const_str);
 				auto signal_name = get_signal_name(sig);
@@ -1364,7 +1364,7 @@ struct LakeroadWorker
 				for (size_t i = 1; i < chunk_exprs.size(); i++)
 				{
 					auto new_id = get_new_id_str();
-					auto let_expr = let(new_id, stringf("(Concat %s %s)", concat_expr.c_str(), chunk_exprs[i].c_str()));
+					auto let_expr = let(new_id, stringf("(Op2 (Concat) %s %s)", concat_expr.c_str(), chunk_exprs[i].c_str()));
 					f << let_expr << "\n";
 					concat_expr = new_id;
 				}
@@ -1536,7 +1536,7 @@ struct LakeroadWorker
 				auto q_let_name = get_expression_for_signal(q, -1);
 
 				f << "; TODO: assuming 0 default for Reg\n";
-				f << stringf("(union %s (Reg 0 %s %s))\n", q_let_name.c_str(), clk_let_name.c_str(), d_let_name.c_str());
+				f << stringf("(union %s (Op2 (Reg 0) %s %s))\n", q_let_name.c_str(), clk_let_name.c_str(), d_let_name.c_str());
 			}
 			else if (cell->type == ID($pmux))
 			{
