@@ -1302,6 +1302,11 @@ struct LakeroadWorker
 
 		std::map<RTLIL::SigSpec, std::string> signal_let_bound_name;
 
+		// Note: we `sigmap` all wires here, so there's no need to `sigmap` them
+		// recursively within get_expression_for_signal. This was a source of an
+		// infinite loop: https://github.com/uwsampl/yosys/issues/10
+                //
+                //
 		// Does not sigmap the signal; you should sigmap the signal if you need it
 		// sigmapped.
 		//
@@ -1321,7 +1326,7 @@ struct LakeroadWorker
 			if (sig.is_fully_const())
 			{
 				// If the signal is a constant, we can just use the constant.
-				auto const_str = stringf("(BV %d %d)", Const(sig.as_const()).as_int(), sig.size());
+				auto const_str = stringf("(Op0 (BV %d %d))", Const(sig.as_const()).as_int(), sig.size());
 				auto new_id = get_new_id_str();
 				auto let_expr = let(new_id, const_str);
 				auto signal_name = get_signal_name(sig);
@@ -1358,7 +1363,7 @@ struct LakeroadWorker
 				for (size_t i = 1; i < chunk_exprs.size(); i++)
 				{
 					auto new_id = get_new_id_str();
-					auto let_expr = let(new_id, stringf("(Concat %s %s)", concat_expr.c_str(), chunk_exprs[i].c_str()));
+					auto let_expr = let(new_id, stringf("(Op2 (Concat) %s %s)", concat_expr.c_str(), chunk_exprs[i].c_str()));
 					f << let_expr << "\n";
 					concat_expr = new_id;
 				}
@@ -1384,7 +1389,7 @@ struct LakeroadWorker
 				}
 
 				// The let-bound ID string of the expression to extract from.
-				auto extract_from_expr = get_expression_for_signal(sigmap(sig.chunks()[0].wire), -1);
+                                auto extract_from_expr = get_expression_for_signal(sig.chunks()[0].wire, -1);
 				auto new_id = get_new_id_str();
 				auto extract_expr = stringf("(Op1 (Extract %d %d) %s)", (chunk.offset + chunk.width - 1) + chunk.wire->start_offset,
 																		chunk.offset + chunk.wire->start_offset, extract_from_expr.c_str());
@@ -1437,7 +1442,7 @@ struct LakeroadWorker
 		for (auto cell : module->cells())
 		{
 
-			if (cell->type.in(ID($logic_not)))
+			if (cell->type.in(ID($logic_not), ID($not)))
 			{
 				// Unary ops.
 				assert(cell->connections().size() == 2);
@@ -1448,6 +1453,8 @@ struct LakeroadWorker
 				std::string op_str;
 				if (cell->type == ID($logic_not))
 					op_str = "(LogicNot)";
+				if (cell->type == ID($not))
+					op_str = "(Not)";
 				else
 					log_error("This should be unreachable. You are missing an else if branch.\n");
 
@@ -1528,7 +1535,7 @@ struct LakeroadWorker
 				auto q_let_name = get_expression_for_signal(q, -1);
 
 				f << "; TODO: assuming 0 default for Reg\n";
-				f << stringf("(union %s (Reg 0 %s %s))\n", q_let_name.c_str(), clk_let_name.c_str(), d_let_name.c_str());
+				f << stringf("(union %s (Op2 (Reg 0) %s %s))\n", q_let_name.c_str(), clk_let_name.c_str(), d_let_name.c_str());
 			}
 			else if (cell->type == ID($pmux))
 			{
@@ -1876,8 +1883,18 @@ struct BtorBackend : public Backend
 
 		RTLIL::Module *topmod = design->top_module();
 
+		size_t argidx = args.size();
+
+                if (filename == "") {
+			// The command itself is given as an arg
+			if (argidx > 1 && args[argidx - 1][0] != '-') {
+				// extra_args and friends need to see this argument.
+				argidx -= 1;
+				filename = args[argidx];
+			}
+		}
 		// Has to come after other arg parsing.
-		extra_args(f, filename, args, args.size());
+		extra_args(f, filename, args, argidx);
 
 		if (topmod == nullptr)
 			log_cmd_error("No top module found.\n");
