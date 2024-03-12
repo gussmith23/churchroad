@@ -1,0 +1,10 @@
+read_verilog -sv register.v;
+prep -top Register;
+hierarchy -check -top Register;
+techmap; opt; dfflibmap -liberty mycells.lib;
+abc -liberty mycells.lib;
+read_verilog mycells.v;
+proc; opt;
+flatten; opt;
+
+write_lakeroad register.egg

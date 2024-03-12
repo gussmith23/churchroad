@@ -1,0 +1,979 @@
+;; The minimal syntax of the output of the lakeroad language
+(sort IVec (Vec i64))
+
+;; Support Vectors of expressions
+;; vectors can potentailly support "unions" and 
+(sort Expr)
+(sort ExprVec (Vec Expr))
+(datatype Op
+  (And)
+  (Or)
+  (Xor)
+  (Shr)
+  ; Returns a bitvector of width 1.
+  (Eq)
+  ; Bitwise not.
+  (Not)
+  (LogicNot)
+  ; (Mux select-expr expr expr)
+  (Mux)
+  
+  ; (Op1 (Extract high low) expr)
+  ; Extraction from a bitvector.
+  (Extract i64 i64 :cost 1)
+
+  ; (Op2 (Concat) top-expr bottom-expr)
+  ; Concatenation of two bitvectors.
+  (Concat)
+  
+  ; (Op2 (Reg init-value) clock-expr data-expr)
+  (Reg i64)
+
+  ; (Op0 (BV value bitwidth))
+  (BV i64 i64)
+
+  ; (Op1 (ZeroExtend bitwidth) expr)
+  (ZeroExtend i64)
+  )
+  (function Var (String i64) Expr :cost 5)
+  (function Op0 (Op) Expr :cost 5)
+  (function Op1 (Op Expr) Expr :cost 3)
+  (function Op2 (Op Expr Expr) Expr :cost 5)
+  (function Op3 (Op Expr Expr Expr) Expr :cost 5)
+  (function Project (i64 Expr) Expr :cost 0)
+  (function Wire (String i64) Expr :cost 5)
+  ;; (function apply (Module ExprVec) Expr)
+
+; wire declarations
+; $abc$374$auto$blifparse.cc:386:parse_blif$375.Y
+(let v0 (Wire "v0" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$376.Y
+(let v1 (Wire "v1" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$377.Y
+(let v2 (Wire "v2" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$378.Y
+(let v3 (Wire "v3" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$379.Y
+(let v4 (Wire "v4" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$380.Y
+(let v5 (Wire "v5" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$381.Y
+(let v6 (Wire "v6" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$382.Y
+(let v7 (Wire "v7" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$383.Y
+(let v8 (Wire "v8" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$384.Y
+(let v9 (Wire "v9" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$385.Y
+(let v10 (Wire "v10" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$386.Y
+(let v11 (Wire "v11" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$387.Y
+(let v12 (Wire "v12" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$388.Y
+(let v13 (Wire "v13" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$389.Y
+(let v14 (Wire "v14" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$390.Y
+(let v15 (Wire "v15" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$391.Y
+(let v16 (Wire "v16" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$392.Y
+(let v17 (Wire "v17" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$393.Y
+(let v18 (Wire "v18" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$394.Y
+(let v19 (Wire "v19" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$395.Y
+(let v20 (Wire "v20" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$396.Y
+(let v21 (Wire "v21" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$397.Y
+(let v22 (Wire "v22" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$398.Y
+(let v23 (Wire "v23" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$399.Y
+(let v24 (Wire "v24" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$400.Y
+(let v25 (Wire "v25" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$401.Y
+(let v26 (Wire "v26" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$402.Y
+(let v27 (Wire "v27" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$403.Y
+(let v28 (Wire "v28" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$404.Y
+(let v29 (Wire "v29" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$405.Y
+(let v30 (Wire "v30" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$406.Y
+(let v31 (Wire "v31" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$407.Y
+(let v32 (Wire "v32" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$408.Y
+(let v33 (Wire "v33" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$409.Y
+(let v34 (Wire "v34" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$410.Y
+(let v35 (Wire "v35" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$411.Y
+(let v36 (Wire "v36" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$412.Y
+(let v37 (Wire "v37" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$413.Y
+(let v38 (Wire "v38" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$414.Y
+(let v39 (Wire "v39" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$415.Y
+(let v40 (Wire "v40" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$416.Y
+(let v41 (Wire "v41" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$417.Y
+(let v42 (Wire "v42" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$418.Y
+(let v43 (Wire "v43" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$419.Y
+(let v44 (Wire "v44" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$420.Y
+(let v45 (Wire "v45" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$421.Y
+(let v46 (Wire "v46" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$422.Y
+(let v47 (Wire "v47" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$423.Y
+(let v48 (Wire "v48" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$424.Y
+(let v49 (Wire "v49" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$425.Y
+(let v50 (Wire "v50" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$426.Y
+(let v51 (Wire "v51" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$427.Y
+(let v52 (Wire "v52" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$428.Y
+(let v53 (Wire "v53" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$429.Y
+(let v54 (Wire "v54" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$430.Y
+(let v55 (Wire "v55" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$431.Y
+(let v56 (Wire "v56" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$432.Y
+(let v57 (Wire "v57" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$433.Y
+(let v58 (Wire "v58" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$434.Y
+(let v59 (Wire "v59" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$435.Y
+(let v60 (Wire "v60" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$436.Y
+(let v61 (Wire "v61" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$437.Y
+(let v62 (Wire "v62" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$438.Y
+(let v63 (Wire "v63" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$439.Y
+(let v64 (Wire "v64" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$440.Y
+(let v65 (Wire "v65" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$441.Y
+(let v66 (Wire "v66" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$442.Y
+(let v67 (Wire "v67" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$443.Y
+(let v68 (Wire "v68" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$444.Y
+(let v69 (Wire "v69" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$445.Y
+(let v70 (Wire "v70" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$446.Y
+(let v71 (Wire "v71" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$447.Y
+(let v72 (Wire "v72" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$448.Y
+(let v73 (Wire "v73" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$449.Y
+(let v74 (Wire "v74" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$450.Y
+(let v75 (Wire "v75" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$451.Y
+(let v76 (Wire "v76" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$452.Y
+(let v77 (Wire "v77" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$453.Y
+(let v78 (Wire "v78" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$454.Y
+(let v79 (Wire "v79" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$455.Y
+(let v80 (Wire "v80" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$456.Y
+(let v81 (Wire "v81" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$457.Y
+(let v82 (Wire "v82" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$458.Y
+(let v83 (Wire "v83" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$459.Y
+(let v84 (Wire "v84" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$460.Y
+(let v85 (Wire "v85" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$461.Y
+(let v86 (Wire "v86" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$462.Y
+(let v87 (Wire "v87" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$463.Y
+(let v88 (Wire "v88" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$464.Y
+(let v89 (Wire "v89" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$465.Y
+(let v90 (Wire "v90" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$466.Y
+(let v91 (Wire "v91" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$467.Y
+(let v92 (Wire "v92" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$468.Y
+(let v93 (Wire "v93" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$469.Y
+(let v94 (Wire "v94" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$470.Y
+(let v95 (Wire "v95" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$471.Y
+(let v96 (Wire "v96" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$472.Y
+(let v97 (Wire "v97" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$473.Y
+(let v98 (Wire "v98" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$474.Y
+(let v99 (Wire "v99" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$475.Y
+(let v100 (Wire "v100" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$476.Y
+(let v101 (Wire "v101" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$477.Y
+(let v102 (Wire "v102" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$478.Y
+(let v103 (Wire "v103" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$479.Y
+(let v104 (Wire "v104" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$480.Y
+(let v105 (Wire "v105" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$481.Y
+(let v106 (Wire "v106" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$482.Y
+(let v107 (Wire "v107" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$483.Y
+(let v108 (Wire "v108" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$484.Y
+(let v109 (Wire "v109" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$485.Y
+(let v110 (Wire "v110" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$486.Y
+(let v111 (Wire "v111" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$487.Y
+(let v112 (Wire "v112" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$488.Y
+(let v113 (Wire "v113" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$489.Y
+(let v114 (Wire "v114" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$490.Y
+(let v115 (Wire "v115" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$491.Y
+(let v116 (Wire "v116" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$492.Y
+(let v117 (Wire "v117" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$493.Y
+(let v118 (Wire "v118" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$494.Y
+(let v119 (Wire "v119" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$495.Y
+(let v120 (Wire "v120" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$496.Y
+(let v121 (Wire "v121" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$497.Y
+(let v122 (Wire "v122" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$498.Y
+(let v123 (Wire "v123" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$499.Y
+(let v124 (Wire "v124" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$500.Y
+(let v125 (Wire "v125" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$501.Y
+(let v126 (Wire "v126" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$502.Y
+(let v127 (Wire "v127" 1))
+; $abc$374$auto$blifparse.cc:386:parse_blif$503.Y
+(let v128 (Wire "v128" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$378.$or$mycells.v:25$509_Y
+(let v129 (Wire "v129" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$379.$or$mycells.v:25$509_Y
+(let v130 (Wire "v130" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$382.$or$mycells.v:25$509_Y
+(let v131 (Wire "v131" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$383.$or$mycells.v:25$509_Y
+(let v132 (Wire "v132" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$386.$or$mycells.v:25$509_Y
+(let v133 (Wire "v133" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$387.$or$mycells.v:25$509_Y
+(let v134 (Wire "v134" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$390.$or$mycells.v:25$509_Y
+(let v135 (Wire "v135" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$391.$or$mycells.v:25$509_Y
+(let v136 (Wire "v136" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$394.$or$mycells.v:25$509_Y
+(let v137 (Wire "v137" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$395.$or$mycells.v:25$509_Y
+(let v138 (Wire "v138" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$398.$or$mycells.v:25$509_Y
+(let v139 (Wire "v139" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$399.$or$mycells.v:25$509_Y
+(let v140 (Wire "v140" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$402.$or$mycells.v:25$509_Y
+(let v141 (Wire "v141" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$403.$or$mycells.v:25$509_Y
+(let v142 (Wire "v142" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$406.$or$mycells.v:25$509_Y
+(let v143 (Wire "v143" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$407.$or$mycells.v:25$509_Y
+(let v144 (Wire "v144" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$410.$or$mycells.v:25$509_Y
+(let v145 (Wire "v145" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$411.$or$mycells.v:25$509_Y
+(let v146 (Wire "v146" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$414.$or$mycells.v:25$509_Y
+(let v147 (Wire "v147" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$415.$or$mycells.v:25$509_Y
+(let v148 (Wire "v148" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$418.$or$mycells.v:25$509_Y
+(let v149 (Wire "v149" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$419.$or$mycells.v:25$509_Y
+(let v150 (Wire "v150" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$422.$or$mycells.v:25$509_Y
+(let v151 (Wire "v151" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$423.$or$mycells.v:25$509_Y
+(let v152 (Wire "v152" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$426.$or$mycells.v:25$509_Y
+(let v153 (Wire "v153" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$427.$or$mycells.v:25$509_Y
+(let v154 (Wire "v154" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$430.$or$mycells.v:25$509_Y
+(let v155 (Wire "v155" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$431.$or$mycells.v:25$509_Y
+(let v156 (Wire "v156" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$434.$or$mycells.v:25$509_Y
+(let v157 (Wire "v157" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$435.$or$mycells.v:25$509_Y
+(let v158 (Wire "v158" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$438.$or$mycells.v:25$509_Y
+(let v159 (Wire "v159" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$439.$or$mycells.v:25$509_Y
+(let v160 (Wire "v160" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$442.$or$mycells.v:25$509_Y
+(let v161 (Wire "v161" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$443.$or$mycells.v:25$509_Y
+(let v162 (Wire "v162" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$446.$or$mycells.v:25$509_Y
+(let v163 (Wire "v163" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$447.$or$mycells.v:25$509_Y
+(let v164 (Wire "v164" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$450.$or$mycells.v:25$509_Y
+(let v165 (Wire "v165" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$451.$or$mycells.v:25$509_Y
+(let v166 (Wire "v166" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$454.$or$mycells.v:25$509_Y
+(let v167 (Wire "v167" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$455.$or$mycells.v:25$509_Y
+(let v168 (Wire "v168" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$458.$or$mycells.v:25$509_Y
+(let v169 (Wire "v169" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$459.$or$mycells.v:25$509_Y
+(let v170 (Wire "v170" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$462.$or$mycells.v:25$509_Y
+(let v171 (Wire "v171" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$463.$or$mycells.v:25$509_Y
+(let v172 (Wire "v172" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$466.$or$mycells.v:25$509_Y
+(let v173 (Wire "v173" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$467.$or$mycells.v:25$509_Y
+(let v174 (Wire "v174" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$470.$or$mycells.v:25$509_Y
+(let v175 (Wire "v175" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$471.$or$mycells.v:25$509_Y
+(let v176 (Wire "v176" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$474.$or$mycells.v:25$509_Y
+(let v177 (Wire "v177" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$475.$or$mycells.v:25$509_Y
+(let v178 (Wire "v178" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$478.$or$mycells.v:25$509_Y
+(let v179 (Wire "v179" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$479.$or$mycells.v:25$509_Y
+(let v180 (Wire "v180" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$482.$or$mycells.v:25$509_Y
+(let v181 (Wire "v181" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$483.$or$mycells.v:25$509_Y
+(let v182 (Wire "v182" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$486.$or$mycells.v:25$509_Y
+(let v183 (Wire "v183" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$487.$or$mycells.v:25$509_Y
+(let v184 (Wire "v184" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$490.$or$mycells.v:25$509_Y
+(let v185 (Wire "v185" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$491.$or$mycells.v:25$509_Y
+(let v186 (Wire "v186" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$494.$or$mycells.v:25$509_Y
+(let v187 (Wire "v187" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$495.$or$mycells.v:25$509_Y
+(let v188 (Wire "v188" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$498.$or$mycells.v:25$509_Y
+(let v189 (Wire "v189" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$499.$or$mycells.v:25$509_Y
+(let v190 (Wire "v190" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$502.$or$mycells.v:25$509_Y
+(let v191 (Wire "v191" 1))
+; $flatten$abc$374$auto$blifparse.cc:386:parse_blif$503.$or$mycells.v:25$509_Y
+(let v192 (Wire "v192" 1))
+; clk
+(let v193 (Wire "v193" 1))
+; in
+(let v194 (Wire "v194" 32))
+; out
+(let v195 (Wire "v195" 32))
+; reset
+(let v196 (Wire "v196" 1))
+; write_en
+(let v197 (Wire "v197" 1))
+
+; cells
+(union v0 (Op1 (Not) v197))
+(let v198 (Op1 (Extract 31 31) v194))
+(union v1 (Op2 (And) v197 v198))
+(let v199 (Op1 (Extract 31 31) v195))
+(union v2 (Op2 (And) v0 v199))
+(union v3 (Op1 (Not) v129))
+(union v129 (Op2 (Or) v1 v2))
+(union v4 (Op1 (Not) v130))
+(union v130 (Op2 (Or) v196 v3))
+(let v200 (Op1 (Extract 0 0) v194))
+(union v5 (Op2 (And) v197 v200))
+(let v201 (Op1 (Extract 0 0) v195))
+(union v6 (Op2 (And) v0 v201))
+(union v7 (Op1 (Not) v131))
+(union v131 (Op2 (Or) v5 v6))
+(union v8 (Op1 (Not) v132))
+(union v132 (Op2 (Or) v196 v7))
+(let v202 (Op1 (Extract 1 1) v194))
+(union v9 (Op2 (And) v197 v202))
+(let v203 (Op1 (Extract 1 1) v195))
+(union v10 (Op2 (And) v0 v203))
+(union v11 (Op1 (Not) v133))
+(union v133 (Op2 (Or) v9 v10))
+(union v12 (Op1 (Not) v134))
+(union v134 (Op2 (Or) v196 v11))
+(let v204 (Op1 (Extract 2 2) v194))
+(union v13 (Op2 (And) v197 v204))
+(let v205 (Op1 (Extract 2 2) v195))
+(union v14 (Op2 (And) v0 v205))
+(union v15 (Op1 (Not) v135))
+(union v135 (Op2 (Or) v13 v14))
+(union v16 (Op1 (Not) v136))
+(union v136 (Op2 (Or) v196 v15))
+(let v206 (Op1 (Extract 3 3) v194))
+(union v17 (Op2 (And) v197 v206))
+(let v207 (Op1 (Extract 3 3) v195))
+(union v18 (Op2 (And) v0 v207))
+(union v19 (Op1 (Not) v137))
+(union v137 (Op2 (Or) v17 v18))
+(union v20 (Op1 (Not) v138))
+(union v138 (Op2 (Or) v196 v19))
+(let v208 (Op1 (Extract 4 4) v194))
+(union v21 (Op2 (And) v197 v208))
+(let v209 (Op1 (Extract 4 4) v195))
+(union v22 (Op2 (And) v0 v209))
+(union v23 (Op1 (Not) v139))
+(union v139 (Op2 (Or) v21 v22))
+(union v24 (Op1 (Not) v140))
+(union v140 (Op2 (Or) v196 v23))
+(let v210 (Op1 (Extract 5 5) v194))
+(union v25 (Op2 (And) v197 v210))
+(let v211 (Op1 (Extract 5 5) v195))
+(union v26 (Op2 (And) v0 v211))
+(union v27 (Op1 (Not) v141))
+(union v141 (Op2 (Or) v25 v26))
+(union v28 (Op1 (Not) v142))
+(union v142 (Op2 (Or) v196 v27))
+(let v212 (Op1 (Extract 6 6) v194))
+(union v29 (Op2 (And) v197 v212))
+(let v213 (Op1 (Extract 6 6) v195))
+(union v30 (Op2 (And) v0 v213))
+(union v31 (Op1 (Not) v143))
+(union v143 (Op2 (Or) v29 v30))
+(union v32 (Op1 (Not) v144))
+(union v144 (Op2 (Or) v196 v31))
+(let v214 (Op1 (Extract 7 7) v194))
+(union v33 (Op2 (And) v197 v214))
+(let v215 (Op1 (Extract 7 7) v195))
+(union v34 (Op2 (And) v0 v215))
+(union v35 (Op1 (Not) v145))
+(union v145 (Op2 (Or) v33 v34))
+(union v36 (Op1 (Not) v146))
+(union v146 (Op2 (Or) v196 v35))
+(let v216 (Op1 (Extract 8 8) v194))
+(union v37 (Op2 (And) v197 v216))
+(let v217 (Op1 (Extract 8 8) v195))
+(union v38 (Op2 (And) v0 v217))
+(union v39 (Op1 (Not) v147))
+(union v147 (Op2 (Or) v37 v38))
+(union v40 (Op1 (Not) v148))
+(union v148 (Op2 (Or) v196 v39))
+(let v218 (Op1 (Extract 9 9) v194))
+(union v41 (Op2 (And) v197 v218))
+(let v219 (Op1 (Extract 9 9) v195))
+(union v42 (Op2 (And) v0 v219))
+(union v43 (Op1 (Not) v149))
+(union v149 (Op2 (Or) v41 v42))
+(union v44 (Op1 (Not) v150))
+(union v150 (Op2 (Or) v196 v43))
+(let v220 (Op1 (Extract 10 10) v194))
+(union v45 (Op2 (And) v197 v220))
+(let v221 (Op1 (Extract 10 10) v195))
+(union v46 (Op2 (And) v0 v221))
+(union v47 (Op1 (Not) v151))
+(union v151 (Op2 (Or) v45 v46))
+(union v48 (Op1 (Not) v152))
+(union v152 (Op2 (Or) v196 v47))
+(let v222 (Op1 (Extract 11 11) v194))
+(union v49 (Op2 (And) v197 v222))
+(let v223 (Op1 (Extract 11 11) v195))
+(union v50 (Op2 (And) v0 v223))
+(union v51 (Op1 (Not) v153))
+(union v153 (Op2 (Or) v49 v50))
+(union v52 (Op1 (Not) v154))
+(union v154 (Op2 (Or) v196 v51))
+(let v224 (Op1 (Extract 12 12) v194))
+(union v53 (Op2 (And) v197 v224))
+(let v225 (Op1 (Extract 12 12) v195))
+(union v54 (Op2 (And) v0 v225))
+(union v55 (Op1 (Not) v155))
+(union v155 (Op2 (Or) v53 v54))
+(union v56 (Op1 (Not) v156))
+(union v156 (Op2 (Or) v196 v55))
+(let v226 (Op1 (Extract 13 13) v194))
+(union v57 (Op2 (And) v197 v226))
+(let v227 (Op1 (Extract 13 13) v195))
+(union v58 (Op2 (And) v0 v227))
+(union v59 (Op1 (Not) v157))
+(union v157 (Op2 (Or) v57 v58))
+(union v60 (Op1 (Not) v158))
+(union v158 (Op2 (Or) v196 v59))
+(let v228 (Op1 (Extract 14 14) v194))
+(union v61 (Op2 (And) v197 v228))
+(let v229 (Op1 (Extract 14 14) v195))
+(union v62 (Op2 (And) v0 v229))
+(union v63 (Op1 (Not) v159))
+(union v159 (Op2 (Or) v61 v62))
+(union v64 (Op1 (Not) v160))
+(union v160 (Op2 (Or) v196 v63))
+(let v230 (Op1 (Extract 15 15) v194))
+(union v65 (Op2 (And) v197 v230))
+(let v231 (Op1 (Extract 15 15) v195))
+(union v66 (Op2 (And) v0 v231))
+(union v67 (Op1 (Not) v161))
+(union v161 (Op2 (Or) v65 v66))
+(union v68 (Op1 (Not) v162))
+(union v162 (Op2 (Or) v196 v67))
+(let v232 (Op1 (Extract 16 16) v194))
+(union v69 (Op2 (And) v197 v232))
+(let v233 (Op1 (Extract 16 16) v195))
+(union v70 (Op2 (And) v0 v233))
+(union v71 (Op1 (Not) v163))
+(union v163 (Op2 (Or) v69 v70))
+(union v72 (Op1 (Not) v164))
+(union v164 (Op2 (Or) v196 v71))
+(let v234 (Op1 (Extract 17 17) v194))
+(union v73 (Op2 (And) v197 v234))
+(let v235 (Op1 (Extract 17 17) v195))
+(union v74 (Op2 (And) v0 v235))
+(union v75 (Op1 (Not) v165))
+(union v165 (Op2 (Or) v73 v74))
+(union v76 (Op1 (Not) v166))
+(union v166 (Op2 (Or) v196 v75))
+(let v236 (Op1 (Extract 18 18) v194))
+(union v77 (Op2 (And) v197 v236))
+(let v237 (Op1 (Extract 18 18) v195))
+(union v78 (Op2 (And) v0 v237))
+(union v79 (Op1 (Not) v167))
+(union v167 (Op2 (Or) v77 v78))
+(union v80 (Op1 (Not) v168))
+(union v168 (Op2 (Or) v196 v79))
+(let v238 (Op1 (Extract 19 19) v194))
+(union v81 (Op2 (And) v197 v238))
+(let v239 (Op1 (Extract 19 19) v195))
+(union v82 (Op2 (And) v0 v239))
+(union v83 (Op1 (Not) v169))
+(union v169 (Op2 (Or) v81 v82))
+(union v84 (Op1 (Not) v170))
+(union v170 (Op2 (Or) v196 v83))
+(let v240 (Op1 (Extract 20 20) v194))
+(union v85 (Op2 (And) v197 v240))
+(let v241 (Op1 (Extract 20 20) v195))
+(union v86 (Op2 (And) v0 v241))
+(union v87 (Op1 (Not) v171))
+(union v171 (Op2 (Or) v85 v86))
+(union v88 (Op1 (Not) v172))
+(union v172 (Op2 (Or) v196 v87))
+(let v242 (Op1 (Extract 21 21) v194))
+(union v89 (Op2 (And) v197 v242))
+(let v243 (Op1 (Extract 21 21) v195))
+(union v90 (Op2 (And) v0 v243))
+(union v91 (Op1 (Not) v173))
+(union v173 (Op2 (Or) v89 v90))
+(union v92 (Op1 (Not) v174))
+(union v174 (Op2 (Or) v196 v91))
+(let v244 (Op1 (Extract 22 22) v194))
+(union v93 (Op2 (And) v197 v244))
+(let v245 (Op1 (Extract 22 22) v195))
+(union v94 (Op2 (And) v0 v245))
+(union v95 (Op1 (Not) v175))
+(union v175 (Op2 (Or) v93 v94))
+(union v96 (Op1 (Not) v176))
+(union v176 (Op2 (Or) v196 v95))
+(let v246 (Op1 (Extract 23 23) v194))
+(union v97 (Op2 (And) v197 v246))
+(let v247 (Op1 (Extract 23 23) v195))
+(union v98 (Op2 (And) v0 v247))
+(union v99 (Op1 (Not) v177))
+(union v177 (Op2 (Or) v97 v98))
+(union v100 (Op1 (Not) v178))
+(union v178 (Op2 (Or) v196 v99))
+(let v248 (Op1 (Extract 24 24) v194))
+(union v101 (Op2 (And) v197 v248))
+(let v249 (Op1 (Extract 24 24) v195))
+(union v102 (Op2 (And) v0 v249))
+(union v103 (Op1 (Not) v179))
+(union v179 (Op2 (Or) v101 v102))
+(union v104 (Op1 (Not) v180))
+(union v180 (Op2 (Or) v196 v103))
+(let v250 (Op1 (Extract 25 25) v194))
+(union v105 (Op2 (And) v197 v250))
+(let v251 (Op1 (Extract 25 25) v195))
+(union v106 (Op2 (And) v0 v251))
+(union v107 (Op1 (Not) v181))
+(union v181 (Op2 (Or) v105 v106))
+(union v108 (Op1 (Not) v182))
+(union v182 (Op2 (Or) v196 v107))
+(let v252 (Op1 (Extract 26 26) v194))
+(union v109 (Op2 (And) v197 v252))
+(let v253 (Op1 (Extract 26 26) v195))
+(union v110 (Op2 (And) v0 v253))
+(union v111 (Op1 (Not) v183))
+(union v183 (Op2 (Or) v109 v110))
+(union v112 (Op1 (Not) v184))
+(union v184 (Op2 (Or) v196 v111))
+(let v254 (Op1 (Extract 27 27) v194))
+(union v113 (Op2 (And) v197 v254))
+(let v255 (Op1 (Extract 27 27) v195))
+(union v114 (Op2 (And) v0 v255))
+(union v115 (Op1 (Not) v185))
+(union v185 (Op2 (Or) v113 v114))
+(union v116 (Op1 (Not) v186))
+(union v186 (Op2 (Or) v196 v115))
+(let v256 (Op1 (Extract 28 28) v194))
+(union v117 (Op2 (And) v197 v256))
+(let v257 (Op1 (Extract 28 28) v195))
+(union v118 (Op2 (And) v0 v257))
+(union v119 (Op1 (Not) v187))
+(union v187 (Op2 (Or) v117 v118))
+(union v120 (Op1 (Not) v188))
+(union v188 (Op2 (Or) v196 v119))
+(let v258 (Op1 (Extract 29 29) v194))
+(union v121 (Op2 (And) v197 v258))
+(let v259 (Op1 (Extract 29 29) v195))
+(union v122 (Op2 (And) v0 v259))
+(union v123 (Op1 (Not) v189))
+(union v189 (Op2 (Or) v121 v122))
+(union v124 (Op1 (Not) v190))
+(union v190 (Op2 (Or) v196 v123))
+(let v260 (Op1 (Extract 30 30) v194))
+(union v125 (Op2 (And) v260 v197))
+(let v261 (Op1 (Extract 30 30) v195))
+(union v126 (Op2 (And) v261 v0))
+(union v127 (Op1 (Not) v191))
+(union v191 (Op2 (Or) v125 v126))
+(union v128 (Op1 (Not) v192))
+(union v192 (Op2 (Or) v196 v127))
+; TODO: assuming 0 default for Reg
+(union v199 (Op2 (Reg 0) v193 v4))
+; TODO: assuming 0 default for Reg
+(union v201 (Op2 (Reg 0) v193 v8))
+; TODO: assuming 0 default for Reg
+(union v203 (Op2 (Reg 0) v193 v12))
+; TODO: assuming 0 default for Reg
+(union v205 (Op2 (Reg 0) v193 v16))
+; TODO: assuming 0 default for Reg
+(union v207 (Op2 (Reg 0) v193 v20))
+; TODO: assuming 0 default for Reg
+(union v209 (Op2 (Reg 0) v193 v24))
+; TODO: assuming 0 default for Reg
+(union v211 (Op2 (Reg 0) v193 v28))
+; TODO: assuming 0 default for Reg
+(union v213 (Op2 (Reg 0) v193 v32))
+; TODO: assuming 0 default for Reg
+(union v215 (Op2 (Reg 0) v193 v36))
+; TODO: assuming 0 default for Reg
+(union v217 (Op2 (Reg 0) v193 v40))
+; TODO: assuming 0 default for Reg
+(union v219 (Op2 (Reg 0) v193 v44))
+; TODO: assuming 0 default for Reg
+(union v221 (Op2 (Reg 0) v193 v48))
+; TODO: assuming 0 default for Reg
+(union v223 (Op2 (Reg 0) v193 v52))
+; TODO: assuming 0 default for Reg
+(union v225 (Op2 (Reg 0) v193 v56))
+; TODO: assuming 0 default for Reg
+(union v227 (Op2 (Reg 0) v193 v60))
+; TODO: assuming 0 default for Reg
+(union v229 (Op2 (Reg 0) v193 v64))
+; TODO: assuming 0 default for Reg
+(union v231 (Op2 (Reg 0) v193 v68))
+; TODO: assuming 0 default for Reg
+(union v233 (Op2 (Reg 0) v193 v72))
+; TODO: assuming 0 default for Reg
+(union v235 (Op2 (Reg 0) v193 v76))
+; TODO: assuming 0 default for Reg
+(union v237 (Op2 (Reg 0) v193 v80))
+; TODO: assuming 0 default for Reg
+(union v239 (Op2 (Reg 0) v193 v84))
+; TODO: assuming 0 default for Reg
+(union v241 (Op2 (Reg 0) v193 v88))
+; TODO: assuming 0 default for Reg
+(union v243 (Op2 (Reg 0) v193 v92))
+; TODO: assuming 0 default for Reg
+(union v245 (Op2 (Reg 0) v193 v96))
+; TODO: assuming 0 default for Reg
+(union v247 (Op2 (Reg 0) v193 v100))
+; TODO: assuming 0 default for Reg
+(union v249 (Op2 (Reg 0) v193 v104))
+; TODO: assuming 0 default for Reg
+(union v251 (Op2 (Reg 0) v193 v108))
+; TODO: assuming 0 default for Reg
+(union v253 (Op2 (Reg 0) v193 v112))
+; TODO: assuming 0 default for Reg
+(union v255 (Op2 (Reg 0) v193 v116))
+; TODO: assuming 0 default for Reg
+(union v257 (Op2 (Reg 0) v193 v120))
+; TODO: assuming 0 default for Reg
+(union v259 (Op2 (Reg 0) v193 v124))
+; TODO: assuming 0 default for Reg
+(union v261 (Op2 (Reg 0) v193 v128))
+
+; inputs
+(let clk (Var "clk" 1))
+(union v193 clk)
+(let in (Var "in" 32))
+(union v194 in)
+(let reset (Var "reset" 1))
+(union v196 reset)
+(let write_en (Var "write_en" 1))
+(union v197 write_en)
+
+; outputs
+(let out v195)
+
+; delete wire expressions
+(delete (Wire "v0" 1))
+(delete (Wire "v1" 1))
+(delete (Wire "v2" 1))
+(delete (Wire "v3" 1))
+(delete (Wire "v4" 1))
+(delete (Wire "v5" 1))
+(delete (Wire "v6" 1))
+(delete (Wire "v7" 1))
+(delete (Wire "v8" 1))
+(delete (Wire "v9" 1))
+(delete (Wire "v10" 1))
+(delete (Wire "v11" 1))
+(delete (Wire "v12" 1))
+(delete (Wire "v13" 1))
+(delete (Wire "v14" 1))
+(delete (Wire "v15" 1))
+(delete (Wire "v16" 1))
+(delete (Wire "v17" 1))
+(delete (Wire "v18" 1))
+(delete (Wire "v19" 1))
+(delete (Wire "v20" 1))
+(delete (Wire "v21" 1))
+(delete (Wire "v22" 1))
+(delete (Wire "v23" 1))
+(delete (Wire "v24" 1))
+(delete (Wire "v25" 1))
+(delete (Wire "v26" 1))
+(delete (Wire "v27" 1))
+(delete (Wire "v28" 1))
+(delete (Wire "v29" 1))
+(delete (Wire "v30" 1))
+(delete (Wire "v31" 1))
+(delete (Wire "v32" 1))
+(delete (Wire "v33" 1))
+(delete (Wire "v34" 1))
+(delete (Wire "v35" 1))
+(delete (Wire "v36" 1))
+(delete (Wire "v37" 1))
+(delete (Wire "v38" 1))
+(delete (Wire "v39" 1))
+(delete (Wire "v40" 1))
+(delete (Wire "v41" 1))
+(delete (Wire "v42" 1))
+(delete (Wire "v43" 1))
+(delete (Wire "v44" 1))
+(delete (Wire "v45" 1))
+(delete (Wire "v46" 1))
+(delete (Wire "v47" 1))
+(delete (Wire "v48" 1))
+(delete (Wire "v49" 1))
+(delete (Wire "v50" 1))
+(delete (Wire "v51" 1))
+(delete (Wire "v52" 1))
+(delete (Wire "v53" 1))
+(delete (Wire "v54" 1))
+(delete (Wire "v55" 1))
+(delete (Wire "v56" 1))
+(delete (Wire "v57" 1))
+(delete (Wire "v58" 1))
+(delete (Wire "v59" 1))
+(delete (Wire "v60" 1))
+(delete (Wire "v61" 1))
+(delete (Wire "v62" 1))
+(delete (Wire "v63" 1))
+(delete (Wire "v64" 1))
+(delete (Wire "v65" 1))
+(delete (Wire "v66" 1))
+(delete (Wire "v67" 1))
+(delete (Wire "v68" 1))
+(delete (Wire "v69" 1))
+(delete (Wire "v70" 1))
+(delete (Wire "v71" 1))
+(delete (Wire "v72" 1))
+(delete (Wire "v73" 1))
+(delete (Wire "v74" 1))
+(delete (Wire "v75" 1))
+(delete (Wire "v76" 1))
+(delete (Wire "v77" 1))
+(delete (Wire "v78" 1))
+(delete (Wire "v79" 1))
+(delete (Wire "v80" 1))
+(delete (Wire "v81" 1))
+(delete (Wire "v82" 1))
+(delete (Wire "v83" 1))
+(delete (Wire "v84" 1))
+(delete (Wire "v85" 1))
+(delete (Wire "v86" 1))
+(delete (Wire "v87" 1))
+(delete (Wire "v88" 1))
+(delete (Wire "v89" 1))
+(delete (Wire "v90" 1))
+(delete (Wire "v91" 1))
+(delete (Wire "v92" 1))
+(delete (Wire "v93" 1))
+(delete (Wire "v94" 1))
+(delete (Wire "v95" 1))
+(delete (Wire "v96" 1))
+(delete (Wire "v97" 1))
+(delete (Wire "v98" 1))
+(delete (Wire "v99" 1))
+(delete (Wire "v100" 1))
+(delete (Wire "v101" 1))
+(delete (Wire "v102" 1))
+(delete (Wire "v103" 1))
+(delete (Wire "v104" 1))
+(delete (Wire "v105" 1))
+(delete (Wire "v106" 1))
+(delete (Wire "v107" 1))
+(delete (Wire "v108" 1))
+(delete (Wire "v109" 1))
+(delete (Wire "v110" 1))
+(delete (Wire "v111" 1))
+(delete (Wire "v112" 1))
+(delete (Wire "v113" 1))
+(delete (Wire "v114" 1))
+(delete (Wire "v115" 1))
+(delete (Wire "v116" 1))
+(delete (Wire "v117" 1))
+(delete (Wire "v118" 1))
+(delete (Wire "v119" 1))
+(delete (Wire "v120" 1))
+(delete (Wire "v121" 1))
+(delete (Wire "v122" 1))
+(delete (Wire "v123" 1))
+(delete (Wire "v124" 1))
+(delete (Wire "v125" 1))
+(delete (Wire "v126" 1))
+(delete (Wire "v127" 1))
+(delete (Wire "v128" 1))
+(delete (Wire "v129" 1))
+(delete (Wire "v130" 1))
+(delete (Wire "v131" 1))
+(delete (Wire "v132" 1))
+(delete (Wire "v133" 1))
+(delete (Wire "v134" 1))
+(delete (Wire "v135" 1))
+(delete (Wire "v136" 1))
+(delete (Wire "v137" 1))
+(delete (Wire "v138" 1))
+(delete (Wire "v139" 1))
+(delete (Wire "v140" 1))
+(delete (Wire "v141" 1))
+(delete (Wire "v142" 1))
+(delete (Wire "v143" 1))
+(delete (Wire "v144" 1))
+(delete (Wire "v145" 1))
+(delete (Wire "v146" 1))
+(delete (Wire "v147" 1))
+(delete (Wire "v148" 1))
+(delete (Wire "v149" 1))
+(delete (Wire "v150" 1))
+(delete (Wire "v151" 1))
+(delete (Wire "v152" 1))
+(delete (Wire "v153" 1))
+(delete (Wire "v154" 1))
+(delete (Wire "v155" 1))
+(delete (Wire "v156" 1))
+(delete (Wire "v157" 1))
+(delete (Wire "v158" 1))
+(delete (Wire "v159" 1))
+(delete (Wire "v160" 1))
+(delete (Wire "v161" 1))
+(delete (Wire "v162" 1))
+(delete (Wire "v163" 1))
+(delete (Wire "v164" 1))
+(delete (Wire "v165" 1))
+(delete (Wire "v166" 1))
+(delete (Wire "v167" 1))
+(delete (Wire "v168" 1))
+(delete (Wire "v169" 1))
+(delete (Wire "v170" 1))
+(delete (Wire "v171" 1))
+(delete (Wire "v172" 1))
+(delete (Wire "v173" 1))
+(delete (Wire "v174" 1))
+(delete (Wire "v175" 1))
+(delete (Wire "v176" 1))
+(delete (Wire "v177" 1))
+(delete (Wire "v178" 1))
+(delete (Wire "v179" 1))
+(delete (Wire "v180" 1))
+(delete (Wire "v181" 1))
+(delete (Wire "v182" 1))
+(delete (Wire "v183" 1))
+(delete (Wire "v184" 1))
+(delete (Wire "v185" 1))
+(delete (Wire "v186" 1))
+(delete (Wire "v187" 1))
+(delete (Wire "v188" 1))
+(delete (Wire "v189" 1))
+(delete (Wire "v190" 1))
+(delete (Wire "v191" 1))
+(delete (Wire "v192" 1))
+(delete (Wire "v193" 1))
+(delete (Wire "v194" 32))
+(delete (Wire "v195" 32))
+(delete (Wire "v196" 1))
+(delete (Wire "v197" 1))
