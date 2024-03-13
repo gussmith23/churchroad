@@ -58,7 +58,8 @@ WORKDIR /root/churchroad
 ADD egglog_src egglog_src
 ADD src src
 ADD tests tests
-ADD Cargo.toml Cargo.lock ./
+ADD Cargo.lock .
+ADD Cargo.toml .
 RUN cargo build
 
 # Build Yosys.
