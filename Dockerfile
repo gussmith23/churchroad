@@ -59,8 +59,8 @@ ADD egglog_src egglog_src
 ADD src src
 ADD tests tests
 ADD . .
-ADD Cargo.toml .
-ADD Cargo.lock .
+# ADD Cargo.toml .
+# ADD Cargo.lock .
 RUN cargo build
 
 # Build Yosys.
