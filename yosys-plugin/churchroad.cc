@@ -1305,8 +1305,7 @@ struct LakeroadWorker
 		// Note: we `sigmap` all wires here, so there's no need to `sigmap` them
 		// recursively within get_expression_for_signal. This was a source of an
 		// infinite loop: https://github.com/uwsampl/yosys/issues/10
-                //
-                //
+		//
 		// Does not sigmap the signal; you should sigmap the signal if you need it
 		// sigmapped.
 		//
