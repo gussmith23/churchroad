@@ -1459,6 +1459,28 @@ struct LakeroadWorker
 
 				f << stringf("(union %s (Op1 %s %s))\n", y_let_name.c_str(), op_str.c_str(), a_let_name.c_str()).c_str();
 			}
+			else if (cell->type.in(ID($slice)))
+			{
+				// Slice.
+				assert(cell->connections().size() == 2);
+				// Do we need sigmap here?
+				auto y = sigmap(cell->getPort(ID::Y));
+				// should we be passing y.size() here?
+				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), y.size());
+				auto y_let_name = get_expression_for_signal(y, -1);
+
+				// Get OFFSET and Y_WIDTH parameters.
+				auto offset = cell->getParam(ID::OFFSET).as_int();
+				auto y_width = cell->getParam(ID::Y_WIDTH).as_int();
+
+				std::string op_str;
+				if (cell->type == ID($slice))
+					op_str = stringf("(Extract %d %d)", offset + y_width - 1, offset).c_str();
+				else
+					log_error("This should be unreachable. You are missing an else if branch.\n");
+
+				f << stringf("(union %s (Op1 %s %s))\n", y_let_name.c_str(), op_str.c_str(), a_let_name.c_str()).c_str();
+			}
 			else if (cell->type.in(ID($and), ID($or), ID($xor), ID($shr)))
 			{
 				// Binary ops that preserve width.
@@ -1477,6 +1499,26 @@ struct LakeroadWorker
 					op_str = "(Xor)";
 				else if (cell->type == ID($shr))
 					op_str = "(Shr)";
+				else
+					log_error("This should be unreachable. You are missing an else if branch.\n");
+
+				f << stringf("(union %s (Op2 %s %s %s))\n", y_let_name.c_str(), op_str.c_str(), a_let_name.c_str(),
+										 b_let_name.c_str())
+								 .c_str();
+			}
+			else if (cell->type.in(ID($concat)))
+			{
+				// Concat.
+				assert(cell->connections().size() == 3);
+				// do we need this sigmap?
+				auto y = sigmap(cell->getPort(ID::Y));
+				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), y.size());
+				auto b_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::B)), y.size());
+				auto y_let_name = get_expression_for_signal(y, -1);
+
+				std::string op_str;
+				if (cell->type == ID($concat))
+					op_str = "(Concat)";
 				else
 					log_error("This should be unreachable. You are missing an else if branch.\n");
 
