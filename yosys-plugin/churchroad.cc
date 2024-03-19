@@ -1452,7 +1452,7 @@ struct LakeroadWorker
 				std::string op_str;
 				if (cell->type == ID($logic_not))
 					op_str = "(LogicNot)";
-				if (cell->type == ID($not))
+				else if (cell->type == ID($not))
 					op_str = "(Not)";
 				else
 					log_error("This should be unreachable. You are missing an else if branch.\n");
