@@ -1305,8 +1305,7 @@ struct LakeroadWorker
 		// Note: we `sigmap` all wires here, so there's no need to `sigmap` them
 		// recursively within get_expression_for_signal. This was a source of an
 		// infinite loop: https://github.com/uwsampl/yosys/issues/10
-                //
-                //
+		//
 		// Does not sigmap the signal; you should sigmap the signal if you need it
 		// sigmapped.
 		//
@@ -1389,7 +1388,7 @@ struct LakeroadWorker
 				}
 
 				// The let-bound ID string of the expression to extract from.
-                                auto extract_from_expr = get_expression_for_signal(sig.chunks()[0].wire, -1);
+				auto extract_from_expr = get_expression_for_signal(sig.chunks()[0].wire, -1);
 				auto new_id = get_new_id_str();
 				auto extract_expr = stringf("(Op1 (Extract %d %d) %s)", (chunk.offset + chunk.width - 1) + chunk.wire->start_offset,
 																		chunk.offset + chunk.wire->start_offset, extract_from_expr.c_str());
@@ -1453,8 +1452,30 @@ struct LakeroadWorker
 				std::string op_str;
 				if (cell->type == ID($logic_not))
 					op_str = "(LogicNot)";
-				if (cell->type == ID($not))
+				else if (cell->type == ID($not))
 					op_str = "(Not)";
+				else
+					log_error("This should be unreachable. You are missing an else if branch.\n");
+
+				f << stringf("(union %s (Op1 %s %s))\n", y_let_name.c_str(), op_str.c_str(), a_let_name.c_str()).c_str();
+			}
+			else if (cell->type.in(ID($slice)))
+			{
+				// Slice.
+				assert(cell->connections().size() == 2);
+				// Do we need sigmap here?
+				auto y = sigmap(cell->getPort(ID::Y));
+				// should we be passing y.size() here?
+				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), y.size());
+				auto y_let_name = get_expression_for_signal(y, -1);
+
+				// Get OFFSET and Y_WIDTH parameters.
+				auto offset = cell->getParam(ID::OFFSET).as_int();
+				auto y_width = cell->getParam(ID::Y_WIDTH).as_int();
+
+				std::string op_str;
+				if (cell->type == ID($slice))
+					op_str = stringf("(Extract %d %d)", offset + y_width - 1, offset).c_str();
 				else
 					log_error("This should be unreachable. You are missing an else if branch.\n");
 
@@ -1478,6 +1499,26 @@ struct LakeroadWorker
 					op_str = "(Xor)";
 				else if (cell->type == ID($shr))
 					op_str = "(Shr)";
+				else
+					log_error("This should be unreachable. You are missing an else if branch.\n");
+
+				f << stringf("(union %s (Op2 %s %s %s))\n", y_let_name.c_str(), op_str.c_str(), a_let_name.c_str(),
+										 b_let_name.c_str())
+								 .c_str();
+			}
+			else if (cell->type.in(ID($concat)))
+			{
+				// Concat.
+				assert(cell->connections().size() == 3);
+				// do we need this sigmap?
+				auto y = sigmap(cell->getPort(ID::Y));
+				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), y.size());
+				auto b_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::B)), y.size());
+				auto y_let_name = get_expression_for_signal(y, -1);
+
+				std::string op_str;
+				if (cell->type == ID($concat))
+					op_str = "(Concat)";
 				else
 					log_error("This should be unreachable. You are missing an else if branch.\n");
 
@@ -1880,6 +1921,26 @@ struct BtorBackend : public Backend
 	void execute(std::ostream *&f, std::string filename, std::vector<std::string> args, RTLIL::Design *design) override
 	{
 		log_header(design, "Executing Lakeroad egglog backend.\n");
+
+		// These passes put the design in a form that is convenient for Churchroad
+		// conversion. Specifically, "piecewise" assignments like the following:
+		// ```
+		// assign sig[0] = ...;
+		// assign sig[1] = ...;
+		// assign sig[2:...] = ...;
+		// ```
+		// are converted to a single assignment like the following:
+		// ```
+		// assign sig = ...;
+		// ```
+		// This is necessary to prevent the bug described here:
+		// https://github.com/uwsampl/churchroad/issues/13
+		//
+		// The `clean` pass simply removes any unused wires, see this discussion:
+		// https://github.com/YosysHQ/yosys/discussions/4299
+		Pass::call(design, "splice");
+		Pass::call(design, "splitnets -driver");
+		Pass::call(design, "clean");
 
 		RTLIL::Module *topmod = design->top_module();
 
