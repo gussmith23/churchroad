@@ -1922,6 +1922,26 @@ struct BtorBackend : public Backend
 	{
 		log_header(design, "Executing Lakeroad egglog backend.\n");
 
+		// These passes put the design in a form that is convenient for Churchroad
+		// conversion. Specifically, "piecewise" assignments like the following:
+		// ```
+		// assign sig[0] = ...;
+		// assign sig[1] = ...;
+		// assign sig[2:...] = ...;
+		// ```
+		// are converted to a single assignment like the following:
+		// ```
+		// assign sig = ...;
+		// ```
+		// This is necessary to prevent the bug described here:
+		// https://github.com/uwsampl/churchroad/issues/13
+		//
+		// The `clean` pass simply removes any unused wires, see this discussion:
+		// https://github.com/YosysHQ/yosys/discussions/4299
+		Pass::call(design, "splice");
+		Pass::call(design, "splitnets -driver");
+		Pass::call(design, "clean");
+
 		RTLIL::Module *topmod = design->top_module();
 
 		size_t argidx = args.size();
