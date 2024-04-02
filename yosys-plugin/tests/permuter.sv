@@ -88,7 +88,7 @@ endmodule
 // CHECK: (let v25 (Op0 (BV 2 2)))
 // CHECK: (union v5 (Op2 (Eq) v8 v25))
 // CHECK: (let v26 (Op0 (BV 1 1)))
-// CHECK: (let v27 (ZeroExtend v26 2))
+// CHECK: (let v27 (Op1 (ZeroExtend 2) v26))
 // CHECK: (union v6 (Op2 (Eq) v8 v27))
 // CHECK: (let clk (Var "clk" 1))
 // CHECK: (union v7 clk)
