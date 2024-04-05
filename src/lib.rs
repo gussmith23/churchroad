@@ -3,6 +3,8 @@ use std::{
     sync::Arc,
 };
 
+use egraph_serialize::ClassId;
+
 use egglog::{
     ast::{Literal, Symbol},
     constraint::{SimpleTypeConstraint, TypeConstraint},
@@ -16,16 +18,43 @@ pub enum InterpreterResult {
     // Bitvector(value, bitwidth)
     Bitvector(i64, i64),
 }
-// Interprets a Churchroad program. What will be interpreted? I don't know.
-// It will probably have to do with `id`
-// These are all mysteries for later me.
-pub fn interpret(program: String, id: usize) -> InterpreterResult {
+// Interprets a Churchroad program.
+pub fn interpret(program: String, eclass: String) -> Result<InterpreterResult, String> {
     let mut egraph = EGraph::default();
     import_churchroad(&mut egraph);
     egraph.parse_and_run_program(&program).unwrap();
     let serialized = egraph.serialize(SerializeConfig::default());
-    println!("{:?}", serialized);
-    return InterpreterResult::Bitvector(0, 0);
+
+    let result = match serialized
+        .classes()
+        .iter()
+        .filter(|(id, _)| id.to_string() == eclass)
+        .next()
+    {
+        Some((id, _)) => interpret_helper(&serialized, id),
+        None => return Err("No class with the given ID.".to_string()),
+    };
+
+    result
+}
+
+fn interpret_helper(
+    egraph: &egraph_serialize::EGraph,
+    id: &ClassId,
+) -> Result<InterpreterResult, String> {
+    let nodes = &egraph.classes().get(id).unwrap().nodes;
+    // This will go away once we have an extraction algorithm.
+    if nodes.len() != 1 {
+        return Err(format!(
+            "There should be exactly one node in the class, but there are {}.",
+            nodes.len()
+        ));
+    }
+
+    let node = nodes.first().unwrap();
+
+    println!("{:?}", node);
+    Ok(InterpreterResult::Bitvector(0, 0))
 }
 
 pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
