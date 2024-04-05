@@ -1483,7 +1483,7 @@ struct LakeroadWorker
 					op_str = "(Or)";
 				else if (cell->type == ID($xor))
 					op_str = "(Xor)";
-				else if (cell->type == ID($shr))
+				else if (cell->type.in(ID($shr), ID($shiftx)))
 					op_str = "(Shr)";
 				else if (cell->type == ID($add))
 					op_str = "(Add)";
