@@ -7,8 +7,26 @@ use egglog::{
     ast::{Literal, Symbol},
     constraint::{SimpleTypeConstraint, TypeConstraint},
     sort::{FromSort, I64Sort, IntoSort, Sort, VecSort},
-    EGraph, PrimitiveLike, Term, TermDag, Value,
+    EGraph, PrimitiveLike, SerializeConfig, Term, TermDag, Value,
 };
+
+// The result of interpreting a Churchroad program.
+#[derive(Debug, PartialEq)]
+pub enum InterpreterResult {
+    // Bitvector(value, bitwidth)
+    Bitvector(i64, i64),
+}
+// Interprets a Churchroad program. What will be interpreted? I don't know.
+// It will probably have to do with `id`
+// These are all mysteries for later me.
+pub fn interpret(program: String, id: usize) -> InterpreterResult {
+    let mut egraph = EGraph::default();
+    import_churchroad(&mut egraph);
+    egraph.parse_and_run_program(&program).unwrap();
+    let serialized = egraph.serialize(SerializeConfig::default());
+    println!("{:?}", serialized);
+    return InterpreterResult::Bitvector(0, 0);
+}
 
 pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
     // let mut wires = HashMap::default();
