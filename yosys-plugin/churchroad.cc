@@ -1503,6 +1503,9 @@ struct LakeroadWorker
 					op_str = "(Or)";
 				else if (cell->type == ID($xor))
 					op_str = "(Xor)";
+				// Here, $shr and $shiftx are treated the same.
+				// See #26:
+				// https://github.com/uwsampl/churchroad/issues/26
 				else if (cell->type.in(ID($shr), ID($shiftx)))
 					op_str = "(Shr)";
 				else if (cell->type == ID($add))
