@@ -1417,7 +1417,6 @@ struct LakeroadWorker
 
 					auto new_id = get_new_id_str();
 					f << "; TODO not handling signedness\n";
-					// auto extend_expr = stringf("(ZeroExtend %s %d)", out_expr.c_str(), to_width);
 					auto extend_expr = stringf("(Op1 (ZeroExtend %d) %s)", to_width, out_expr.c_str());
 					f << let(new_id, extend_expr) << "\n";
 					out_expr = new_id;
