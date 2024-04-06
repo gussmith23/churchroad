@@ -19,19 +19,17 @@ pub enum InterpreterResult {
     Bitvector(i64, i64),
 }
 // Interprets a Churchroad program.
-pub fn interpret(program: String, eclass: String) -> Result<InterpreterResult, String> {
-    let mut egraph = EGraph::default();
-    import_churchroad(&mut egraph);
-    egraph.parse_and_run_program(&program).unwrap();
-    let serialized = egraph.serialize(SerializeConfig::default());
-
-    let result = match serialized
+pub fn interpret(
+    egraph: &egraph_serialize::EGraph,
+    class_id: &ClassId,
+) -> Result<InterpreterResult, String> {
+    let result = match egraph
         .classes()
         .iter()
-        .filter(|(id, _)| id.to_string() == eclass)
+        .filter(|(id, _)| id == &class_id)
         .next()
     {
-        Some((id, _)) => interpret_helper(&serialized, id),
+        Some((id, _)) => interpret_helper(&egraph, id),
         None => return Err("No class with the given ID.".to_string()),
     };
 
@@ -42,16 +40,19 @@ fn interpret_helper(
     egraph: &egraph_serialize::EGraph,
     id: &ClassId,
 ) -> Result<InterpreterResult, String> {
-    let nodes = &egraph.classes().get(id).unwrap().nodes;
+    let node_ids = &egraph.classes().get(id).unwrap().nodes;
     // This will go away once we have an extraction algorithm.
-    if nodes.len() != 1 {
+    if node_ids.len() != 1 {
         return Err(format!(
             "There should be exactly one node in the class, but there are {}.",
-            nodes.len()
+            node_ids.len()
         ));
     }
 
-    let node = nodes.first().unwrap();
+    println!("{:?}", egraph);
+
+    let node_id = node_ids.first().unwrap();
+    let node = egraph.nodes.get(node_id).unwrap();
 
     println!("{:?}", node);
     Ok(InterpreterResult::Bitvector(0, 0))
