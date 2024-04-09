@@ -1417,7 +1417,7 @@ struct LakeroadWorker
 
 					auto new_id = get_new_id_str();
 					f << "; TODO not handling signedness\n";
-					auto extend_expr = stringf("(ZeroExtend %s %d)", out_expr.c_str(), to_width);
+					auto extend_expr = stringf("(Op1 (ZeroExtend %d) %s)", to_width, out_expr.c_str());
 					f << let(new_id, extend_expr) << "\n";
 					out_expr = new_id;
 				}
@@ -1441,7 +1441,7 @@ struct LakeroadWorker
 		for (auto cell : module->cells())
 		{
 
-			if (cell->type.in(ID($logic_not), ID($not)))
+			if (cell->type.in(ID($logic_not), ID($not), ID($reduce_or), ID($reduce_bool), ID($reduce_and), ID($reduce_xor)))
 			{
 				// Unary ops.
 				assert(cell->connections().size() == 2);
@@ -1454,6 +1454,12 @@ struct LakeroadWorker
 					op_str = "(LogicNot)";
 				else if (cell->type == ID($not))
 					op_str = "(Not)";
+				else if (cell->type.in(ID($reduce_or), ID($reduce_bool)))
+					op_str = "(ReduceOr)";
+				else if (cell->type == ID($reduce_and))
+					op_str = "(ReduceAnd)";
+				else if (cell->type == ID($reduce_xor))
+					op_str = "(ReduceXor)";
 				else
 					log_error("This should be unreachable. You are missing an else if branch.\n");
 
@@ -1481,7 +1487,7 @@ struct LakeroadWorker
 
 				f << stringf("(union %s (Op1 %s %s))\n", y_let_name.c_str(), op_str.c_str(), a_let_name.c_str()).c_str();
 			}
-			else if (cell->type.in(ID($and), ID($or), ID($xor), ID($shr)))
+			else if (cell->type.in(ID($and), ID($or), ID($xor), ID($shr), ID($add), ID($shiftx), ID($mul), ID($sub)))
 			{
 				// Binary ops that preserve width.
 				assert(cell->connections().size() == 3);
@@ -1497,8 +1503,17 @@ struct LakeroadWorker
 					op_str = "(Or)";
 				else if (cell->type == ID($xor))
 					op_str = "(Xor)";
-				else if (cell->type == ID($shr))
+				// Here, $shr and $shiftx are treated the same.
+				// See #26:
+				// https://github.com/uwsampl/churchroad/issues/26
+				else if (cell->type.in(ID($shr), ID($shiftx)))
 					op_str = "(Shr)";
+				else if (cell->type == ID($add))
+					op_str = "(Add)";
+				else if (cell->type == ID($mul))
+					op_str = "(Mul)";
+				else if (cell->type == ID($sub))
+					op_str = "(Sub)";
 				else
 					log_error("This should be unreachable. You are missing an else if branch.\n");
 
@@ -1539,7 +1554,7 @@ struct LakeroadWorker
 										 b_let_name.c_str())
 								 .c_str();
 			}
-			else if (cell->type.in(ID($eq)))
+			else if (cell->type.in(ID($eq), ID($logic_and), ID($logic_or), ID($ne)))
 			{
 				// Binary ops that result in one bit.
 				assert(cell->connections().size() == 3);
@@ -1560,6 +1575,12 @@ struct LakeroadWorker
 				std::string op_str;
 				if (cell->type == ID($eq))
 					op_str = "(Eq)";
+				else if (cell->type == ID($logic_and))
+					op_str = "(LogicAnd)";
+				else if (cell->type == ID($logic_or))
+					op_str = "(LogicOr)";
+				else if (cell->type == ID($ne))
+					op_str = "(Ne)";
 				else
 					log_error("This should be unreachable. You are missing an else if branch.\n");
 
