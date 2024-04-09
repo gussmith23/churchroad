@@ -150,6 +150,7 @@ name = "churchroad"
 version = "0.1.0"
 dependencies = [
  "egglog",
+ "egraph-serialize",
  "log",
 ]
 
