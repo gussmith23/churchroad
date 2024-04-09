@@ -5,7 +5,7 @@ use egglog::{EGraph, SerializeConfig};
 use churchroad::{import_churchroad, interpret, InterpreterResult};
 
 macro_rules! interpreter_test {
-    ($test_name:ident, $expected:expr, $filename:literal) => {
+    ($test_name:ident, $expected:expr, $filename:literal, $time:literal, $env:expr) => {
         #[test]
         fn $test_name() {
             let program = std::fs::read_to_string($filename).unwrap();
@@ -33,7 +33,7 @@ macro_rules! interpreter_test {
 
             assert_eq!(
                 $expected,
-                interpret(&serialized, &root_node.eclass).unwrap()
+                interpret(&serialized, &root_node.eclass, $time, $env).unwrap()
             );
         }
     };
@@ -41,8 +41,28 @@ macro_rules! interpreter_test {
 
 interpreter_test!(
     test_alu_0,
-    InterpreterResult::Bitvector(0, 0),
-    "tests/interpreter_tests/ALU.egg"
+    InterpreterResult::Bitvector(0b01010101, 8),
+    "tests/interpreter_tests/ALU.egg",
+    0,
+    &[
+        ("a", vec![0b01010101]),
+        ("b", vec![0b11111111]),
+        ("op", vec![1])
+    ]
+    .into()
+);
+
+interpreter_test!(
+    test_alu_1,
+    InterpreterResult::Bitvector(0b11111111, 8),
+    "tests/interpreter_tests/ALU.egg",
+    0,
+    &[
+        ("a", vec![0b01010101]),
+        ("b", vec![0b11111111]),
+        ("op", vec![0])
+    ]
+    .into()
 );
 
 // #[test]

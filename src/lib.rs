@@ -13,7 +13,7 @@ use egglog::{
 };
 
 // The result of interpreting a Churchroad program.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum InterpreterResult {
     // Bitvector(value, bitwidth)
     Bitvector(i64, i64),
@@ -22,6 +22,8 @@ pub enum InterpreterResult {
 pub fn interpret(
     egraph: &egraph_serialize::EGraph,
     class_id: &ClassId,
+    time: usize,
+    env: &HashMap<&str, Vec<i64>>,
 ) -> Result<InterpreterResult, String> {
     let result = match egraph
         .classes()
@@ -29,7 +31,7 @@ pub fn interpret(
         .filter(|(id, _)| id == &class_id)
         .next()
     {
-        Some((id, _)) => interpret_helper(&egraph, id),
+        Some((id, _)) => interpret_helper(&egraph, id, time, env),
         None => return Err("No class with the given ID.".to_string()),
     };
 
@@ -39,6 +41,8 @@ pub fn interpret(
 fn interpret_helper(
     egraph: &egraph_serialize::EGraph,
     id: &ClassId,
+    time: usize,
+    env: &HashMap<&str, Vec<i64>>,
 ) -> Result<InterpreterResult, String> {
     let node_ids = &egraph.classes().get(id).unwrap().nodes;
     // This will go away once we have an extraction algorithm.
@@ -55,7 +59,81 @@ fn interpret_helper(
     let node = egraph.nodes.get(node_id).unwrap();
 
     println!("{:?}", node);
-    Ok(InterpreterResult::Bitvector(0, 0))
+
+    match node.op.as_str() {
+        "Var" => {
+            let bw: i64 = egraph
+                .nodes
+                .get(&node.children[1])
+                .unwrap()
+                .op
+                .parse()
+                .unwrap();
+            let name = egraph.nodes.get(&node.children[0]).unwrap().op.as_str();
+            // cut off the quotes on the beginning and end
+            let name = &name[1..name.len() - 1];
+
+            Ok(InterpreterResult::Bitvector(
+                env.get(name)
+                    .unwrap_or_else(|| panic!("didn't find var {:?}", name))
+                    .get(time)
+                    .unwrap()
+                    .clone(),
+                bw,
+            ))
+        }
+        "Op0" | "Op1" | "Op2" | "Op3" => {
+            assert!(node.children.len() >= 1);
+            let op = egraph.nodes.get(&node.children[0]).unwrap();
+
+            let children: Vec<_> = node
+                .children
+                .iter()
+                .skip(1)
+                .map(|id| {
+                    let child = egraph.nodes.get(id).unwrap();
+                    interpret_helper(egraph, &child.eclass, time, env)
+                })
+                .collect();
+
+            match op.op.as_str() {
+                "And" | "Or" => {
+                    assert_eq!(children.len(), 2);
+                    match (&children[0], &children[1]) {
+                        (
+                            Ok(InterpreterResult::Bitvector(a, a_bw)),
+                            Ok(InterpreterResult::Bitvector(b, b_bw)),
+                        ) => {
+                            assert_eq!(a_bw, b_bw);
+                            let result = match op.op.as_str() {
+                                "And" => a & b,
+                                "Or" => a | b,
+                                _ => unreachable!(),
+                            };
+                            Ok(InterpreterResult::Bitvector(result, *a_bw))
+                        }
+                        _ => todo!(),
+                    }
+                }
+                "Mux" => {
+                    assert_eq!(children.len(), 3);
+
+                    match children[0] {
+                        Ok(InterpreterResult::Bitvector(cond, _)) => {
+                            if cond == 0 {
+                                children[1].clone()
+                            } else {
+                                children[2].clone()
+                            }
+                        }
+                        _ => todo!(),
+                    }
+                }
+                _ => todo!("unimplemented op: {:?}", op.op),
+            }
+        }
+        _ => todo!("unimplemented node type: {:?}", node.op),
+    }
 }
 
 pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
