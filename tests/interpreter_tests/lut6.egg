@@ -35,7 +35,7 @@
 ; 64'0000000000000000000000000000000000000000000000000000000000000000
 (let v12 (Op0 (BV 0 64)))
 (let v13 (Op1 (Extract 0 0) v12))
-(union v10 (Op2 (Shiftx) v13 v11))
+(union v10 (Op2 (Shr) v13 v11))
 
 ; inputs
 (let I0 (Var "I0" 1))

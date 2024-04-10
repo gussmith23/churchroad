@@ -25,6 +25,7 @@ pub fn interpret(
     time: usize,
     env: &HashMap<&str, Vec<i64>>,
 ) -> Result<InterpreterResult, String> {
+    println!("{:#?}", egraph);
     let result = match egraph
         .classes()
         .iter()
@@ -52,8 +53,6 @@ fn interpret_helper(
             node_ids.len()
         ));
     }
-
-    println!("{:?}", egraph);
 
     let node_id = node_ids.first().unwrap();
     let node = egraph.nodes.get(node_id).unwrap();
@@ -97,7 +96,8 @@ fn interpret_helper(
                 .collect();
 
             match op.op.as_str() {
-                "And" | "Or" => {
+                // Binary operations that preserve bitwidth.
+                "And" | "Or" | "Shr" => {
                     assert_eq!(children.len(), 2);
                     match (&children[0], &children[1]) {
                         (
@@ -108,6 +108,7 @@ fn interpret_helper(
                             let result = match op.op.as_str() {
                                 "And" => a & b,
                                 "Or" => a | b,
+                                "Shr" => a >> b,
                                 _ => unreachable!(),
                             };
                             Ok(InterpreterResult::Bitvector(result, *a_bw))
@@ -129,6 +130,73 @@ fn interpret_helper(
                         _ => todo!(),
                     }
                 }
+                "BV" => {
+                    assert_eq!(op.children.len(), 2);
+                    let args = &op
+                        .children
+                        .iter()
+                        .map(|id| {
+                            let (_, node) = egraph
+                                .nodes
+                                .iter()
+                                .find(|(node_id, _)| **node_id == *id)
+                                .unwrap();
+                            assert_eq!(node.children.len(), 0);
+                            // we're going to assert that a BV's children are only i64s
+                            let val: i64 = node.op.parse().unwrap();
+                            val
+                        })
+                        .collect::<Vec<_>>()[..];
+                
+                    Ok(InterpreterResult::Bitvector(args[0], args[1]))
+                }
+                "Extract" => {
+                    assert_eq!(op.children.len(), 2);
+                    let args = &op
+                        .children
+                        .iter()
+                        .map(|id| {
+                            let (_, node) = egraph
+                                .nodes
+                                .iter()
+                                .find(|(node_id, _)| **node_id == *id)
+                                .unwrap();
+                            assert_eq!(node.children.len(), 0);
+                            // we're going to assert that a BV's children are only i64s
+                            let val: i64 = node.op.parse().unwrap();
+                            val
+                        })
+                        .collect::<Vec<_>>()[..];
+
+                    // ugh.. i don't like needing to manually implement bitwise extraction.
+                    let i = args[0];
+                    let j = args[1];
+
+                    let val = match children[0].as_ref().unwrap() {
+                        InterpreterResult::Bitvector(val, bw) => {
+                            // from Rosette docs: 
+                            // https://docs.racket-lang.org/rosette-guide/sec_bitvectors.html#%28def._%28%28lib._rosette%2Fbase%2Fbase..rkt%29._extract%29%29
+                            assert!(*bw > i && i >= j && j >= 0);
+                            let mask = (1 << (i - j + 1)) - 1;
+                            (val >> j) & mask
+                            // TODO(@ninehusky): check this, because copilot wrote this
+                        }
+                    };
+
+                    Ok(InterpreterResult::Bitvector(val, i - j + 1))
+                },
+                "Concat" => {
+                    match (&children[0], &children[1]) {
+                        (
+                            Ok(InterpreterResult::Bitvector(a, a_bw)),
+                            Ok(InterpreterResult::Bitvector(b, b_bw)),
+                        ) => {
+                            let result = (a << b_bw) | b;
+                            Ok(InterpreterResult::Bitvector(result, a_bw + b_bw))
+                        }
+                        _ => todo!(),
+                    }
+                },
                 _ => todo!("unimplemented op: {:?}", op.op),
             }
         }

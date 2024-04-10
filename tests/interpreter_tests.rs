@@ -5,7 +5,7 @@ use egglog::{EGraph, SerializeConfig};
 use churchroad::{import_churchroad, interpret, InterpreterResult};
 
 macro_rules! interpreter_test {
-    ($test_name:ident, $expected:expr, $filename:literal, $time:literal, $env:expr) => {
+    ($test_name:ident, $expected:expr, $filename:literal, $time:literal, $env:expr, $out: literal) => {
         #[test]
         fn $test_name() {
             let program = std::fs::read_to_string($filename).unwrap();
@@ -13,7 +13,7 @@ macro_rules! interpreter_test {
             import_churchroad(&mut egraph);
             egraph.parse_and_run_program(&program).unwrap();
             egraph
-                .parse_and_run_program("(relation IsRoot (Expr)) (IsRoot out)")
+                .parse_and_run_program(format!("(relation IsRoot (Expr)) (IsRoot {})", $out).as_str())
                 .unwrap();
             let serialized = egraph.serialize(SerializeConfig::default());
             let (_, is_root_node) = serialized
@@ -49,7 +49,8 @@ interpreter_test!(
         ("b", vec![0b11111111]),
         ("op", vec![1])
     ]
-    .into()
+    .into(),
+    "out"
 );
 
 interpreter_test!(
@@ -62,5 +63,24 @@ interpreter_test!(
         ("b", vec![0b11111111]),
         ("op", vec![0])
     ]
-    .into()
+    .into(),
+    "out"
+);
+
+// kind of a dummy test for now to just see if we can import a LUT6,
+// eventually this will mean something
+interpreter_test!(
+    test_lut6_0,
+    InterpreterResult::Bitvector(0b101010, 6),
+    "tests/interpreter_tests/LUT6.egg",
+    0,
+    &[
+        ("I0", vec![0b1]),
+        ("I1", vec![0b1]),
+        ("I2", vec![0b1]),
+        ("I3", vec![0b1]),
+        ("I4", vec![0b1]),
+        ("I5", vec![0b1]),
+    ].into(),
+    "O"
 );
