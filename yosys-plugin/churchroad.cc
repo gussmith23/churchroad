@@ -1489,6 +1489,9 @@ struct LakeroadWorker
 			}
 			else if (cell->type.in(ID($and), ID($or), ID($xor), ID($shr), ID($add), ID($shiftx), ID($mul), ID($sub)))
 			{
+				// Assert input A and B are the same size.
+				assert(sigmap(cell->getPort(ID::A)).size() == sigmap(cell->getPort(ID::B)).size());
+
 				// Binary ops that preserve width.
 				assert(cell->connections().size() == 3);
 				auto y = sigmap(cell->getPort(ID::Y));
