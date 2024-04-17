@@ -1489,15 +1489,21 @@ struct LakeroadWorker
 			}
 			else if (cell->type.in(ID($and), ID($or), ID($xor), ID($shr), ID($add), ID($shiftx), ID($mul), ID($sub)))
 			{
-				// Assert input A and B are the same size.
-				assert(sigmap(cell->getPort(ID::A)).size() == sigmap(cell->getPort(ID::B)).size());
+				// Assert that A and B are both unsigned. Note that this is a
+				// simplifying assumption. It does not have to be true, but supporting
+				// different signedness would require some thought that I'm not putting
+				// in right now.
+				assert(cell->getParam(ID::A_SIGNED).is_fully_zero());
+				assert(cell->getParam(ID::B_SIGNED).is_fully_zero());
 
-				// Binary ops that preserve width.
+				// Get the max width of the inputs. This determines the width we need to
+				// extend both inputs to.
+				auto max_input_width = std::max(cell->getPort(ID::A).size(), cell->getPort(ID::B).size());
+
 				assert(cell->connections().size() == 3);
-				auto y = sigmap(cell->getPort(ID::Y));
-				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), y.size());
-				auto b_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::B)), y.size());
-				auto y_let_name = get_expression_for_signal(y, -1);
+				auto a_let_name = get_expression_for_signal(cell->getPort(ID::A), max_input_width);
+				auto b_let_name = get_expression_for_signal(cell->getPort(ID::B), max_input_width);
+				auto y_let_name = get_expression_for_signal(cell->getPort(ID::Y), -1);
 
 				std::string op_str;
 				if (cell->type == ID($and))
@@ -1507,6 +1513,7 @@ struct LakeroadWorker
 				else if (cell->type == ID($xor))
 					op_str = "(Xor)";
 				// Here, $shr and $shiftx are treated the same.
+				// This is only true because we've asserted that A and B are unsigned.
 				// See #26:
 				// https://github.com/uwsampl/churchroad/issues/26
 				else if (cell->type.in(ID($shr), ID($shiftx)))
@@ -1520,9 +1527,20 @@ struct LakeroadWorker
 				else
 					log_error("This should be unreachable. You are missing an else if branch.\n");
 
-				f << stringf("(union %s (Op2 %s %s %s))\n", y_let_name.c_str(), op_str.c_str(), a_let_name.c_str(),
-										 b_let_name.c_str())
-								 .c_str();
+				op_str = stringf("(Op2 %s %s %s)", op_str.c_str(), a_let_name.c_str(),
+												 b_let_name.c_str());
+
+				// If the output width is less than the result of the operation, we need
+				// to slice the result.
+				//
+				// This is an assumption we're currently making. Doesn't have to be the
+				// case. We may also need to extend the result in the future, when this
+				// assertion fails.
+				assert(cell->getPort(ID::Y).size() >= max_input_width);
+				if (cell->getPort(ID::Y).size() > max_input_width)
+					op_str = stringf("(Op1 (Extract %d %d) %s)", cell->getPort(ID::Y).size() - 1, 0, op_str.c_str());
+
+				f << stringf("(union %s %s)\n", y_let_name.c_str(), op_str.c_str()).c_str();
 			}
 			else if (cell->type.in(ID($concat)))
 			{
