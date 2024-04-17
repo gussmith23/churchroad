@@ -1970,9 +1970,11 @@ struct BtorBackend : public Backend
 
 		size_t argidx = args.size();
 
-                if (filename == "") {
+		if (filename == "")
+		{
 			// The command itself is given as an arg
-			if (argidx > 1 && args[argidx - 1][0] != '-') {
+			if (argidx > 1 && args[argidx - 1][0] != '-')
+			{
 				// extra_args and friends need to see this argument.
 				argidx -= 1;
 				filename = args[argidx];
