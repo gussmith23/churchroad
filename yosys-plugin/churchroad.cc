@@ -1639,7 +1639,8 @@ struct LakeroadWorker
 			}
 		}
 
-		// For each input, generate Var expression and a let binding.
+		// For each input, generate Var expression and mark it as an input port
+		// using the IsPort relation. Also, union it with the corresponding wire.
 		f << "\n; inputs\n";
 		for (auto wire : module->wires())
 		{
@@ -1652,11 +1653,11 @@ struct LakeroadWorker
 			assert(signal_let_bound_name.count(sigspec));
 			auto let_bound_id = signal_let_bound_name.at(sigspec);
 
-			f << stringf("(let %s (Var \"%s\" %d))\n", signal_name.c_str(), signal_name.c_str(), GetSize(sigspec)).c_str();
-			f << stringf("(union %s %s)\n", let_bound_id.c_str(), signal_name.c_str()).c_str();
+			f << stringf("(IsPort \"%s\" \"%s\" Input (Var \"%s\" %d))\n", /*module name*/ "", signal_name.c_str(), signal_name.c_str(), GetSize(sigspec)).c_str();
+			f << stringf("(union %s (Var \"%s\" %d))\n", let_bound_id.c_str(), signal_name.c_str(), GetSize(sigspec)).c_str();
 		}
 
-		// For each output, generate a let binding.
+		// For each output, mark it as an output port using the IsPort relation.
 		f << "\n; outputs\n";
 		for (auto wire : module->wires())
 		{
@@ -1672,7 +1673,7 @@ struct LakeroadWorker
 			assert(signal_let_bound_name.count(sigspec));
 			auto let_bound_id = signal_let_bound_name.at(sigspec);
 
-			f << stringf("(let %s %s)\n", signal_name_pre_sigmap.c_str(), let_bound_id.c_str()).c_str();
+			f << stringf("(IsPort \"%s\" \"%s\" Output %s)\n", /*module name*/ "", signal_name_pre_sigmap.c_str(), let_bound_id.c_str()).c_str();
 		}
 
 		// Delete Wire expressions.
