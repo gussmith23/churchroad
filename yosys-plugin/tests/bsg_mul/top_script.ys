@@ -1,0 +1,27 @@
+# read_systemverilog  bsg_and.v;
+# read_systemverilog  bsg_defines.v;
+# read_systemverilog  bsg_dff_en.v;
+# read_systemverilog  bsg_mul.v;
+# read_systemverilog  bsg_mul_pipelined.v;
+# read_systemverilog  bsg_transpose.v;
+read_systemverilog  top.v;
+
+prep -top top;
+hierarchy -check -top top;
+splice; splitnets -driver;
+dfflibmap -liberty mycells.lib;
+clean;
+abc -liberty mycells.lib;
+read_verilog mycells.v;
+
+splice; splitnets -driver;
+clean;
+flatten;
+
+# TODO: this will remove the "asserts"
+# but introduces `$initial` cells
+clk2fflogic;
+chformal -lower;
+
+write_verilog out/top_synth.v
+write_lakeroad out/top.egg

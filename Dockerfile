@@ -73,6 +73,12 @@ RUN source /root/dependencies.sh \
   && PREFIX="/root/.local" CPLUS_INCLUDE_PATH="/usr/include/tcl8.6/:$CPLUS_INCLUDE_PATH" make -j ${MAKE_JOBS} install \
   && rm -rf /root/yosys
 
+# Add the synlig plugin
+RUN curl https://api.github.com/repos/chipsalliance/synlig/releases/latest | jq -r '.assets | .[] | select(.name | startswith("synlig-plugin-debian")) | .browser_download_url' | xargs wget -O - | tar -xz \
+    && ./install_plugin.sh
+
+
+
 # Add /root/.local/bin to PATH.
 ENV PATH="/root/.local/bin:$PATH"
 
