@@ -78,8 +78,11 @@ RUN source /root/dependencies.sh \
 ENV PATH="/root/.local/bin:$PATH"
 
 # Add the synlig plugin
-RUN curl https://api.github.com/repos/chipsalliance/synlig/releases/latest | jq -r '.assets | .[] | select(.name | startswith("synlig-plugin-debian")) | .browser_download_url' | xargs wget -O - | tar -xz \
-    && ./install_plugin.sh
+RUN curl https://api.github.com/repos/chipsalliance/synlig/releases/latest \
+  | jq -r '.assets | .[] | select(.name | startswith("synlig-plugin-debian")) | .browser_download_url' \
+  | xargs wget -O - \
+  | tar -xz \
+  && ./install_plugin.sh
 
 # Build Yosys plugin.
 WORKDIR /root/churchroad/yosys-plugin
