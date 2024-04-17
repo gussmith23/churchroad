@@ -22,6 +22,7 @@ RUN apt install -y \
   flex \
   g++ \
   git \
+  jq \
   libboost-filesystem-dev \
   libfl-dev \
   libfl2 \
