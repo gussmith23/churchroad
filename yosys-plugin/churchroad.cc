@@ -1312,9 +1312,37 @@ struct LakeroadWorker
 		// to_width = -1 means no extension.
 		std::function<std::string(const SigSpec &, int)> get_expression_for_signal = [&](const SigSpec &sig, int to_width)
 		{
+			std::function<std::string(std::string, const SigSpec &, int)> convert_to_width = [&](std::string expr, const SigSpec &sig, int to_width)
+			{
+				auto out_expr = expr;
+
+				// If we need to extend the signal, do so.
+				if (to_width >= 0 && to_width != GetSize(sig))
+				{
+					if (to_width < GetSize(sig))
+					{
+						auto new_id = get_new_id_str();
+						auto extend_expr = stringf("(Op1 (Extract %d %d) %s)", to_width - 1, 0, expr.c_str());
+						f << let(new_id, extend_expr) << "\n";
+						out_expr = new_id;
+					}
+					else
+					{
+
+						auto new_id = get_new_id_str();
+						f << "; TODO not handling signedness\n";
+						auto extend_expr = stringf("(Op1 (ZeroExtend %d) %s)", to_width, expr.c_str());
+						f << let(new_id, extend_expr) << "\n";
+						out_expr = new_id;
+					}
+				}
+
+				return out_expr;
+			};
+
 			// If we've already handled the expression, return it.
 			if (signal_let_bound_name.count(sig))
-				return signal_let_bound_name.at(sig);
+				return convert_to_width(signal_let_bound_name.at(sig), sig, to_width);
 
 			// SigSpecs are either constants, wires, or concatenations and selections
 			// of wires. We simply need to handle each case.
@@ -1402,29 +1430,8 @@ struct LakeroadWorker
 				log_error("Unhandled case of signal for %s.\n", log_signal(sig));
 			}
 
-			// If we need to extend the signal, do so.
-			if (to_width >= 0 && to_width != GetSize(sig))
-			{
-				if (to_width < GetSize(sig))
-				{
-					auto new_id = get_new_id_str();
-					auto extend_expr = stringf("(Op1 (Extract %d %d) %s)", to_width - 1, 0, out_expr.c_str());
-					f << let(new_id, extend_expr) << "\n";
-					out_expr = new_id;
-				}
-				else
-				{
-
-					auto new_id = get_new_id_str();
-					f << "; TODO not handling signedness\n";
-					auto extend_expr = stringf("(Op1 (ZeroExtend %d) %s)", to_width, out_expr.c_str());
-					f << let(new_id, extend_expr) << "\n";
-					out_expr = new_id;
-				}
-			}
-
 			signal_let_bound_name.insert({sig, out_expr});
-			return out_expr;
+			return convert_to_width(out_expr, sig, to_width);
 		};
 
 		// Create Wire expression for each wire.
