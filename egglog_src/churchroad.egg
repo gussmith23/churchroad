@@ -97,9 +97,8 @@
   (ModuleType Type))
 
 ;;; A type for port directions. Currently has two values: Input and Output.
-(sort PortDirection)
-(declare Input PortDirection)
-(declare Output PortDirection)
+(datatype PortDirection (Input) (Output))
+
 
 ;;; Indicates that a Churchroad expression is a port for the given module.
 ;;; (module name: String,
