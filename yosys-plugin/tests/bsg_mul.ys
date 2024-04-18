@@ -1,10 +1,7 @@
-# read_systemverilog  bsg_and.v;
-# read_systemverilog  bsg_defines.v;
-# read_systemverilog  bsg_dff_en.v;
-# read_systemverilog  bsg_mul.v;
-# read_systemverilog  bsg_mul_pipelined.v;
-# read_systemverilog  bsg_transpose.v;
-read_systemverilog  top.v;
+# RUN: $YOSYS -m $CHURCHROAD_DIR/yosys-plugin/churchroad.so %s \
+# RUN: | FileCheck %s
+
+read_systemverilog  bsg_mul/top.v;
 
 prep -top top;
 hierarchy -check -top top;
