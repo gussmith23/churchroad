@@ -13,7 +13,7 @@ endmodule
 // CHECK: (let v0 (Wire "v0" 1))
 // CHECK: (let v1 (Wire "v1" 1))
 // CHECK: (let v2 (Wire "v2" 1))
-// CHECK: (union v2 (Op2 (And) v0 v1))
+// CHECK: (let some_module_instance (ModuleInstance "some_module" (vec-of "a" "b") (vec-of v0 v1)))
 // CHECK: (IsPort "" "a" (Input) (Var "a" 1))
 // CHECK: (union v0 (Var "a" 1))
 // CHECK: (IsPort "" "b" (Input) (Var "b" 1))
