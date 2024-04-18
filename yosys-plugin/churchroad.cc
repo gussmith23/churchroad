@@ -1653,7 +1653,7 @@ struct LakeroadWorker
 			assert(signal_let_bound_name.count(sigspec));
 			auto let_bound_id = signal_let_bound_name.at(sigspec);
 
-			f << stringf("(IsPort \"%s\" \"%s\" Input (Var \"%s\" %d))\n", /*module name*/ "", signal_name.c_str(), signal_name.c_str(), GetSize(sigspec)).c_str();
+			f << stringf("(IsPort \"%s\" \"%s\" (Input) (Var \"%s\" %d))\n", /*module name*/ "", signal_name.c_str(), signal_name.c_str(), GetSize(sigspec)).c_str();
 			f << stringf("(union %s (Var \"%s\" %d))\n", let_bound_id.c_str(), signal_name.c_str(), GetSize(sigspec)).c_str();
 		}
 
@@ -1673,7 +1673,7 @@ struct LakeroadWorker
 			assert(signal_let_bound_name.count(sigspec));
 			auto let_bound_id = signal_let_bound_name.at(sigspec);
 
-			f << stringf("(IsPort \"%s\" \"%s\" Output %s)\n", /*module name*/ "", signal_name_pre_sigmap.c_str(), let_bound_id.c_str()).c_str();
+			f << stringf("(IsPort \"%s\" \"%s\" (Output) %s)\n", /*module name*/ "", signal_name_pre_sigmap.c_str(), let_bound_id.c_str()).c_str();
 		}
 
 		// Delete Wire expressions.
