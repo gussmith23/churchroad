@@ -811,12 +811,10 @@ mod tests {
             )
             .unwrap();
         write_svg(&egraph, "5.svg");
-
     }
 
     #[test]
     fn test_module_instance() {
-
         let mut egraph = EGraph::default();
         import_churchroad(&mut egraph);
         egraph.parse_and_run_program(r#"
@@ -846,7 +844,5 @@ mod tests {
             (delete (Wire "v1" 1))
             (delete (Wire "v2" 1))
             "#).unwrap();
-
-        
     }
 }
