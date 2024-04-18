@@ -811,5 +811,42 @@ mod tests {
             )
             .unwrap();
         write_svg(&egraph, "5.svg");
+
+    }
+
+    #[test]
+    fn test_module_instance() {
+
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+        egraph.parse_and_run_program(r#"
+            ; wire declarations
+            ; a
+            (let v0 (Wire "v0" 1))
+            ; b
+            (let v1 (Wire "v1" 1))
+            ; out
+            (let v2 (Wire "v2" 1))
+
+            ; cells
+            (let some_module_instance (ModuleInstance "some_module" (vec-of "a" "b") (vec-of v0 v1)))
+            (union (GetOutput some_module_instance "out") v2)
+
+            ; inputs
+            (IsPort "" "a" (Input) (Var "a" 1))
+            (union v0 (Var "a" 1))
+            (IsPort "" "b" (Input) (Var "b" 1))
+            (union v1 (Var "b" 1))
+
+            ; outputs
+            (IsPort "" "out" (Output) v2)
+
+            ; delete wire expressions
+            (delete (Wire "v0" 1))
+            (delete (Wire "v1" 1))
+            (delete (Wire "v2" 1))
+            "#).unwrap();
+
+        
     }
 }

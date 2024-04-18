@@ -1,10 +1,12 @@
 ;;; Churchroad language definition with antiunification experiments.
 
 (sort IVec (Vec i64))
+(sort StringVec (Vec String))
 
 ;;; Forward-declare Exprs and declare ExprVec.
 (sort Expr)
 (sort ExprVec (Vec Expr))
+
 
 ; Ops
 (datatype Op
@@ -87,6 +89,16 @@
 
 (function apply (Module ExprVec) Expr)
 
+(sort ModuleInstanceSort)
+;;; (module name: String, 
+;;;  input port names: [String],
+;;;  input port values: [Expr]) -> module instance
+(function ModuleInstance (String StringVec ExprVec) ModuleInstanceSort)
+;;; Get the output of a module instance.
+;;; (module instance: ModuleInstanceSort,
+;;;  output name: String) -> Churchroad expression
+(function GetOutput (ModuleInstanceSort String) Expr)
+
 ;;; Types for Churchroad expressions.
 (datatype Type
   ;;; Bitvector type.
@@ -98,7 +110,6 @@
 
 ;;; A type for port directions. Currently has two values: Input and Output.
 (datatype PortDirection (Input) (Output))
-
 
 ;;; Indicates that a Churchroad expression is a port for the given module.
 ;;; (module name: String,

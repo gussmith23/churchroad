@@ -1633,6 +1633,61 @@ struct LakeroadWorker
 				log_error("Unsupported cell type %s for cell %s.%s -- please run `pmuxtree` before `write_lakeroad`.\n",
 									log_id(cell->type), log_id(module), log_id(cell));
 			}
+			else if (cell->has_attribute("\\src"))
+			{
+				// Instance of a user-defined module.
+				// TODO(@gussmith23): is this the best way to determine whether it's a
+				// user-defined module? By this I mean, not an inbuilt primitive to
+				// Yosys.
+
+				std::vector<std::pair<std::string, std::string>> input_port_names_and_exprs;
+				std::vector<std::pair<std::string, std::string>> output_port_names_and_exprs;
+
+				for (auto connection : cell->connections())
+				{
+					auto port = connection.first;
+					auto port_name = port.str();
+					auto sig = connection.second;
+					auto sig_let_name = get_expression_for_signal(sig, -1);
+
+					assert(cell->input(port) || cell->output(port));
+
+					if (cell->input(port))
+					{
+						input_port_names_and_exprs.push_back({port_name, sig_let_name});
+					}
+					else if (cell->output(port))
+					{
+						output_port_names_and_exprs.push_back({port_name, sig_let_name});
+					}
+				}
+
+				// Generate the instance.
+				// Cut the "\" off the front.
+				// Check that it starts with "\" first, though.
+				assert(cell->type[0] == '\\');
+				assert(cell->name[0] == '\\');
+				f << stringf("(let %s (ModuleInstance \"%s\" (vec-of", cell->name.substr(1).c_str(), cell->type.substr(1).c_str()).c_str();
+				for (auto [port_name, _] : input_port_names_and_exprs)
+				{
+					assert(port_name[0] == '\\');
+					f << stringf(" \"%s\"", port_name.substr(1).c_str()).c_str();
+				}
+				f << ") (vec-of";
+				for (auto [_, expr] : input_port_names_and_exprs)
+				{
+					f << stringf(" %s", expr.c_str()).c_str();
+				}
+				f << ")))\n";
+
+				// Hook up the outputs.
+				for (auto [port_name, expr] : output_port_names_and_exprs)
+				{
+					assert(port_name[0] == '\\');
+					assert(cell->name[0] == '\\');
+					f << stringf("(union (GetOutput %s \"%s\") %s)\n", cell->name.substr(1).c_str(), port_name.substr(1).c_str(), expr.c_str()).c_str();
+				}
+			}
 			else
 			{
 				log_error("Unimplemented cell type %s for cell %s.%s.\n", log_id(cell->type), log_id(module), log_id(cell));
