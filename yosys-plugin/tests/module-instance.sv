@@ -2,14 +2,18 @@
 // RUN:   -p 'read_verilog -sv %s; prep -top test; write_lakeroad' \
 // RUN:   | FileCheck %s
 
-module test(input a, b, output out);
+module some_module(input a, b, output out);
   assign out = a & b;
+endmodule
+
+module test(input a, b, output out);
+  some_module some_module_instance(.a(a), .b(b), .out(out));
 endmodule
 
 // CHECK: (let v0 (Wire "v0" 1))
 // CHECK: (let v1 (Wire "v1" 1))
 // CHECK: (let v2 (Wire "v2" 1))
-// CHECK: (union v2 (Op2 (And) v0 v1))
+// CHECK: (let some_module_instance (ModuleInstance "some_module" (vec-of "a" "b") (vec-of v0 v1)))
 // CHECK: (let a (Var "a" 1))
 // CHECK: (IsPort "" "a" (Input) a)
 // CHECK: (union v0 a)

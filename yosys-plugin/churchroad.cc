@@ -1312,9 +1312,37 @@ struct LakeroadWorker
 		// to_width = -1 means no extension.
 		std::function<std::string(const SigSpec &, int)> get_expression_for_signal = [&](const SigSpec &sig, int to_width)
 		{
+			std::function<std::string(std::string, const SigSpec &, int)> convert_to_width = [&](std::string expr, const SigSpec &sig, int to_width)
+			{
+				auto out_expr = expr;
+
+				// If we need to extend the signal, do so.
+				if (to_width >= 0 && to_width != GetSize(sig))
+				{
+					if (to_width < GetSize(sig))
+					{
+						auto new_id = get_new_id_str();
+						auto extend_expr = stringf("(Op1 (Extract %d %d) %s)", to_width - 1, 0, expr.c_str());
+						f << let(new_id, extend_expr) << "\n";
+						out_expr = new_id;
+					}
+					else
+					{
+
+						auto new_id = get_new_id_str();
+						f << "; TODO not handling signedness\n";
+						auto extend_expr = stringf("(Op1 (ZeroExtend %d) %s)", to_width, expr.c_str());
+						f << let(new_id, extend_expr) << "\n";
+						out_expr = new_id;
+					}
+				}
+
+				return out_expr;
+			};
+
 			// If we've already handled the expression, return it.
 			if (signal_let_bound_name.count(sig))
-				return signal_let_bound_name.at(sig);
+				return convert_to_width(signal_let_bound_name.at(sig), sig, to_width);
 
 			// SigSpecs are either constants, wires, or concatenations and selections
 			// of wires. We simply need to handle each case.
@@ -1402,29 +1430,8 @@ struct LakeroadWorker
 				log_error("Unhandled case of signal for %s.\n", log_signal(sig));
 			}
 
-			// If we need to extend the signal, do so.
-			if (to_width >= 0 && to_width != GetSize(sig))
-			{
-				if (to_width < GetSize(sig))
-				{
-					auto new_id = get_new_id_str();
-					auto extend_expr = stringf("(Op1 (Extract %d %d) %s)", to_width - 1, 0, out_expr.c_str());
-					f << let(new_id, extend_expr) << "\n";
-					out_expr = new_id;
-				}
-				else
-				{
-
-					auto new_id = get_new_id_str();
-					f << "; TODO not handling signedness\n";
-					auto extend_expr = stringf("(Op1 (ZeroExtend %d) %s)", to_width, out_expr.c_str());
-					f << let(new_id, extend_expr) << "\n";
-					out_expr = new_id;
-				}
-			}
-
 			signal_let_bound_name.insert({sig, out_expr});
-			return out_expr;
+			return convert_to_width(out_expr, sig, to_width);
 		};
 
 		// Create Wire expression for each wire.
@@ -1489,12 +1496,21 @@ struct LakeroadWorker
 			}
 			else if (cell->type.in(ID($and), ID($or), ID($xor), ID($shr), ID($add), ID($shiftx), ID($mul), ID($sub)))
 			{
-				// Binary ops that preserve width.
+				// Assert that A and B are both unsigned. Note that this is a
+				// simplifying assumption. It does not have to be true, but supporting
+				// different signedness would require some thought that I'm not putting
+				// in right now.
+				assert(cell->getParam(ID::A_SIGNED).is_fully_zero());
+				assert(cell->getParam(ID::B_SIGNED).is_fully_zero());
+
+				// Get the max width of the inputs. This determines the width we need to
+				// extend both inputs to.
+				auto max_input_width = std::max(cell->getPort(ID::A).size(), cell->getPort(ID::B).size());
+
 				assert(cell->connections().size() == 3);
-				auto y = sigmap(cell->getPort(ID::Y));
-				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), y.size());
-				auto b_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::B)), y.size());
-				auto y_let_name = get_expression_for_signal(y, -1);
+				auto a_let_name = get_expression_for_signal(cell->getPort(ID::A), max_input_width);
+				auto b_let_name = get_expression_for_signal(cell->getPort(ID::B), max_input_width);
+				auto y_let_name = get_expression_for_signal(cell->getPort(ID::Y), -1);
 
 				std::string op_str;
 				if (cell->type == ID($and))
@@ -1504,6 +1520,7 @@ struct LakeroadWorker
 				else if (cell->type == ID($xor))
 					op_str = "(Xor)";
 				// Here, $shr and $shiftx are treated the same.
+				// This is only true because we've asserted that A and B are unsigned.
 				// See #26:
 				// https://github.com/uwsampl/churchroad/issues/26
 				else if (cell->type.in(ID($shr), ID($shiftx)))
@@ -1517,9 +1534,20 @@ struct LakeroadWorker
 				else
 					log_error("This should be unreachable. You are missing an else if branch.\n");
 
-				f << stringf("(union %s (Op2 %s %s %s))\n", y_let_name.c_str(), op_str.c_str(), a_let_name.c_str(),
-										 b_let_name.c_str())
-								 .c_str();
+				op_str = stringf("(Op2 %s %s %s)", op_str.c_str(), a_let_name.c_str(),
+												 b_let_name.c_str());
+
+				// If the output width is less than the result of the operation, we need
+				// to slice the result.
+				//
+				// This is an assumption we're currently making. Doesn't have to be the
+				// case. We may also need to extend the result in the future, when this
+				// assertion fails.
+				assert(cell->getPort(ID::Y).size() <= max_input_width);
+				if (cell->getPort(ID::Y).size() < max_input_width)
+					op_str = stringf("(Op1 (Extract %d %d) %s)", cell->getPort(ID::Y).size() - 1, 0, op_str.c_str());
+
+				f << stringf("(union %s %s)\n", y_let_name.c_str(), op_str.c_str()).c_str();
 			}
 			else if (cell->type.in(ID($concat)))
 			{
@@ -1605,13 +1633,69 @@ struct LakeroadWorker
 				log_error("Unsupported cell type %s for cell %s.%s -- please run `pmuxtree` before `write_lakeroad`.\n",
 									log_id(cell->type), log_id(module), log_id(cell));
 			}
+			else if (cell->has_attribute("\\src"))
+			{
+				// Instance of a user-defined module.
+				// TODO(@gussmith23): is this the best way to determine whether it's a
+				// user-defined module? By this I mean, not an inbuilt primitive to
+				// Yosys.
+
+				std::vector<std::pair<std::string, std::string>> input_port_names_and_exprs;
+				std::vector<std::pair<std::string, std::string>> output_port_names_and_exprs;
+
+				for (auto connection : cell->connections())
+				{
+					auto port = connection.first;
+					auto port_name = port.str();
+					auto sig = connection.second;
+					auto sig_let_name = get_expression_for_signal(sig, -1);
+
+					assert(cell->input(port) || cell->output(port));
+
+					if (cell->input(port))
+					{
+						input_port_names_and_exprs.push_back({port_name, sig_let_name});
+					}
+					else if (cell->output(port))
+					{
+						output_port_names_and_exprs.push_back({port_name, sig_let_name});
+					}
+				}
+
+				// Generate the instance.
+				// Cut the "\" off the front.
+				// Check that it starts with "\" first, though.
+				assert(cell->type[0] == '\\');
+				assert(cell->name[0] == '\\');
+				f << stringf("(let %s (ModuleInstance \"%s\" (vec-of", cell->name.substr(1).c_str(), cell->type.substr(1).c_str()).c_str();
+				for (auto [port_name, _] : input_port_names_and_exprs)
+				{
+					assert(port_name[0] == '\\');
+					f << stringf(" \"%s\"", port_name.substr(1).c_str()).c_str();
+				}
+				f << ") (vec-of";
+				for (auto [_, expr] : input_port_names_and_exprs)
+				{
+					f << stringf(" %s", expr.c_str()).c_str();
+				}
+				f << ")))\n";
+
+				// Hook up the outputs.
+				for (auto [port_name, expr] : output_port_names_and_exprs)
+				{
+					assert(port_name[0] == '\\');
+					assert(cell->name[0] == '\\');
+					f << stringf("(union (GetOutput %s \"%s\") %s)\n", cell->name.substr(1).c_str(), port_name.substr(1).c_str(), expr.c_str()).c_str();
+				}
+			}
 			else
 			{
 				log_error("Unimplemented cell type %s for cell %s.%s.\n", log_id(cell->type), log_id(module), log_id(cell));
 			}
 		}
 
-		// For each input, generate Var expression and a let binding.
+		// For each input, generate Var expression and mark it as an input port
+		// using the IsPort relation. Also, union it with the corresponding wire.
 		f << "\n; inputs\n";
 		for (auto wire : module->wires())
 		{
@@ -1625,10 +1709,11 @@ struct LakeroadWorker
 			auto let_bound_id = signal_let_bound_name.at(sigspec);
 
 			f << stringf("(let %s (Var \"%s\" %d))\n", signal_name.c_str(), signal_name.c_str(), GetSize(sigspec)).c_str();
+			f << stringf("(IsPort \"%s\" \"%s\" (Input) %s)\n", /*module name*/ "", signal_name.c_str(), signal_name.c_str()).c_str();
 			f << stringf("(union %s %s)\n", let_bound_id.c_str(), signal_name.c_str()).c_str();
 		}
 
-		// For each output, generate a let binding.
+		// For each output, mark it as an output port using the IsPort relation.
 		f << "\n; outputs\n";
 		for (auto wire : module->wires())
 		{
@@ -1645,6 +1730,7 @@ struct LakeroadWorker
 			auto let_bound_id = signal_let_bound_name.at(sigspec);
 
 			f << stringf("(let %s %s)\n", signal_name_pre_sigmap.c_str(), let_bound_id.c_str()).c_str();
+			f << stringf("(IsPort \"%s\" \"%s\" (Output) %s)\n", /*module name*/ "", signal_name_pre_sigmap.c_str(), signal_name_pre_sigmap.c_str()).c_str();
 		}
 
 		// Delete Wire expressions.
@@ -1967,9 +2053,11 @@ struct BtorBackend : public Backend
 
 		size_t argidx = args.size();
 
-                if (filename == "") {
+		if (filename == "")
+		{
 			// The command itself is given as an arg
-			if (argidx > 1 && args[argidx - 1][0] != '-') {
+			if (argidx > 1 && args[argidx - 1][0] != '-')
+			{
 				// extra_args and friends need to see this argument.
 				argidx -= 1;
 				filename = args[argidx];

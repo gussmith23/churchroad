@@ -9,7 +9,7 @@ use egglog::{
     ast::{Literal, Symbol},
     constraint::{SimpleTypeConstraint, TypeConstraint},
     sort::{FromSort, I64Sort, IntoSort, Sort, VecSort},
-    EGraph, PrimitiveLike, SerializeConfig, Term, TermDag, Value,
+    ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
 };
 
 // The result of interpreting a Churchroad program.
@@ -666,6 +666,138 @@ pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
     }
 }
 
+/// ```
+/// use churchroad::*;
+/// use egglog::{ArcSort, EGraph, Term, TermDag, Value};
+///
+/// // Get an egraph, load in a simple design.
+/// let mut egraph = EGraph::default();
+///
+/// import_churchroad(&mut egraph);
+/// egraph
+///     .parse_and_run_program(
+///         r#"
+/// ; wire declarations
+/// ; $and$<<EOF:2$1_Y
+/// (let v0 (Wire "v0" 2))
+/// ; a
+/// (let v1 (Wire "v1" 2))
+/// ; b
+/// (let v2 (Wire "v2" 1))
+/// ; o
+/// (let v3 (Wire "v3" 1))
+///
+/// ; cells
+/// ; TODO not handling signedness
+/// (let v4 (Op1 (ZeroExtend 2) v2))
+/// (union v0 (Op2 (And) v1 v4))
+/// (let v5 (Op1 (Extract 0 0) v0))
+/// (union v3 (Op1 (Extract 0 0) v5))
+///
+/// ; inputs
+/// (IsPort "" "a" (Input) (Var "a" 2))
+/// (union v1 (Var "a" 2))
+/// (IsPort "" "b" (Input) (Var "b" 1))
+/// (union v2 (Var "b" 1))
+///
+/// ; outputs
+/// (IsPort "" "o" (Output) v3)
+///
+/// ; delete wire expressions
+/// (delete (Wire "v0" 2))
+/// (delete (Wire "v1" 2))
+/// (delete (Wire "v2" 1))
+/// (delete (Wire "v3" 1))
+/// "#,
+///     )
+///     .unwrap();
+///
+/// let (inputs, outputs) = get_inputs_and_outputs(&mut egraph);
+///
+/// // We should have found two inputs, a and b.
+/// assert_eq!(inputs.len(), 2);
+///
+/// fn value_to_string(value: &Value, sort: ArcSort, egraph: &EGraph) -> String {
+///     let mut termdag = TermDag::default();
+///     let (_, term) = egraph.extract(value.clone(), &mut termdag, &sort);
+///     termdag.to_string(&term)
+/// }
+///
+/// // Get expressions for each input.
+/// let input_exprs: Vec<String> = inputs
+///     .iter()
+///     .map(|(sort, value)| value_to_string(value, sort.clone(), &egraph))
+///     .collect();
+///
+/// assert_eq!(input_exprs, vec!["(Var \"a\" 2)", "(Var \"b\" 1)"]);
+///
+/// let output_expr = value_to_string(&outputs[0].1, outputs[0].0.clone(), &egraph);
+/// assert_eq!(output_expr, "(Op1 (Extract 0 0) (Op1 (Extract 0 0) (Op2 (And) (Var \"a\" 2) (Op1 (ZeroExtend 2) (Var \"b\" 1)))))");
+/// ```
+// TODO(@gussmith23): This really shouldn't require mutability.
+pub fn get_inputs_and_outputs(
+    egraph: &mut EGraph,
+) -> (Vec<(ArcSort, Value)>, Vec<(ArcSort, Value)>) {
+    // Get the inputs and outputs.
+    let mut inputs = vec![];
+    let mut outputs = vec![];
+    const NUM_TO_GET: usize = 100;
+    let (results, termdag) = egraph.function_to_dag("IsPort".into(), NUM_TO_GET).unwrap();
+    assert!(results.len() < NUM_TO_GET);
+    for (term, output) in &results {
+        assert!(
+            matches!(output, Term::Lit(Literal::Unit)),
+            "IsPort relation shouldn't have any outputs."
+        );
+
+        let children = match term {
+            Term::App(_, children) => children,
+            _ => panic!(),
+        };
+
+        let inout_term = children[2];
+
+        enum InOut {
+            Input,
+            Output,
+        }
+        let in_or_out = match termdag.get(inout_term) {
+            Term::App(in_or_out, v) => {
+                assert_eq!(v.len(), 0);
+                if in_or_out == "Input".into() {
+                    InOut::Input
+                } else if in_or_out == "Output".into() {
+                    InOut::Output
+                } else {
+                    panic!()
+                }
+            }
+            _ => panic!(),
+        };
+
+        let churchroad_term = children[3];
+
+        let (sort, value) = egraph
+            .eval_expr(
+                &egglog::ast::parse::ExprParser::new()
+                    .parse(&termdag.to_string(&termdag.get(churchroad_term)))
+                    .unwrap(),
+            )
+            .unwrap();
+
+        match in_or_out {
+            InOut::Input => {
+                inputs.push((sort, value));
+            }
+            InOut::Output => {
+                outputs.push((sort, value));
+            }
+        }
+    }
+
+    return (inputs, outputs);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -873,5 +1005,38 @@ mod tests {
             )
             .unwrap();
         write_svg(&egraph, "5.svg");
+    }
+
+    #[test]
+    fn test_module_instance() {
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+        egraph.parse_and_run_program(r#"
+            ; wire declarations
+            ; a
+            (let v0 (Wire "v0" 1))
+            ; b
+            (let v1 (Wire "v1" 1))
+            ; out
+            (let v2 (Wire "v2" 1))
+
+            ; cells
+            (let some_module_instance (ModuleInstance "some_module" (vec-of "a" "b") (vec-of v0 v1)))
+            (union (GetOutput some_module_instance "out") v2)
+
+            ; inputs
+            (IsPort "" "a" (Input) (Var "a" 1))
+            (union v0 (Var "a" 1))
+            (IsPort "" "b" (Input) (Var "b" 1))
+            (union v1 (Var "b" 1))
+
+            ; outputs
+            (IsPort "" "out" (Output) v2)
+
+            ; delete wire expressions
+            (delete (Wire "v0" 1))
+            (delete (Wire "v1" 1))
+            (delete (Wire "v2" 1))
+            "#).unwrap();
     }
 }
