@@ -256,7 +256,11 @@ fn add_debruijnify(egraph: &mut EGraph) {
             ))
         }
 
-        fn apply(&self, values: &[crate::Value], egraph: Option<&mut EGraph>) -> Option<crate::Value> {
+        fn apply(
+            &self,
+            values: &[crate::Value],
+            egraph: Option<&mut EGraph>,
+        ) -> Option<crate::Value> {
             let in_vec = Vec::<Value>::load(&self.in_sort, &values[0]);
 
             let mut seen_values: HashMap<Value, i64> = HashMap::new();
