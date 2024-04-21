@@ -25,7 +25,7 @@ pub fn interpret(
     time: usize,
     env: &HashMap<&str, Vec<i64>>,
 ) -> Result<InterpreterResult, String> {
-    println!("{:#?}", egraph);
+    // println!("{:#?}", egraph);
     let result = match egraph
         .classes()
         .iter()
@@ -56,8 +56,6 @@ fn interpret_helper(
 
     let node_id = node_ids.first().unwrap();
     let node = egraph.nodes.get(node_id).unwrap();
-
-    println!("{:?}", node);
 
     match node.op.as_str() {
         "Var" => {
@@ -94,7 +92,7 @@ fn interpret_helper(
                     interpret_helper(egraph, &child.eclass, time, env)
                 })
                 .collect();
-
+        
             match op.op.as_str() {
                 // Binary operations that preserve bitwidth.
                 "And" | "Or" | "Shr" => {
@@ -147,7 +145,7 @@ fn interpret_helper(
                             val
                         })
                         .collect::<Vec<_>>()[..];
-                
+
                     Ok(InterpreterResult::Bitvector(args[0], args[1]))
                 }
                 "Extract" => {
@@ -174,29 +172,46 @@ fn interpret_helper(
 
                     let val = match children[0].as_ref().unwrap() {
                         InterpreterResult::Bitvector(val, bw) => {
-                            // from Rosette docs: 
+                            // from Rosette docs:
                             // https://docs.racket-lang.org/rosette-guide/sec_bitvectors.html#%28def._%28%28lib._rosette%2Fbase%2Fbase..rkt%29._extract%29%29
                             assert!(*bw > i && i >= j && j >= 0);
+
+                            // TODO(@ninehusky): check this, because copilot wrote this
                             let mask = (1 << (i - j + 1)) - 1;
                             (val >> j) & mask
-                            // TODO(@ninehusky): check this, because copilot wrote this
                         }
                     };
 
                     Ok(InterpreterResult::Bitvector(val, i - j + 1))
+                }
+                "Concat" => match (&children[0], &children[1]) {
+                    (
+                        Ok(InterpreterResult::Bitvector(a, a_bw)),
+                        Ok(InterpreterResult::Bitvector(b, b_bw)),
+                    ) => {
+                        let result = (a << b_bw) | b;
+                        Ok(InterpreterResult::Bitvector(result, a_bw + b_bw))
+                    }
+                    _ => todo!(),
                 },
-                "Concat" => {
-                    match (&children[0], &children[1]) {
-                        (
-                            Ok(InterpreterResult::Bitvector(a, a_bw)),
-                            Ok(InterpreterResult::Bitvector(b, b_bw)),
-                        ) => {
-                            let result = (a << b_bw) | b;
-                            Ok(InterpreterResult::Bitvector(result, a_bw + b_bw))
+                "ZeroExtend" => {
+                    let extension_bw: i64 = egraph
+                        .nodes
+                        .iter()
+                        .find(|(id, _)| *id == &op.children[0])
+                        .unwrap()
+                        .1
+                        .op
+                        .parse()
+                        .unwrap();
+                    match children[0] {
+                        Ok(InterpreterResult::Bitvector(val, _)) => {
+                            // let mask = (1 << bw) - 1; 
+                            Ok(InterpreterResult::Bitvector(val, extension_bw))
                         }
                         _ => todo!(),
                     }
-                },
+                }
                 _ => todo!("unimplemented op: {:?}", op.op),
             }
         }

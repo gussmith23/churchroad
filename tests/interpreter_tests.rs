@@ -166,19 +166,21 @@ interpreter_test!(
 
 // TODO(@ninehusky): Fix this test, it's currently broken until we fix the interpreter
 // and use the non-broken LUT6.egg file.
-// interpreter_test!(
-//     test_lut6_0,
-//     InterpreterResult::Bitvector(0b101010, 6),
-//     "tests/interpreter_tests/LUT6.egg",
-//     0,
-//     &[
-//         ("I0", vec![0b1]),
-//         ("I1", vec![0b1]),
-//         ("I2", vec![0b1]),
-//         ("I3", vec![0b1]),
-//         ("I4", vec![0b1]),
-//         ("I5", vec![0b1]),
-//     ]
-//     .into(),
-//     "O"
-// );
+interpreter_test!(
+    test_lut6_0,
+    // grab the only 1-bit from INIT
+    InterpreterResult::Bitvector(0b1, 1),
+    "tests/interpreter_tests/LUT6-modified.egg",
+    0,
+    &[
+        ("INIT", vec![0x0000000000000001]),
+        ("I0", vec![0b0]),
+        ("I1", vec![0b0]),
+        ("I2", vec![0b0]),
+        ("I3", vec![0b0]),
+        ("I4", vec![0b0]),
+        ("I5", vec![0b1]),
+    ]
+    .into(),
+    "O"
+);
