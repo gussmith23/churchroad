@@ -9,3 +9,4 @@ edition = "2021"
 egglog = { git = "https://github.com/egraphs-good/egglog", rev = "73a76dc9228ce24291b3e41bbbca14eddd10cd5e" }
 egraph-serialize = "0.1.0"
 log = "0.4.20"
+rand = "0.8.4"

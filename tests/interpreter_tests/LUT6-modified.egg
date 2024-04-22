@@ -26,13 +26,13 @@
 ; _w_idx
 (let v12 (Wire "v12" 6))
 
-(let v13 (Op2 (Concat) v4 v5))
-(let v14 (Op2 (Concat) v13 v6))
-(let v15 (Op2 (Concat) v14 v7))
-(let v16 (Op2 (Concat) v15 v8))
-(let v17 (Op2 (Concat) v16 v9))
+(let v13 (Op2 (Concat) v9 v8))
+(let v14 (Op2 (Concat) v13 v7))
+(let v15 (Op2 (Concat) v14 v6))
+(let v16 (Op2 (Concat) v15 v5))
+(let v17 (Op2 (Concat) v16 v4))
 
-(let v23 (Op1 (ZeroExtend 64) v16))
+(let v23 (Op1 (ZeroExtend 64) v17))
 (union v11 (Op1 (Extract 0 0) (Op2 (Shr) v10 v23)))
 
 ; inputs

@@ -152,6 +152,7 @@ dependencies = [
  "egglog",
  "egraph-serialize",
  "log",
+ "rand",
 ]
 
 [[package]]

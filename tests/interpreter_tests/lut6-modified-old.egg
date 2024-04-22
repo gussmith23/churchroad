@@ -25,38 +25,17 @@
 (let v11 (Wire "v11" 6))
 
 ; cells
-; TODO not handling signedness
-(let v12 v3)
-; TODO not handling signedness
-(let v13 v9)
-(union v11 (Op2 (Concat) v12 v13))
-; TODO not handling signedness
-(let v14 (Op1 (ZeroExtend 2) v4))
-; TODO not handling signedness
-(let v15 (Op1 (ZeroExtend 2) v5))
-(union v0 (Op2 (Concat) v14 v15))
-; TODO not handling signedness
-(let v16 (Op1 (ZeroExtend 3) v0))
-; TODO not handling signedness
-(let v17 (Op1 (ZeroExtend 3) v6))
-(union v1 (Op2 (Concat) v16 v17))
-; TODO not handling signedness
-(let v18 (Op1 (ZeroExtend 4) v1))
-; TODO not handling signedness
-(let v19 (Op1 (ZeroExtend 4) v7))
-(union v2 (Op2 (Concat) v18 v19))
-; TODO not handling signedness
-(let v20 (Op1 (ZeroExtend 5) v2))
-; TODO not handling signedness
-(let v21 (Op1 (ZeroExtend 5) v8))
-(union v3 (Op2 (Concat) v20 v21))
+(let v12 (Op2 (Concat) v4 v5))
+(let v13 (Op2 (Concat) v12 v6))
+(let v14 (Op2 (Concat) v13 v7))
+(let v15 (Op2 (Concat) v14 v8))
+(let v16 (Op2 (Concat) v15 v9))
+
 ; 64'0000000000000000000000000000000000000000000000000000000000000000
 (let v22 (Op0 (BV 0 64)))
 ; TODO not handling signedness
-(let v23 (Op1 (ZeroExtend 64) v11))
+(let v23 (Op1 (ZeroExtend 64) v16))
 (union v10 (Op1 (Extract 0 0) (Op2 (Shr) v22 v23)))
-
-; v23 = (zeroextend 64 (concat (zeroextend 6 v3) (zeroextend 6 I5)))
 
 ; inputs
 (let I0 (Var "I0" 1))
