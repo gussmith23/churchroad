@@ -7,8 +7,28 @@ use egglog::{
     ast::{Literal, Symbol},
     constraint::{SimpleTypeConstraint, TypeConstraint},
     sort::{FromSort, I64Sort, IntoSort, Sort, VecSort},
+    util::IndexMap,
     ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
 };
+
+#[derive(Default)]
+pub struct AnythingExtractor;
+impl AnythingExtractor {
+    pub fn extract(
+        &self,
+        egraph: &egraph_serialize::EGraph,
+        _roots: &[egraph_serialize::ClassId],
+    ) -> IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId> {
+        egraph
+            .classes()
+            .iter()
+            .map(|(id, class)| {
+                let node_id = class.nodes.iter().next().unwrap().clone();
+                (id.clone(), node_id)
+            })
+            .collect()
+    }
+}
 
 pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
     // let mut wires = HashMap::default();
@@ -610,7 +630,7 @@ mod tests {
 
     use std::path::Path;
 
-    use egglog::EGraph;
+    use egglog::{EGraph, SerializeConfig};
 
     /// Doing some exploration of where cyclic extraction breaks in egglog with
     /// Andrew and Vishal.
@@ -645,7 +665,7 @@ mod tests {
         // which is basically egglog saying that it can't get a cost because
         // of the cycle. I expected it to loop infinitely, but it's smarter than
         // that.
-        //let (_, extracted) = egraph.extract(value, &mut termdag, &sort);
+        let (_, extracted) = egraph.extract(_value, &mut _termdag, &_sort);
 
         // Next: can we serialize the egraph? That's the first step to building
         // a new extraction algorithm.
@@ -844,5 +864,27 @@ mod tests {
             (delete (Wire "v1" 1))
             (delete (Wire "v2" 1))
             "#).unwrap();
+    }
+
+
+    #[test]
+    fn extract_cycle() {
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+
+        egraph
+            .parse_and_run_program(
+                r#"
+                (let placeholder (Wire "placeholder" 8))
+                (let reg (Op1 (Reg 0) placeholder))
+                (union placeholder reg)
+                (delete (Wire "placeholder" 8))
+            "#,
+            )
+            .unwrap();
+
+    
+            let serialized = egraph.serialize(SerializeConfig::default());
+            dbg!(AnythingExtractor::default().extract(&serialized, &[]));
     }
 }
