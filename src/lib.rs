@@ -665,7 +665,7 @@ mod tests {
         // which is basically egglog saying that it can't get a cost because
         // of the cycle. I expected it to loop infinitely, but it's smarter than
         // that.
-        let (_, extracted) = egraph.extract(_value, &mut _termdag, &_sort);
+        // let (_, extracted) = egraph.extract(_value, &mut _termdag, &_sort);
 
         // Next: can we serialize the egraph? That's the first step to building
         // a new extraction algorithm.
