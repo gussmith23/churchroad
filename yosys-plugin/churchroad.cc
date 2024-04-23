@@ -1555,8 +1555,8 @@ struct LakeroadWorker
 				assert(cell->connections().size() == 3);
 				// do we need this sigmap?
 				auto y = sigmap(cell->getPort(ID::Y));
-				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), y.size());
-				auto b_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::B)), y.size());
+				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), -1);
+				auto b_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::B)), -1);
 				auto y_let_name = get_expression_for_signal(y, -1);
 
 				std::string op_str;
@@ -1565,8 +1565,10 @@ struct LakeroadWorker
 				else
 					log_error("This should be unreachable. You are missing an else if branch.\n");
 
-				f << stringf("(union %s (Op2 %s %s %s))\n", y_let_name.c_str(), op_str.c_str(), a_let_name.c_str(),
-										 b_let_name.c_str())
+				// Here, we assume that the semantics of Yosys' $concat is Y = {B, A}.
+				// https://www.reddit.com/r/yosys/comments/4e9co6/very_basic_question_about_cellmapping/
+				f << stringf("(union %s (Op2 %s %s %s))\n", y_let_name.c_str(), op_str.c_str(), b_let_name.c_str(),
+										 a_let_name.c_str())
 								 .c_str();
 			}
 			else if (cell->type.in(ID($mux)))
