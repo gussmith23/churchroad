@@ -118,27 +118,7 @@ fn test_with_verilator() {
 }
 
 // This test runs verilator against our interpreter.
-//
-//
-// test_module_name: str,
-// ground_truth_module_name: str,
-// obj_dirpath: Union[str, Path],
-// verilog_filepaths: List[Union[str, Path]],
-// module_inputs: List[Tuple[str, int]],
-// initiation_interval: int,
-// testbench_sv_filepath: Union[str, Path],
-// testbench_exe_filepath: Union[str, Path],
-// testbench_inputs_filepath: Union[str, Path],
-// testbench_stdout_log_filepath: Union[str, Path],
-// testbench_stderr_log_filepath: Union[str, Path],
-// makefile_filepath: Union[str, Path],
-// module_outputs: List[Tuple[str, int]],
-// clock_name: Optional[str] = None,
-// include_dirs: List[Union[str, Path]] = [],
-// extra_args: List[str] = [],
-// max_num_tests=MAX_NUM_TESTS,
-// ignore_missing_test_module_file: bool = False,
-// expect_all_zero_outputs: bool = False,
+// TODO(@ninehusky): document mii
 fn verilator(
     testbench_template_path: PathBuf,
     makefile_template_path: PathBuf,
