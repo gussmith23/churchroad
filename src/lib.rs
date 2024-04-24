@@ -45,7 +45,6 @@ fn interpret_helper(
     env: &HashMap<&str, Vec<u64>>,
 ) -> Result<InterpreterResult, String> {
     let node_ids = &egraph.classes().get(id).unwrap().nodes;
-    // This will go away once we have an extraction algorithm.
     if node_ids.len() != 1 {
         return Err(format!(
             "There should be exactly one node in the class, but there are {}.",
@@ -139,7 +138,6 @@ fn interpret_helper(
                                 .find(|(node_id, _)| **node_id == *id)
                                 .unwrap();
                             assert_eq!(node.children.len(), 0);
-                            // we're going to assert that a BV's children are only i64s
                             let val: u64 = node.op.parse().unwrap();
                             val
                         })
@@ -159,13 +157,11 @@ fn interpret_helper(
                                 .find(|(node_id, _)| **node_id == *id)
                                 .unwrap();
                             assert_eq!(node.children.len(), 0);
-                            // we're going to assert that a BV's children are only i64s
                             let val: u64 = node.op.parse().unwrap();
                             val
                         })
                         .collect::<Vec<_>>()[..];
 
-                    // ugh.. i don't like needing to manually implement bitwise extraction.
                     let i = args[0];
                     let j = args[1];
 

@@ -106,7 +106,7 @@ fn test_lut6_0() {
         churchroad_dir.join("tests/interpreter_tests/verilog/"),
     ];
 
-    verilator(
+    verilator_intepreter_fuzz_test(
         testbench_template_path,
         makefile_template_path,
         "LUT6",
@@ -121,9 +121,20 @@ fn test_lut6_0() {
     );
 }
 
-// This test runs verilator against our interpreter.
-// TODO(@ninehusky): document mii
-fn verilator(
+// This test runs verilator against our interpreter, failing if the outputs of the two differ.
+// 
+// testbench_template_path: path to the testbench template file
+// makefile_template_path: path to the Makefile template file
+// top_module_name: name of the top module in the Verilog file
+// inputs: list of tuples of input names and their bitwidths
+// outputs: list of tuples of output names and their bitwidths
+// include_dirs: list of directories to include in the Verilator compilation
+// test_output_dir: directory to output test files to
+// churchroad_src_path: path to the Churchroad source file that the interpreter will use
+// num_test_cases: number of test cases to run
+// num_clock_cycles: number of clock cycles to run each test case for
+// filename: name of the file to run Verilator on. For example, if the file is `adder.v`, this should be `"adder.v"`
+fn verilator_intepreter_fuzz_test(
     testbench_template_path: PathBuf,
     makefile_template_path: PathBuf,
     top_module_name: &str,
@@ -253,7 +264,6 @@ fn verilator(
         );
     }
 
-    // simulation process
     let mut sim_proc = std::process::Command::new(executable_path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -262,7 +272,6 @@ fn verilator(
 
     let sim_proc_stdin = sim_proc.stdin.as_mut().unwrap();
 
-    // i'll clean this up later
     let num_inputs = inputs.len();
 
     // TODO(@ninehusky): this is going to assume we only want to interpret on the first output included in `outputs`.
