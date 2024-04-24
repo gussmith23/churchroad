@@ -831,7 +831,7 @@ pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
 // TODO(@gussmith23): This really shouldn't require mutability.
 pub fn get_inputs_and_outputs(
     egraph: &mut EGraph,
-) -> (Vec<(ArcSort, Value)>, Vec<(ArcSort, Value)>) {
+) -> (Vec<(String, ArcSort, Value)>, Vec<(String, ArcSort, Value)>) {
     // Get the inputs and outputs.
     let mut inputs = vec![];
     let mut outputs = vec![];
@@ -879,12 +879,18 @@ pub fn get_inputs_and_outputs(
             )
             .unwrap();
 
+        let port_name = children[1];
+        let port_name_str = match termdag.get(port_name) {
+            Term::Lit(Literal::String(name)) => name.to_string(),
+            _ => panic!(),
+        };
+
         match in_or_out {
             InOut::Input => {
-                inputs.push((sort, value));
+                inputs.push((port_name_str, sort, value));
             }
             InOut::Output => {
-                outputs.push((sort, value));
+                outputs.push((port_name_str, sort, value));
             }
         }
     }
