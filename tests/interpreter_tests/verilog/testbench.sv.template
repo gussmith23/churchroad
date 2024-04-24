@@ -38,7 +38,7 @@ initial begin
       end
       // {display_inputs}
       #CLK_PERIOD;
-      $display("%d\n", simulate_with_verilator_test_module.O);
+      $display("output: %d\n", simulate_with_verilator_test_module.O);
       // {display_outputs}
     end
 

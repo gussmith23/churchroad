@@ -16,16 +16,15 @@ use egglog::{
 #[derive(Debug, PartialEq, Clone)]
 pub enum InterpreterResult {
     // Bitvector(value, bitwidth)
-    Bitvector(i64, i64),
+    Bitvector(u64, u64),
 }
 // Interprets a Churchroad program.
 pub fn interpret(
     egraph: &egraph_serialize::EGraph,
     class_id: &ClassId,
     time: usize,
-    env: &HashMap<&str, Vec<i64>>,
+    env: &HashMap<&str, Vec<u64>>,
 ) -> Result<InterpreterResult, String> {
-    // println!("{:#?}", egraph);
     let result = match egraph
         .classes()
         .iter()
@@ -43,7 +42,7 @@ fn interpret_helper(
     egraph: &egraph_serialize::EGraph,
     id: &ClassId,
     time: usize,
-    env: &HashMap<&str, Vec<i64>>,
+    env: &HashMap<&str, Vec<u64>>,
 ) -> Result<InterpreterResult, String> {
     let node_ids = &egraph.classes().get(id).unwrap().nodes;
     // This will go away once we have an extraction algorithm.
@@ -59,7 +58,7 @@ fn interpret_helper(
 
     match node.op.as_str() {
         "Var" => {
-            let bw: i64 = egraph
+            let bw: u64 = egraph
                 .nodes
                 .get(&node.children[1])
                 .unwrap()
@@ -92,7 +91,7 @@ fn interpret_helper(
                     interpret_helper(egraph, &child.eclass, time, env)
                 })
                 .collect();
-        
+
             match op.op.as_str() {
                 // Binary operations that preserve bitwidth.
                 "And" | "Or" | "Shr" => {
@@ -106,7 +105,10 @@ fn interpret_helper(
                             let result = match op.op.as_str() {
                                 "And" => a & b,
                                 "Or" => a | b,
-                                "Shr" => a >> b,
+                                "Shr" => {
+                                    println!("{} >> {}", a, b);
+                                    a >> b
+                                },
                                 _ => unreachable!(),
                             };
                             Ok(InterpreterResult::Bitvector(result, *a_bw))
@@ -141,7 +143,7 @@ fn interpret_helper(
                                 .unwrap();
                             assert_eq!(node.children.len(), 0);
                             // we're going to assert that a BV's children are only i64s
-                            let val: i64 = node.op.parse().unwrap();
+                            let val: u64 = node.op.parse().unwrap();
                             val
                         })
                         .collect::<Vec<_>>()[..];
@@ -161,7 +163,7 @@ fn interpret_helper(
                                 .unwrap();
                             assert_eq!(node.children.len(), 0);
                             // we're going to assert that a BV's children are only i64s
-                            let val: i64 = node.op.parse().unwrap();
+                            let val: u64 = node.op.parse().unwrap();
                             val
                         })
                         .collect::<Vec<_>>()[..];
@@ -182,7 +184,7 @@ fn interpret_helper(
                         }
                     };
 
-                    Ok(InterpreterResult::Bitvector(val, i - j + 1))
+                    Ok(InterpreterResult::Bitvector(val, (i - j + 1).try_into().unwrap()))
                 }
                 "Concat" => match (&children[0], &children[1]) {
                     (
@@ -195,7 +197,7 @@ fn interpret_helper(
                     _ => todo!(),
                 },
                 "ZeroExtend" => {
-                    let extension_bw: i64 = egraph
+                    let extension_bw: u64 = egraph
                         .nodes
                         .iter()
                         .find(|(id, _)| *id == &op.children[0])

@@ -1,3 +1,5 @@
+;;; generated with `yosys -p 'plugin -i churchroad; "read_verilog -sv <lut6.sv> prep -top LUT6; pmuxtree; write_lakeroad"`
+
 ; wire declarations
 ; $auto$splice.cc:140:get_spliced_signal$3
 (let v0 (Wire "v0" 2))
@@ -25,62 +27,32 @@
 (let v11 (Wire "v11" 6))
 
 ; cells
-; TODO not handling signedness
-(let v12 v3)
-; TODO not handling signedness
-(let v13 v9)
-(union v11 (Op2 (Concat) v12 v13))
-; TODO not handling signedness
-(let v14 (Op1 (ZeroExtend 2) v4))
-; TODO not handling signedness
-(let v15 (Op1 (ZeroExtend 2) v5))
-(union v0 (Op2 (Concat) v14 v15))
-; TODO not handling signedness
-(let v16 (Op1 (ZeroExtend 3) v0))
-; TODO not handling signedness
-(let v17 (Op1 (ZeroExtend 3) v6))
-(union v1 (Op2 (Concat) v16 v17))
-; TODO not handling signedness
-(let v18 (Op1 (ZeroExtend 4) v1))
-; TODO not handling signedness
-(let v19 (Op1 (ZeroExtend 4) v7))
-(union v2 (Op2 (Concat) v18 v19))
-; TODO not handling signedness
-(let v20 (Op1 (ZeroExtend 5) v2))
-; TODO not handling signedness
-(let v21 (Op1 (ZeroExtend 5) v8))
-(union v3 (Op2 (Concat) v20 v21))
+(union v11 (Op2 (Concat) v3 v9))
+(union v0 (Op2 (Concat) v4 v5))
+(union v1 (Op2 (Concat) v0 v6))
+(union v2 (Op2 (Concat) v1 v7))
+(union v3 (Op2 (Concat) v2 v8))
 ; 64'0000000000000000000000000000000000000000000000000000000000000000
-(let v22 (Op0 (BV 0 64)))
-; TODO not handling signedness
-(let v23 (Op1 (ZeroExtend 64) v11))
-(union v10 (Op1 (Extract 0 0) (Op2 (Shr) v22 v23)))
-
-; v23 = (zeroextend 64 (concat (zeroextend 6 v3) (zeroextend 6 I5)))
+(let v12 (Op0 (BV 0 64)))
+(let v13 (Op1 (Extract 0 0) v12))
+(union v10 (Op2 (Shr) v13 v11))
 
 ; inputs
 (let I0 (Var "I0" 1))
-(IsPort "" "I0" (Input) I0)
 (union v4 I0)
 (let I1 (Var "I1" 1))
-(IsPort "" "I1" (Input) I1)
 (union v5 I1)
 (let I2 (Var "I2" 1))
-(IsPort "" "I2" (Input) I2)
 (union v6 I2)
 (let I3 (Var "I3" 1))
-(IsPort "" "I3" (Input) I3)
 (union v7 I3)
 (let I4 (Var "I4" 1))
-(IsPort "" "I4" (Input) I4)
 (union v8 I4)
 (let I5 (Var "I5" 1))
-(IsPort "" "I5" (Input) I5)
 (union v9 I5)
 
 ; outputs
 (let O v10)
-(IsPort "" "O" (Output) O)
 
 ; delete wire expressions
 (delete (Wire "v0" 2))
