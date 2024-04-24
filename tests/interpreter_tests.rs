@@ -102,7 +102,6 @@ fn test_lut6_0() {
     let outputs: Vec<(&str, i32)> = vec![("O", 1)];
 
     let include_dirs = vec![
-        churchroad_dir.join("tests/interpreter_tests/verilog/actual"),
         churchroad_dir.join("tests/interpreter_tests/verilog/"),
     ];
 
@@ -117,7 +116,7 @@ fn test_lut6_0() {
         churchroad_dir.join("tests/interpreter_tests/LUT6-modified.egg"),
         100,
         5,
-        "LUT6.v",
+        "LUT6-modified.v",
     );
 }
 
