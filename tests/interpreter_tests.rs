@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, io::Write, path::PathBuf};
 
-use rand::{Rng, RngCore};
+use rand::RngCore;
 
 use egglog::{EGraph, SerializeConfig};
 
@@ -45,17 +45,20 @@ macro_rules! interpreter_test {
     };
 }
 
-fn prep_interpreter(churchroad_prog_path: PathBuf, output_name: &str) -> (egraph_serialize::EGraph, egraph_serialize::Node) {
+fn prep_interpreter(
+    churchroad_prog_path: PathBuf,
+    output_name: &str,
+) -> (egraph_serialize::EGraph, egraph_serialize::Node) {
     // prep egraph for interpretation
     let mut egraph: EGraph = EGraph::default();
     import_churchroad(&mut egraph);
     egraph
-        .parse_and_run_program(
-            &std::fs::read_to_string(churchroad_prog_path).unwrap(),
-        )
+        .parse_and_run_program(&std::fs::read_to_string(churchroad_prog_path).unwrap())
         .unwrap();
     egraph
-        .parse_and_run_program(format!("(relation IsRoot (Expr)) (IsRoot {})", output_name).as_str())
+        .parse_and_run_program(
+            format!("(relation IsRoot (Expr)) (IsRoot {})", output_name).as_str(),
+        )
         .unwrap();
     let serialized = egraph.serialize(SerializeConfig::default());
     let (_, is_root_node) = serialized
@@ -77,7 +80,7 @@ fn prep_interpreter(churchroad_prog_path: PathBuf, output_name: &str) -> (egraph
 }
 
 #[test]
-fn test_with_verilator() {
+fn test_lut6_0() {
     if std::env::var("CHURCHROAD_DIR").is_err() {
         panic!("Please set the CHURCHROAD_DIR environment variable!");
     }
@@ -112,8 +115,9 @@ fn test_with_verilator() {
         include_dirs,
         std::env::temp_dir(),
         churchroad_dir.join("tests/interpreter_tests/LUT6-modified.egg"),
-        10,
-        1
+        100,
+        5,
+        "LUT6.v",
     );
 }
 
@@ -130,15 +134,10 @@ fn verilator(
     churchroad_src_path: PathBuf,
     num_test_cases: usize,
     num_clock_cycles: usize,
+    filename: &str,
 ) {
     if std::env::var("CXX").is_err() {
         std::env::set_var("CXX", "clang++ -std=c++20")
-    }
-    if std::env::var("BETTER_VERILATOR").is_err() {
-        std::env::set_var(
-            "BETTER_VERILATOR",
-            "/Users/andrew/research/verilator/bin/verilator",
-        )
     }
 
     let testbench_path = test_output_dir.join("testbench.sv");
@@ -146,6 +145,7 @@ fn verilator(
 
     let testbench_prog = std::fs::read_to_string(testbench_template_path)
         .unwrap()
+        .replace("{filename}", filename)
         // TODO(@ninehusky): this'll eventually need to include parameters as well, right?
         .replace(
             "{input_output_declarations}",
@@ -169,9 +169,9 @@ fn verilator(
                     inputs
                         .iter()
                         .enumerate()
-                        .map(|(i, (name, _))| format!(".{}(inputs[{}])\n", name, i))
+                        .map(|(i, (name, _))| format!(".{}(inputs[{}])", name, i))
                         .collect::<Vec<String>>()
-                        .join(", ")
+                        .join(",\n")
                 ),
                 format!(
                     "{}",
@@ -194,13 +194,26 @@ fn verilator(
                 .unwrap()
                 .to_string()
                 .as_str(),
+        )
+        .replace(
+            "{display_outputs}",
+            outputs
+                .iter()
+                .map(|(name, _)| {
+                    format!(
+                        "$display(\"output: %d\\n\", simulate_with_verilator_test_module.{});",
+                        name
+                    )
+                })
+                .collect::<Vec<String>>()
+                .join("\n")
+                .as_str(),
         );
 
     let executable_name = "executable";
     let verilator_output_dir = test_output_dir.join("obj_dir");
     let executable_path = verilator_output_dir.join(executable_name);
 
-    // TODO(@ninehusky): test mii
     let default_extra_args = format!(
         "-I{}",
         include_dirs
@@ -249,9 +262,12 @@ fn verilator(
 
     let sim_proc_stdin = sim_proc.stdin.as_mut().unwrap();
 
-
     // i'll clean this up later
     let num_inputs = inputs.len();
+
+    // TODO(@ninehusky): this is going to assume we only want to interpret on the first output included in `outputs`.
+    let (serialized, root_node) =
+        prep_interpreter(churchroad_src_path.clone(), outputs.first().unwrap().0);
 
     sim_proc_stdin
         .write_all(format!("{} {} {}\n", num_inputs, num_test_cases, num_clock_cycles).as_bytes())
@@ -260,30 +276,31 @@ fn verilator(
     let mut rng = rand::thread_rng();
     let mut interpreter_results: Vec<InterpreterResult> = Vec::new();
     for _ in 0..num_test_cases {
+        let mut env: HashMap<&str, Vec<u64>> = HashMap::new();
+        let input_values: Vec<Vec<u64>> = inputs
+            .iter()
+            .map(|(name, bw)| {
+                // generate num_clock_cycles random values for each input
+                let vals: Vec<u64> = (0..num_clock_cycles)
+                    .map(|_| {
+                        let mut val = rng.next_u64();
+                        if *bw != 64 {
+                            val = val & ((1 << bw) - 1);
+                        }
+                        val
+                    })
+                    .collect();
+                env.insert(name, vals.clone());
+                vals
+            })
+            .collect();
+
         for t in 0..num_clock_cycles {
-            let mut env: HashMap<&str, Vec<u64>> = HashMap::new();
-            let input_values: Vec<u64> = inputs
-                .iter()
-                .map(|(name, bw)| {
-                    // generate value in [0, 2^bw - 1]
-                    let mut val = rng.next_u64();
-                    if *bw != 64 {
-                        val = val & ((1 << bw) - 1);
-                    }
-                    env.insert(name, vec![val]);
-                    val
-                })
-                .collect();
-            
             for input in input_values.iter() {
                 sim_proc_stdin
-                    .write_all(format!("{:X}\n", input).as_bytes())
+                    .write_all(format!("{:X}\n", input[t]).as_bytes())
                     .unwrap();
             }
-            
-            // TODO(@ninehusky): this is going to assume we only want to interpret on the first output.
-            let (serialized, root_node) = prep_interpreter(churchroad_src_path.clone(), outputs.first().unwrap().0);
-
             let result = interpret(&serialized, &root_node.eclass, t, &env).unwrap();
             interpreter_results.push(result);
         }
@@ -299,14 +316,11 @@ fn verilator(
         .map(|line| line.trim_start_matches("output: ").parse().unwrap())
         .collect();
 
-    for (interpreter_result, verilator_result) in interpreter_results.iter().zip(verilator_output_values.iter()) {
-        match interpreter_result {
-            InterpreterResult::Bitvector(val, _) => {
-                // TODO(@ninehusky): there is potentially suspicious unit conversion stuff happening here? hopefully is simple cast
-                assert_eq!(*val, *verilator_result);
-            }
-            _ => panic!("expected bitvector result"),
-        }
+    for (InterpreterResult::Bitvector(val, _), verilator_result) in interpreter_results
+        .iter()
+        .zip(verilator_output_values.iter())
+    {
+        assert_eq!(val, verilator_result);
     }
 
     let test_output_path = test_output_dir.join("test_output.txt");
@@ -344,66 +358,4 @@ interpreter_test!(
     ]
     .into(),
     "out"
-);
-
-// TODO(@ninehusky): Fix this test, it's currently broken until we fix the interpreter
-// and use the non-broken LUT6.egg file.
-interpreter_test!(
-    test_lut6_0,
-    // grab the only 1-bit from INIT
-    InterpreterResult::Bitvector(0b1, 1),
-    "tests/interpreter_tests/LUT6-modified.egg",
-    0,
-    &[
-        ("INIT", vec![0x0000000000000002]),
-        ("I0", vec![0b1]),
-        ("I1", vec![0b0]),
-        ("I2", vec![0b0]),
-        ("I3", vec![0b0]),
-        ("I4", vec![0b0]),
-        ("I5", vec![0b0]),
-    ]
-    .into(),
-    "O"
-);
-
-// TODO(@ninehusky): Fix this test, it's currently broken until we fix the interpreter
-// and use the non-broken LUT6.egg file.
-interpreter_test!(
-    test_lut6_1,
-    // grab the only 1-bit from INIT
-    InterpreterResult::Bitvector(0b1, 1),
-    "tests/interpreter_tests/LUT6-modified.egg",
-    0,
-    &[
-        ("INIT", vec![0x0000000000000010]),
-        ("I0", vec![0b0]),
-        ("I1", vec![0b0]),
-        ("I2", vec![0b1]),
-        ("I3", vec![0b0]),
-        ("I4", vec![0b0]),
-        ("I5", vec![0b0]),
-    ]
-    .into(),
-    "O"
-);
-
-// TODO(@ninehusky): Fix this test, it's currently broken until we fix the interpreter
-// and use the non-broken LUT6.egg file.
-interpreter_test!(
-    test_lut6_2,
-    InterpreterResult::Bitvector(0b1, 1),
-    "tests/interpreter_tests/LUT6-modified.egg",
-    0,
-    &[
-        ("INIT", vec![398976]),
-        ("I0", vec![0b0]),
-        ("I1", vec![0b1]),
-        ("I2", vec![0b0]),
-        ("I3", vec![0b1]),
-        ("I4", vec![0b0]),
-        ("I5", vec![0b0]),
-    ]
-    .into(),
-    "O"
 );

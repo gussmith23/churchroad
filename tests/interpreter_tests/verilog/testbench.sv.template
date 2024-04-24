@@ -1,6 +1,4 @@
-
-`include "LUT6.v"
-
+`include "{filename}"
 module testbench;
 
 
@@ -17,20 +15,15 @@ logic [{max_input_bitwidth}-1:0] inputs[];
 localparam CLK_PERIOD = 10;
 localparam STDIN = 32'h8000_0000;
 
-// Tracks whether the outputs have been all zeroes. This is a common failure
-// mode when tests aren't set up correctly; for example, if we have the wrong
-// initiation interval.
-// logic seen_a_one = 1'b0;
-
 initial begin
   $fscanf(STDIN, "%d %d %d\n", num_inputs, num_test_cases, num_clock_cycles);
-  // $display("num_inputs = %d, num_test_cases = %d, num_clock_cycles = %d\n",
-  //   num_inputs, num_test_cases, num_clock_cycles);
+  $display("num_inputs = %d, num_test_cases = %d, num_clock_cycles = %d\n",
+    num_inputs, num_test_cases, num_clock_cycles);
 
   inputs = new[num_inputs];
 
   for (int i = 0; i < num_test_cases; i++) begin
-  // $display("Test case %d\n", i);
+    $display("Test case %d\n", i);
     for (int j = 0; j < num_clock_cycles; j++) begin
       for (int k = 0; k < num_inputs; k++) begin
         $fscanf(STDIN, "%X\n", inputs[k]);
@@ -38,41 +31,9 @@ initial begin
       end
       // {display_inputs}
       #CLK_PERIOD;
-      $display("output: %d\n", simulate_with_verilator_test_module.O);
-      // {display_outputs}
+      {display_outputs}
     end
-
-    // First half of clock cycle 0 (inputs=inputs, clock=0)
-    // Note that this evaluation also handles the combinational case.
-    // {set_inputs}
-    // {clear_clock}
-    // {display_inputs}
-    // #CLK_PERIOD;
-
-    // // For each requested clock cycle, finish the last half of the current clock
-    // // cycle and then start the first half of the next clock cycle.
-    // for (int clk_i = 0; clk_i < {initiation_interval}; clk_i++) begin
-    //   // Second half of cycle clk_i (inputs=random, clock=1)
-    //   {randomize_inputs} 
-    //   {set_clock}
-    //   #CLK_PERIOD;
-
-    //   // First half of cycle clk_i+1 (inputs=random, clock=0)
-    //   if (clk_i < {initiation_interval}-1) begin
-    //     {clear_clock} 
-    //     {randomize_inputs}
-    //     #CLK_PERIOD;
-    //   end
-    // end
-
-    // Record whether any of the output bits are non-zero.
-    // seen_a_one = seen_a_one | {outputs_reduced_by_or};
-
-    // {display_outputs}
-    // assert({check_outputs});
   end
-
-  // assert(({expect_all_zero_outputs})^seen_a_one);
 
   $finish;
 end

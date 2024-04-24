@@ -105,10 +105,7 @@ fn interpret_helper(
                             let result = match op.op.as_str() {
                                 "And" => a & b,
                                 "Or" => a | b,
-                                "Shr" => {
-                                    println!("{} >> {}", a, b);
-                                    a >> b
-                                },
+                                "Shr" => a >> b,
                                 _ => unreachable!(),
                             };
                             Ok(InterpreterResult::Bitvector(result, *a_bw))
@@ -176,7 +173,8 @@ fn interpret_helper(
                         InterpreterResult::Bitvector(val, bw) => {
                             // from Rosette docs:
                             // https://docs.racket-lang.org/rosette-guide/sec_bitvectors.html#%28def._%28%28lib._rosette%2Fbase%2Fbase..rkt%29._extract%29%29
-                            assert!(*bw > i && i >= j && j >= 0);
+                            // TODO(@ninehusky): here, we should also assert that j >= 0 if churchroad handles signed numbers
+                            assert!(*bw > i && i >= j);
 
                             // TODO(@ninehusky): check this, because copilot wrote this
                             let mask = (1 << (i - j + 1)) - 1;
@@ -184,7 +182,10 @@ fn interpret_helper(
                         }
                     };
 
-                    Ok(InterpreterResult::Bitvector(val, (i - j + 1).try_into().unwrap()))
+                    Ok(InterpreterResult::Bitvector(
+                        val,
+                        (i - j + 1).try_into().unwrap(),
+                    ))
                 }
                 "Concat" => match (&children[0], &children[1]) {
                     (
@@ -208,7 +209,6 @@ fn interpret_helper(
                         .unwrap();
                     match children[0] {
                         Ok(InterpreterResult::Bitvector(val, _)) => {
-                            // let mask = (1 << bw) - 1; 
                             Ok(InterpreterResult::Bitvector(val, extension_bw))
                         }
                         _ => todo!(),
