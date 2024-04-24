@@ -8,52 +8,58 @@ use egglog::{EGraph, SerializeConfig};
 
 use churchroad::{import_churchroad, interpret, InterpreterResult};
 
-macro_rules! interpreter_test {
-    ($test_name:ident, $expected:expr, $filename:literal, $time:literal, $env:expr, $out: literal) => {
-        #[test]
-        fn $test_name() {
-            let program = std::fs::read_to_string($filename).unwrap();
-            let mut egraph: EGraph = EGraph::default();
-            import_churchroad(&mut egraph);
-            egraph.parse_and_run_program(&program).unwrap();
-            egraph
-                .parse_and_run_program(
-                    format!("(relation IsRoot (Expr)) (IsRoot {})", $out).as_str(),
-                )
-                .unwrap();
-            let serialized = egraph.serialize(SerializeConfig::default());
-            let (_, is_root_node) = serialized
-                .nodes
-                .iter()
-                .find(|(_, n)| n.op == "IsRoot")
-                .unwrap();
-            if is_root_node.children.len() != 1 {
-                panic!("IsRoot relation must have exactly one child");
-            }
-            let root_id = is_root_node.children.first().unwrap();
-            let (_, root_node) = serialized
-                .nodes
-                .iter()
-                .find(|(node_id, _)| **node_id == *root_id)
-                .unwrap();
 
-            assert_eq!(
-                $expected,
-                interpret(&serialized, &root_node.eclass, $time, $env).unwrap()
-            );
-        }
-    };
-}
-
+// Creates an EGraph from a Verilog file using Churchroad, and returns the serialized EGraph and the root node.
 fn prep_interpreter(
-    churchroad_prog_path: PathBuf,
+    module_verilog_path: PathBuf,
+    test_output_dir: PathBuf,
+    top_module_name: &str,
     output_name: &str,
 ) -> (egraph_serialize::EGraph, egraph_serialize::Node) {
+    if std::env::var("CHURCHROAD_DIR").is_err() {
+        panic!("Please set the CHURCHROAD_DIR environment variable!");
+    }
+
+    let churchroad_dir_str: String = std::env::var("CHURCHROAD_DIR").unwrap();
+
+    let churchroad_yosys_dir = std::path::Path::new(&churchroad_dir_str).join("yosys-plugin/churchroad.so");
+
+    let churchroad_src_path = test_output_dir.join(format!("{}.egg", top_module_name));
+
+    let yosys_commands = format!(
+            "read_verilog -sv {}; prep -top {}; pmuxtree; write_lakeroad",
+            module_verilog_path.to_str().unwrap(),
+            top_module_name,
+        );
+
+    let yosys_proc = std::process::Command::new("yosys")
+        .arg("-m")
+        .arg(churchroad_yosys_dir)
+        .arg("-q")
+        .arg("-p")
+        .arg(yosys_commands)
+        .output();
+
+    let yosys_output = yosys_proc.unwrap();
+
+    if !yosys_output.status.success() {
+        panic!(
+            "Yosys failed, stderr: {:?}",
+            String::from_utf8(yosys_output.stderr)
+        );
+    }
+
+    std::fs::write(&churchroad_src_path, yosys_output.stdout).unwrap();
+    println!(
+        "logged Churchroad source to: {}",
+        churchroad_src_path.to_str().unwrap()
+    );
+
     // prep egraph for interpretation
     let mut egraph: EGraph = EGraph::default();
     import_churchroad(&mut egraph);
     egraph
-        .parse_and_run_program(&std::fs::read_to_string(churchroad_prog_path).unwrap())
+        .parse_and_run_program(&std::fs::read_to_string(churchroad_src_path).unwrap())
         .unwrap();
     egraph
         .parse_and_run_program(
@@ -101,9 +107,7 @@ fn test_lut6_0() {
     ];
     let outputs: Vec<(&str, i32)> = vec![("O", 1)];
 
-    let include_dirs = vec![
-        churchroad_dir.join("tests/interpreter_tests/verilog/"),
-    ];
+    let include_dirs = vec![churchroad_dir.join("tests/interpreter_tests/verilog/")];
 
     verilator_intepreter_fuzz_test(
         testbench_template_path,
@@ -113,15 +117,14 @@ fn test_lut6_0() {
         outputs,
         include_dirs,
         std::env::temp_dir(),
-        churchroad_dir.join("tests/interpreter_tests/LUT6-modified.egg"),
         100,
         5,
-        "LUT6-modified.v",
+        churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
     );
 }
 
 // This test runs verilator against our interpreter, failing if the outputs of the two differ.
-// 
+//
 // testbench_template_path: path to the testbench template file
 // makefile_template_path: path to the Makefile template file
 // top_module_name: name of the top module in the Verilog file
@@ -141,10 +144,9 @@ fn verilator_intepreter_fuzz_test(
     outputs: Vec<(&str, i32)>,
     include_dirs: Vec<PathBuf>,
     test_output_dir: PathBuf,
-    churchroad_src_path: PathBuf,
     num_test_cases: usize,
     num_clock_cycles: usize,
-    filename: &str,
+    verilog_module_path: PathBuf,
 ) {
     if std::env::var("CXX").is_err() {
         std::env::set_var("CXX", "clang++ -std=c++20")
@@ -152,6 +154,16 @@ fn verilator_intepreter_fuzz_test(
 
     let testbench_path = test_output_dir.join("testbench.sv");
     let makefile_path = test_output_dir.join("Makefile");
+
+    // just grab the filename without any leading directories
+    let filename = verilog_module_path
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split('/')
+        .last()
+        .unwrap();
 
     let testbench_prog = std::fs::read_to_string(testbench_template_path)
         .unwrap()
@@ -274,8 +286,12 @@ fn verilator_intepreter_fuzz_test(
     let num_inputs = inputs.len();
 
     // TODO(@ninehusky): this is going to assume we only want to interpret on the first output included in `outputs`.
-    let (serialized, root_node) =
-        prep_interpreter(churchroad_src_path.clone(), outputs.first().unwrap().0);
+    let (serialized, root_node) = prep_interpreter(
+        verilog_module_path.clone(),
+        test_output_dir.clone(),
+        top_module_name,
+        outputs[0].0,
+    );
 
     sim_proc_stdin
         .write_all(format!("{} {} {}\n", num_inputs, num_test_cases, num_clock_cycles).as_bytes())
@@ -340,10 +356,30 @@ fn verilator_intepreter_fuzz_test(
     println!("logged output to: {}", test_output_path.to_str().unwrap());
 }
 
+macro_rules! interpreter_test {
+    ($test_name:ident, $expected:expr, $verilog_path:literal, $module_name:literal, $time:literal, $env:expr, $out: literal) => {
+        #[test]
+        fn $test_name() {
+            let (serialized, root_node) = prep_interpreter(
+                PathBuf::from($verilog_path),
+                std::env::temp_dir(),
+                $module_name,
+                $out,
+            );
+
+            assert_eq!(
+                $expected,
+                interpret(&serialized, &root_node.eclass, $time, $env).unwrap()
+            );
+        }
+    };
+}
+
 interpreter_test!(
     test_alu_0,
     InterpreterResult::Bitvector(0b01010101, 8),
-    "tests/interpreter_tests/ALU.egg",
+    "tests/interpreter_tests/verilog/ALU.sv",
+    "ALU",
     0,
     &[
         ("a", vec![0b01010101]),
@@ -357,7 +393,8 @@ interpreter_test!(
 interpreter_test!(
     test_alu_1,
     InterpreterResult::Bitvector(0b11111111, 8),
-    "tests/interpreter_tests/ALU.egg",
+    "tests/interpreter_tests/verilog/ALU.sv",
+    "ALU",
     0,
     &[
         ("a", vec![0b01010101]),
