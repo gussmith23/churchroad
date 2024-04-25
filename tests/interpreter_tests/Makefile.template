@@ -1,9 +1,7 @@
 .PHONY: simulate
 
 # Replace the following line with the path to your Verilator binary
-# TODO(@ninehusky): replace this with `verilator` once this PR is merged:
-# https://github.com/verilator/verilator/pull/5031
-VERILATOR?=/Users/andrew/research/verilator/bin/verilator
+VERILATOR?=verilator
 
 {simulation_executable_name}: {testbench_file_path}
 	$(VERILATOR) -o {simulation_executable_name} -Wno-WIDTHTRUNC --assert --main --timing --Mdir {verilator_output_dir} --cc --exe --build $^ {extra_verilator_args}
