@@ -8,7 +8,6 @@ use egglog::{EGraph, SerializeConfig};
 
 use churchroad::{import_churchroad, interpret, InterpreterResult};
 
-
 // Creates an EGraph from a Verilog file using Churchroad, and returns the serialized EGraph and the root node.
 fn prep_interpreter(
     module_verilog_path: PathBuf,
@@ -22,15 +21,16 @@ fn prep_interpreter(
 
     let churchroad_dir_str: String = std::env::var("CHURCHROAD_DIR").unwrap();
 
-    let churchroad_yosys_dir = std::path::Path::new(&churchroad_dir_str).join("yosys-plugin/churchroad.so");
+    let churchroad_yosys_dir =
+        std::path::Path::new(&churchroad_dir_str).join("yosys-plugin/churchroad.so");
 
     let churchroad_src_path = test_output_dir.join(format!("{}.egg", top_module_name));
 
     let yosys_commands = format!(
-            "read_verilog -sv {}; prep -top {}; pmuxtree; write_lakeroad",
-            module_verilog_path.to_str().unwrap(),
-            top_module_name,
-        );
+        "read_verilog -sv {}; prep -top {}; pmuxtree; write_lakeroad",
+        module_verilog_path.to_str().unwrap(),
+        top_module_name,
+    );
 
     let yosys_proc = std::process::Command::new("yosys")
         .arg("-m")
@@ -148,7 +148,6 @@ fn verilator_intepreter_fuzz_test(
     num_clock_cycles: usize,
     verilog_module_path: PathBuf,
 ) {
-
     let testbench_path = test_output_dir.join("testbench.sv");
     let makefile_path = test_output_dir.join("Makefile");
 
