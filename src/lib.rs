@@ -1230,7 +1230,7 @@ mod tests {
             (let v2 (Wire "v2" 1))
 
             ; cells
-            (let some_module_instance (ModuleInstance "some_module" (vec-of "a" "b") (vec-of v0 v1)))
+            (let some_module_instance (ModuleInstance "some_module" (StringCons "a" (StringCons "b" (StringNil))) (ExprCons v0 (ExprCons v1 (ExprNil)))))
             (union (GetOutput some_module_instance "out") v2)
 
             ; inputs
