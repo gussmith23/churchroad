@@ -85,9 +85,9 @@ fn create_rewrites(
     // expressions, in the case of a LUT expression. This replacement isn't
     // checked for correctness.
     fn replace_in_expr(expr: Expr, replacement_map: &HashMap<Expr, Expr>) -> Expr {
-        expr.map(&mut |expr| {
-            if replacement_map.contains_key(expr) {
-                replacement_map[expr].clone()
+        expr.visit_exprs(&mut |expr| {
+            if replacement_map.contains_key(&expr) {
+                replacement_map[&expr].clone()
             } else {
                 expr.clone()
             }
