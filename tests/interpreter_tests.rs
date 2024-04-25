@@ -148,9 +148,6 @@ fn verilator_intepreter_fuzz_test(
     num_clock_cycles: usize,
     verilog_module_path: PathBuf,
 ) {
-    if std::env::var("CXX").is_err() {
-        std::env::set_var("CXX", "clang++ -std=c++20")
-    }
 
     let testbench_path = test_output_dir.join("testbench.sv");
     let makefile_path = test_output_dir.join("Makefile");

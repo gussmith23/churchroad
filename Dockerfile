@@ -102,6 +102,28 @@ RUN pip install -r requirements.txt
 
 ENV CHURCHROAD_DIR=/root/churchroad
 
+# Install Verilator.
+WORKDIR /root
+# We need to clone Verilator at this specific repository in order to get
+# the CXX flags to go through. Once this commit is merged,
+# we can probably change this to mainline Verilator.
+# See: https://github.com/verilator/verilator/pull/5031
+
+# Build Verilator.
+RUN source /root/dependencies.sh \
+&& apt-get install -y git help2man perl python3 make autoconf g++ flex bison ccache \
+&& apt-get install -y libgoogle-perftools-dev numactl perl-doc \
+&& apt-get install -y libfl2  \
+&& apt-get install -y libfl-dev  \
+&& git clone $VERILATOR_URL \
+&& cd verilator \
+&& git checkout $VERILATOR_COMMIT_HASH \
+&& autoconf \
+&& ./configure --prefix="/root/.local" \
+&& make -j ${MAKE_JOBS} \
+&& make -j ${MAKE_JOBS} install
+ 
+
 # Add other Churchroad files. It's useful to put this as far down as possible.
 # In general, only ADD files just before they're needed. This maximizes the
 # ability to cache intermediate containers and minimizes rebuilding.
