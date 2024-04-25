@@ -1,6 +1,5 @@
 .PHONY: simulate
 
-# Replace the following line with the path to your Verilator binary
 VERILATOR?=verilator
 
 {simulation_executable_name}: {testbench_file_path}
