@@ -4,13 +4,13 @@ use std::{
 };
 
 use egglog::{
-    ast::{parse, Literal, Symbol},
+    ast::{Literal, Symbol},
     constraint::{SimpleTypeConstraint, TypeConstraint},
     sort::{FromSort, I64Sort, IntoSort, Sort, VecSort},
-    util::IndexMap,
     ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
 };
-use egraph_serialize::{Class, ClassId, Node};
+use egraph_serialize::ClassId;
+use indexmap::IndexMap;
 
 #[derive(Default)]
 pub struct AnythingExtractor;
@@ -47,8 +47,27 @@ pub fn to_verilog_egraph_serialize(
     let mut registers = String::new();
     let mut module_declarations = String::new();
 
-    // Hack: just add all IDs to the queue.
-    let mut queue: Vec<ClassId> = choices.keys().cloned().collect();
+    // Collect all the outputs.
+    let mut queue: Vec<ClassId> = egraph
+        .nodes
+        .iter()
+        .filter_map(|(_id, node)| {
+            // op should be IsPort
+            let op = &node.op;
+            if op != "IsPort" {
+                return None;
+            }
+
+            assert_eq!(node.children.len(), 4);
+
+            if egraph[&node.children[2]].op != "Output" {
+                return None;
+            }
+
+            Some(egraph[&node.children[3]].eclass.clone())
+        })
+        .collect();
+
     let mut done = HashSet::new();
 
     while let Some(id) = queue.pop() {
@@ -61,7 +80,13 @@ pub fn to_verilog_egraph_serialize(
             //
             // Ignore the Unit.
             "()" |
+            // Ignore various relations/facts.
+            "IsPort" |
+            "Input" |
+            "Output" |
             // Ignore the nodes for the ops themselves.
+            "Concat" |
+            "Extract" |
             "Or" |
             "And" |
             "Add" |
@@ -72,7 +97,7 @@ pub fn to_verilog_egraph_serialize(
             // Ignore integer literals.
             v if v.parse::<i64>().is_ok() => (),
 
-            "Op1" => {
+            "Op1" | "Op2" => {
                 let op_node = &egraph[&term.children[0]];
                 match op_node.op.as_str() {
                     "Reg" => {
@@ -101,15 +126,92 @@ pub fn to_verilog_egraph_serialize(
                     if !done.contains(&d_id) {
                         queue.push(d_id.clone());
                     }
-                    // if !done.contains(&clk_id) {
-                    //     queue.push(clk_id);
-                    // }
+                    },
+                    "Concat" | "Xor" |"And" | "Or" =>  {
+                            assert_eq!(term.children.len(), 3);
+                    let expr0_id = &egraph[&term.children[1]].eclass;
+                    let  expr1_id = &egraph[&term.children[2]].eclass;
+                    logic_declarations.push_str(&format!(
+                        "logic {this_wire} = {op};\n",
+                        op = match op_node.op.as_str() {
+
+                            "Concat" => format!("{{ {expr0}, {expr1} }}",
+                        expr0 = id_to_wire_name(&expr0_id),
+                        expr1 = id_to_wire_name(&expr1_id),
+                        ),
+                            "Xor" => format!("{expr0}^{expr1}",
+                        expr0 = id_to_wire_name(&expr0_id),
+                        expr1 = id_to_wire_name(&expr1_id),
+                        ),
+                            "And" => format!("{expr0}&{expr1}",
+                        expr0 = id_to_wire_name(&expr0_id),
+                        expr1 = id_to_wire_name(&expr1_id),
+                        ),
+                            "Or" => format!("{expr0}|{expr1}",
+                        expr0 = id_to_wire_name(&expr0_id),
+                        expr1 = id_to_wire_name(&expr1_id),
+                        ),
+                        _ => unreachable!("missing a match arm"),
+                        } ,
+                        this_wire = id_to_wire_name(&term.eclass),
+                    ));
+
+                    if !done.contains(&expr0_id) {
+                        queue.push(expr0_id.clone());
                     }
+                    if !done.contains(&expr1_id) {
+                        queue.push(expr1_id.clone());
+                    }
+                }
+                "Extract" => {//}, [hi_id, lo_id, expr_id]) => {
+                    assert_eq!(term.children.len(), 2);
+                    assert_eq!(op_node.children.len(), 2);
+                    let hi:i64 = egraph[&op_node.children[0]].op.parse().unwrap();
+                    let lo:i64 = egraph[&op_node.children[1]].op.parse().unwrap();
+                    let id = &term.eclass;
+                    let expr_id = &egraph[&term.children[1]].eclass;
+                    logic_declarations.push_str(&format!(
+                        "logic {this_wire} = {expr}[{hi}:{lo}];\n",
+                        hi = hi,
+                        lo = lo,
+                        this_wire = id_to_wire_name(id),
+                        expr = id_to_wire_name(expr_id),
+                    ));
+
+                    if !done.contains(expr_id) {
+                        queue.push(expr_id.clone());
+                    }
+                }
+
                 v => todo!("{:?}", v),
 
                 }
 
             }
+
+                "Var" => {//}, [name_id, bw_id]) => {
+                    assert_eq!(term.children.len(), 2);
+
+                        let name = egraph[&term.children[0]].op.as_str().strip_prefix("\"").unwrap().strip_suffix("\"").unwrap();
+                        let bw: i64 = egraph[&term.children[1]].op.parse().unwrap();
+
+                    inputs.push_str(
+                        format!("input [{bw}-1:0] {name},\n", bw = bw, name = name).as_str(),
+                    );
+
+                    logic_declarations.push_str(
+                        format!(
+                            "logic [{bw}-1:0] {this_wire} = {name};\n",
+                            bw = bw,
+                            this_wire = id_to_wire_name(&term.eclass),
+                            name = name
+                        )
+                        .as_str(),
+                    );
+                }
+
+                // Skip string literals.
+            _ if term.eclass.to_string().starts_with("String") => (),
 
             // Term::Lit(Literal::Int(v)) => {
             //     logic_declarations.push_str(&format!(
@@ -279,13 +381,26 @@ pub fn to_verilog_egraph_serialize(
         }
     }
 
+    // For display purposes, we can clean this up later.
+    let inputs = inputs
+        .split("\n")
+        .map(|line| format!("  {}", line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let logic_declarations = logic_declarations
+        .split("\n")
+        .map(|line| format!("  {}", line))
+        .collect::<Vec<_>>()
+        .join("\n");
+
     format!(
-        "module top({inputs});
-            {inputs}
-            {logic_declarations}
-            {registers}
-            {module_declarations}
-        endmodule",
+        "module top(
+{inputs}
+);
+{logic_declarations}
+{registers}
+{module_declarations}
+endmodule",
         inputs = inputs,
         logic_declarations = logic_declarations,
         registers = registers,
