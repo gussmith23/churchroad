@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    hash::Hash,
     sync::Arc,
 };
 
@@ -435,7 +434,7 @@ pub fn to_verilog_egraph_serialize(
         .iter()
         .map(
             |(
-                class_id,
+                _class_id,
                 ModuleInstance {
                     module_class_name,
                     instance_name,
