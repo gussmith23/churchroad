@@ -45,7 +45,7 @@ pub fn to_verilog_egraph_serialize(
     let mut inputs = String::new();
     let mut logic_declarations = String::new();
     let mut registers = String::new();
-    let mut module_declarations = String::new();
+    let module_declarations = String::new();
 
     // Collect all the outputs.
     let mut queue: Vec<ClassId> = egraph
@@ -1267,7 +1267,7 @@ mod tests {
             .unwrap();
 
         let serialized = egraph.serialize(SerializeConfig::default());
-        let out = (AnythingExtractor::default().extract(&serialized, &[]));
+        let out = AnythingExtractor::default().extract(&serialized, &[]);
 
         // TODO(@gussmith23) terrible assertion, but it's a start.
         assert_eq!(
