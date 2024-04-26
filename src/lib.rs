@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    hash::Hash,
     sync::Arc,
 };
 
@@ -42,10 +43,18 @@ pub fn to_verilog_egraph_serialize(
         format!("wire_{}", id)
     }
 
+    struct ModuleInstance {
+        module_class_name: String,
+        instance_name: String,
+        inputs: HashMap<String, ClassId>,
+        outputs: HashMap<String, ClassId>,
+    }
+    // Maps EClass ID to the module instance at that class.
+    let mut module_instantiations: HashMap<ClassId, ModuleInstance> = HashMap::new();
+
     let mut inputs = String::new();
     let mut logic_declarations = String::new();
     let mut registers = String::new();
-    let module_declarations = String::new();
 
     // Collect all the outputs.
     let mut queue: Vec<ClassId> = egraph
@@ -212,6 +221,35 @@ pub fn to_verilog_egraph_serialize(
 
                 // Skip string literals.
             _ if term.eclass.to_string().starts_with("String") => (),
+
+            "GetOutput" => {
+                assert_eq!(term.children.len(), 2);
+
+                let module_class = &egraph[&term.children[0]].eclass;
+                let output_class = &egraph[&term.children[1]].eclass;
+                let output_name = egraph[&term.children[1]].op.as_str().strip_prefix("\"").unwrap().strip_suffix("\"").unwrap();
+
+                // get module class name (e.g. mymodule in `mymodule m (ports);`)
+                assert_eq!(egraph[module_class].nodes.len(),1);
+                let node = &egraph[&egraph[module_class].nodes[0]];
+                assert_eq!(node.op, "ModuleInstance");
+                assert_eq!(node.children.len(), 3);
+                let module_class_name = egraph[&node.children[0].clone()].op.as_str().strip_prefix("\"").unwrap().strip_suffix("\"").unwrap();
+
+                // If we haven't seen this module yet, create a new module instance.
+                if !module_instantiations.contains_key(module_class) {
+                    module_instantiations.insert(module_class.clone(), ModuleInstance {
+                        module_class_name: module_class_name.to_owned(),
+                        instance_name: format!("module_{}", module_class),
+                        inputs: HashMap::new(),
+                        outputs: [(output_name.to_owned(), node.eclass.clone())].into(),
+                    });
+                } else if let Some(module_instance) = module_instantiations.get_mut(module_class) {
+                    module_instance.outputs.insert(output_name.to_owned(), output_class.clone());
+                }else {
+                    unreachable!("module_instantiations should contain the module class");
+                }
+            }
 
             // Term::Lit(Literal::Int(v)) => {
             //     logic_declarations.push_str(&format!(
@@ -393,18 +431,47 @@ pub fn to_verilog_egraph_serialize(
         .collect::<Vec<_>>()
         .join("\n");
 
+    let module_instantiations = module_instantiations
+        .iter()
+        .map(
+            |(
+                class_id,
+                ModuleInstance {
+                    module_class_name,
+                    instance_name,
+                    inputs,
+                    outputs,
+                },
+            )| {
+                let inputs = inputs
+                    .iter()
+                    .map(|(name, id)| format!("  .{}({}),", name, id_to_wire_name(id)))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                let outputs = outputs
+                    .iter()
+                    .map(|(name, id)| format!("  .{}({}),", name, id_to_wire_name(id)))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                format!("  {module_class_name} {instance_name} ({inputs}{outputs});")
+            },
+        )
+        .collect::<Vec<_>>()
+        .join("\n");
+
     format!(
         "module top(
 {inputs}
 );
 {logic_declarations}
 {registers}
-{module_declarations}
+{module_instantiations}
 endmodule",
         inputs = inputs,
         logic_declarations = logic_declarations,
         registers = registers,
-        module_declarations = module_declarations,
     )
 }
 pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
@@ -1280,9 +1347,31 @@ always @(posedge clk) begin
                             wire_6 <= wire_6;
                         end
 
-
 endmodule",
             to_verilog_egraph_serialize(&serialized, &out, "clk")
         );
+    }
+
+    #[test]
+    fn compile_module_instance() {
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+
+        egraph
+            .parse_and_run_program(
+                r#"
+                (let a (Var "a" 8))
+                (IsPort "" "a" (Output) a)
+                (let b (Var "b" 8))
+                (IsPort "" "b" (Output) b)
+                (IsPort "" "out" (Output) (GetOutput (ModuleInstance "some_module" (StringCons "a" (StringCons "b" (StringNil))) (ExprCons a (ExprCons b (ExprNil)))) "out"))
+            "#,
+            )
+            .unwrap();
+
+        let serialized = egraph.serialize(SerializeConfig::default());
+        let out = AnythingExtractor::default().extract(&serialized, &[]);
+
+        println!("{}", to_verilog_egraph_serialize(&serialized, &out, ""));
     }
 }
