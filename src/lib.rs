@@ -1261,6 +1261,7 @@ mod tests {
                 (let reg (Op1 (Reg 0) placeholder))
                 (union placeholder reg)
                 (delete (Wire "placeholder" 8))
+                (IsPort "" "out" (Output) reg)
             "#,
             )
             .unwrap();
@@ -1270,16 +1271,17 @@ mod tests {
 
         // TODO(@gussmith23) terrible assertion, but it's a start.
         assert_eq!(
-            "module top();
-            
-            logic wire_6 = 0;
-
-            always @(posedge clk) begin
+            "module top(
+  
+);
+  logic wire_6 = 0;
+  
+always @(posedge clk) begin
                             wire_6 <= wire_6;
                         end
 
-            
-        endmodule",
+
+endmodule",
             to_verilog_egraph_serialize(&serialized, &out, "clk")
         );
     }
