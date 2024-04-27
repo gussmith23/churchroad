@@ -92,7 +92,7 @@ pub fn to_verilog_egraph_serialize(
         }
 
         outputs.push_str(&format!(
-            "output [TODO] {name},\n",
+            "output {name},\n",
             name = egraph[&node.children[1]]
                 .op
                 .as_str()
@@ -103,7 +103,7 @@ pub fn to_verilog_egraph_serialize(
         ));
 
         logic_declarations.push_str(&format!(
-            "logic [TODO] {name} = {wire};\n",
+            "logic {name} = {wire};\n",
             name = egraph[&node.children[1]]
                 .op
                 .as_str()
@@ -142,6 +142,7 @@ pub fn to_verilog_egraph_serialize(
             "Input" |
             "Output" |
             // Ignore the nodes for the ops themselves.
+            "ZeroExtend" |
             "Concat" |
             "Extract" |
             "Or" |
@@ -154,9 +155,37 @@ pub fn to_verilog_egraph_serialize(
             // Ignore integer literals.
             v if v.parse::<i64>().is_ok() => (),
 
-            "Op1" | "Op2" => {
+            "Op0" | "Op1" | "Op2" => {
                 let op_node = &egraph[&term.children[0]];
                 match op_node.op.as_str() {
+                    "ZeroExtend" => {
+                        assert_eq!(op_node.children.len(), 1);
+                        assert_eq!(term.children.len(), 2);
+                        let bw = egraph[&op_node.children[0]].op.parse::<i64>().unwrap();
+                    logic_declarations.push_str(
+                        format!(
+                            "logic [{bw}-1:0] {this_wire} = {bw}'d{value};\n",
+                            this_wire = id_to_wire_name(&id),
+                            value = id_to_wire_name(&egraph[&term.children[1]].eclass)
+
+                        )
+                        .as_str(),
+                    );
+
+                    }
+                    "BV" => {
+                        assert_eq!(op_node.children.len(), 2);
+                        let value = egraph[&op_node.children[0]].op.parse::<i64>().unwrap();
+                        let bw = egraph[&op_node.children[1]].op.parse::<i64>().unwrap();
+
+                    logic_declarations.push_str(
+                        format!(
+                            "logic [{bw}-1:0] {this_wire} = {bw}'d{value};\n",
+                            this_wire = id_to_wire_name(&id),
+                        )
+                        .as_str(),
+                    );
+                    }
                     "Reg" => {
                         let default_val = egraph[&op_node.children[0]].op.parse::<i64>().unwrap();
                         let d_id = &egraph[&term.children[1]].eclass;
@@ -321,14 +350,14 @@ pub fn to_verilog_egraph_serialize(
                         outputs: [(output_name.to_owned(), term.eclass.clone())].into(),
                     });
                 } else if let Some(module_instance) = module_instantiations.get_mut(module_class) {
-                    module_instance.outputs.insert(output_name.to_owned(), output_class.clone());
+                    module_instance.outputs.insert(output_name.to_owned(), term.eclass.clone());
                 }else {
                     unreachable!("module_instantiations should contain the module class");
                 }
 
                 logic_declarations.push_str(
                     format!(
-                        "logic [TODO] {this_wire};\n",
+                        "logic {this_wire};\n",
                         this_wire = id_to_wire_name(&term.eclass),
                     )
                     .as_str(),
@@ -509,6 +538,11 @@ pub fn to_verilog_egraph_serialize(
         .map(|line| format!("  {}", line))
         .collect::<Vec<_>>()
         .join("\n");
+    let outputs = outputs
+        .split("\n")
+        .map(|line| format!("  {}", line))
+        .collect::<Vec<_>>()
+        .join("\n");
     let logic_declarations = logic_declarations
         .split("\n")
         .map(|line| format!("  {}", line))
@@ -547,7 +581,8 @@ pub fn to_verilog_egraph_serialize(
 
     format!(
         "module top(
-{inputs}{outputs}
+{inputs}
+{outputs}
 );
 {logic_declarations}
 {registers}

@@ -78,10 +78,11 @@
 ;;; Expressing programs via direct application of Ops to leaf nodes (Vars
 ;;; and Consts).
 ; (OpN op input-expr...)
-(function Op0 (Op) Expr)
-(function Op1 (Op Expr) Expr)
-(function Op2 (Op Expr Expr) Expr)
-(function Op3 (Op Expr Expr Expr) Expr)
+; DO NOT MERGE: these costs are to force module extraction, but there should be a better way
+(function Op0 (Op) Expr :cost 1000)
+(function Op1 (Op Expr) Expr :cost 1000)
+(function Op2 (Op Expr Expr) Expr :cost 1000)
+(function Op3 (Op Expr Expr Expr) Expr :cost 1000)
 
 
 ; (Wire name bitwidth)
