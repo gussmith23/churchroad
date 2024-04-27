@@ -563,17 +563,17 @@ pub fn to_verilog_egraph_serialize(
             )| {
                 let inputs = inputs
                     .iter()
-                    .map(|(name, id)| format!(".{}({})", name, id_to_wire_name(id)))
+                    .map(|(name, id)| format!("    .{}({})", name, id_to_wire_name(id)))
                     .collect::<Vec<_>>()
-                    .join(", ");
+                    .join(",\n");
 
                 let outputs = outputs
                     .iter()
-                    .map(|(name, id)| format!(".{}({})", name, id_to_wire_name(id)))
+                    .map(|(name, id)| format!("    .{}({})", name, id_to_wire_name(id)))
                     .collect::<Vec<_>>()
-                    .join(", ");
+                    .join(",\n");
 
-                format!("  {module_class_name} {instance_name} ({inputs}, {outputs});")
+                format!("  {module_class_name} {instance_name} (\n{inputs},\n{outputs});")
             },
         )
         .collect::<Vec<_>>()
