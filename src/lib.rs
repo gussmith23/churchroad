@@ -832,9 +832,7 @@ pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
 // TODO(@gussmith23): This really shouldn't require mutability.
 pub fn get_inputs_and_outputs(
     egraph: &mut EGraph,
-) -> (Vec<(ArcSort, Value)>, Vec<(ArcSort, Value)>)
-where
-{
+) -> (Vec<(ArcSort, Value)>, Vec<(ArcSort, Value)>) {
     // Get the inputs and outputs.
     let mut inputs = vec![];
     let mut outputs = vec![];
