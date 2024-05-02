@@ -24,7 +24,7 @@ impl AnythingExtractor {
             .classes()
             .iter()
             .map(|(id, class)| {
-                let node_id = class.nodes.iter().next().unwrap().clone();
+                let node_id = class.nodes.first().unwrap().clone();
                 (id.clone(), node_id)
             })
             .collect()
@@ -206,10 +206,10 @@ pub fn to_verilog_egraph_serialize(
                         end\n",
                         // clk = id_to_wire_name(clk_id),
                         this_wire = id_to_wire_name(&id),
-                        d = id_to_wire_name(&d_id)
+                        d = id_to_wire_name(d_id)
                     ));
 
-                    if !done.contains(&d_id) {
+                    if !done.contains(d_id) {
                         queue.push(d_id.clone());
                     }
                     },
@@ -297,7 +297,7 @@ pub fn to_verilog_egraph_serialize(
                 assert_eq!(term.children.len(), 2);
 
                 let module_class = &egraph[&term.children[0]].eclass;
-                let output_class = &egraph[&term.children[1]].eclass;
+                let _output_class = &egraph[&term.children[1]].eclass;
                 let output_name = egraph[&term.children[1]].op.as_str().strip_prefix("\"").unwrap().strip_suffix("\"").unwrap();
 
                 // get module class name (e.g. mymodule in `mymodule m (ports);`)
@@ -719,7 +719,7 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
                         expr = id_to_wire_name(*expr_id),
                     ));
 
-                    if !done.contains(&expr_id) {
+                    if !done.contains(expr_id) {
                         queue.push(*expr_id);
                     }
                 }
@@ -731,10 +731,10 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
                         expr1 = id_to_wire_name(*expr1_id),
                     ));
 
-                    if !done.contains(&expr0_id) {
+                    if !done.contains(expr0_id) {
                         queue.push(*expr0_id);
                     }
-                    if !done.contains(&expr1_id) {
+                    if !done.contains(expr1_id) {
                         queue.push(*expr1_id);
                     }
                 }
@@ -750,7 +750,7 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
                         expr = id_to_wire_name(*expr_id),
                     ));
 
-                    if !done.contains(&expr_id) {
+                    if !done.contains(expr_id) {
                         queue.push(*expr_id);
                     }
                 }
@@ -772,7 +772,7 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
                         y = id_to_wire_name(id),
                     ));
 
-                    if !done.contains(&expr_id) {
+                    if !done.contains(expr_id) {
                         queue.push(*expr_id);
                     }
                 }
@@ -857,10 +857,11 @@ fn add_debruijnify(egraph: &mut EGraph) {
                 let value = egraph.find(value);
 
                 // If we haven't assinged it a number yet, give it the next one.
-                if !seen_values.contains_key(&value) {
-                    seen_values.insert(value, next_id);
+                seen_values.entry(value).or_insert_with(|| {
+                    let id = next_id;
                     next_id += 1;
-                }
+                    id
+                });
 
                 // Add the number to the output vector.
                 out.push(seen_values[&value].store(&self.i64_sort).unwrap());
@@ -1061,6 +1062,9 @@ pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
     }
 }
 
+/// Port type, port value.
+type Ports = Vec<(ArcSort, Value)>;
+
 /// ```
 /// use churchroad::*;
 /// use egglog::{ArcSort, EGraph, Term, TermDag, Value};
@@ -1130,9 +1134,7 @@ pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
 /// assert_eq!(output_expr, "(Op1 (Extract 0 0) (Op1 (Extract 0 0) (Op2 (And) (Var \"a\" 2) (Op1 (ZeroExtend 2) (Var \"b\" 1)))))");
 /// ```
 // TODO(@gussmith23): This really shouldn't require mutability.
-pub fn get_inputs_and_outputs(
-    egraph: &mut EGraph,
-) -> (Vec<(ArcSort, Value)>, Vec<(ArcSort, Value)>) {
+pub fn get_inputs_and_outputs(egraph: &mut EGraph) -> (Ports, Ports) {
     // Get the inputs and outputs.
     let mut inputs = vec![];
     let mut outputs = vec![];
@@ -1190,7 +1192,7 @@ pub fn get_inputs_and_outputs(
         }
     }
 
-    return (inputs, outputs);
+    (inputs, outputs)
 }
 
 #[cfg(test)]
@@ -1459,12 +1461,16 @@ mod tests {
         assert_eq!(
             "module top(
   
+  output out,
+  
 );
+  logic out = wire_6;
   logic wire_6 = 0;
   
 always @(posedge clk) begin
                             wire_6 <= wire_6;
                         end
+
 
 endmodule",
             to_verilog_egraph_serialize(&serialized, &out, "clk")
