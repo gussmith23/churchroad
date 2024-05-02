@@ -96,9 +96,9 @@ pub fn to_verilog_egraph_serialize(
             name = egraph[&node.children[1]]
                 .op
                 .as_str()
-                .strip_prefix("\"")
+                .strip_prefix('\"')
                 .unwrap()
-                .strip_suffix("\"")
+                .strip_suffix('\"')
                 .unwrap()
         ));
 
@@ -107,9 +107,9 @@ pub fn to_verilog_egraph_serialize(
             name = egraph[&node.children[1]]
                 .op
                 .as_str()
-                .strip_prefix("\"")
+                .strip_prefix('\"')
                 .unwrap()
-                .strip_suffix("\"")
+                .strip_suffix('\"')
                 .unwrap(),
             wire = id_to_wire_name(&egraph[&node.children[3]].eclass)
         ))
@@ -222,20 +222,20 @@ pub fn to_verilog_egraph_serialize(
                         op = match op_node.op.as_str() {
 
                             "Concat" => format!("{{ {expr0}, {expr1} }}",
-                        expr0 = id_to_wire_name(&expr0_id),
-                        expr1 = id_to_wire_name(&expr1_id),
+                        expr0 = id_to_wire_name(expr0_id),
+                        expr1 = id_to_wire_name(expr1_id),
                         ),
                             "Xor" => format!("{expr0}^{expr1}",
-                        expr0 = id_to_wire_name(&expr0_id),
-                        expr1 = id_to_wire_name(&expr1_id),
+                        expr0 = id_to_wire_name(expr0_id),
+                        expr1 = id_to_wire_name(expr1_id),
                         ),
                             "And" => format!("{expr0}&{expr1}",
-                        expr0 = id_to_wire_name(&expr0_id),
-                        expr1 = id_to_wire_name(&expr1_id),
+                        expr0 = id_to_wire_name(expr0_id),
+                        expr1 = id_to_wire_name(expr1_id),
                         ),
                             "Or" => format!("{expr0}|{expr1}",
-                        expr0 = id_to_wire_name(&expr0_id),
-                        expr1 = id_to_wire_name(&expr1_id),
+                        expr0 = id_to_wire_name(expr0_id),
+                        expr1 = id_to_wire_name(expr1_id),
                         ),
                         _ => unreachable!("missing a match arm"),
                         } ,
@@ -272,7 +272,7 @@ pub fn to_verilog_egraph_serialize(
                 "Var" => {//}, [name_id, bw_id]) => {
                     assert_eq!(term.children.len(), 2);
 
-                        let name = egraph[&term.children[0]].op.as_str().strip_prefix("\"").unwrap().strip_suffix("\"").unwrap();
+                        let name = egraph[&term.children[0]].op.as_str().strip_prefix('\"').unwrap().strip_suffix('\"').unwrap();
                         let bw: i64 = egraph[&term.children[1]].op.parse().unwrap();
 
                     inputs.push_str(
@@ -298,14 +298,14 @@ pub fn to_verilog_egraph_serialize(
 
                 let module_class = &egraph[&term.children[0]].eclass;
                 let _output_class = &egraph[&term.children[1]].eclass;
-                let output_name = egraph[&term.children[1]].op.as_str().strip_prefix("\"").unwrap().strip_suffix("\"").unwrap();
+                let output_name = egraph[&term.children[1]].op.as_str().strip_prefix('\"').unwrap().strip_suffix('\"').unwrap();
 
                 // get module class name (e.g. mymodule in `mymodule m (ports);`)
                 assert_eq!(egraph[module_class].nodes.len(),1);
                 let module_instance_node = &egraph[&egraph[module_class].nodes[0]];
                 assert_eq!(module_instance_node.op, "ModuleInstance");
                 assert_eq!(module_instance_node.children.len(), 3);
-                let module_class_name = egraph[&module_instance_node.children[0].clone()].op.as_str().strip_prefix("\"").unwrap().strip_suffix("\"").unwrap();
+                let module_class_name = egraph[&module_instance_node.children[0].clone()].op.as_str().strip_prefix('\"').unwrap().strip_suffix('\"').unwrap();
 
 
                 fn cons_list_to_vec(egraph: &egraph_serialize::EGraph, cons_class_id: &ClassId) -> Vec<ClassId> {
@@ -314,7 +314,7 @@ pub fn to_verilog_egraph_serialize(
                     match cons_node.op.as_str() {
                         "StringCons" | "ExprCons" => {
                             assert_eq!(cons_node.children.len(), 2);
-                            vec![egraph[&cons_node.children[0]].eclass.clone()].iter().chain(cons_list_to_vec(egraph, &egraph[&cons_node.children[1]].eclass).iter()).cloned().collect()
+                            [egraph[&cons_node.children[0]].eclass.clone()].iter().chain(cons_list_to_vec(egraph, &egraph[&cons_node.children[1]].eclass).iter()).cloned().collect()
                         }
                         "StringNil" | "ExprNil" => {
                             assert_eq!(cons_node.children.len(), 0);
@@ -328,7 +328,7 @@ pub fn to_verilog_egraph_serialize(
                 fn class_id_vec_to_strings(egraph: &egraph_serialize::EGraph, class_id_vec: Vec<ClassId>) -> Vec<String> {
                     class_id_vec.iter().map(|id| {
                         assert_eq!(egraph[id].nodes.len(), 1);
-                        egraph[&egraph[id].nodes[0]].op.as_str().strip_prefix("\"").unwrap().strip_suffix("\"").unwrap().to_owned()
+                        egraph[&egraph[id].nodes[0]].op.as_str().strip_prefix('\"').unwrap().strip_suffix('\"').unwrap().to_owned()
                     }).collect()
                 }
 
@@ -534,17 +534,17 @@ pub fn to_verilog_egraph_serialize(
 
     // For display purposes, we can clean this up later.
     let inputs = inputs
-        .split("\n")
+        .split('\n')
         .map(|line| format!("  {}", line))
         .collect::<Vec<_>>()
         .join("\n");
     let outputs = outputs
-        .split("\n")
+        .split('\n')
         .map(|line| format!("  {}", line))
         .collect::<Vec<_>>()
         .join("\n");
     let logic_declarations = logic_declarations
-        .split("\n")
+        .split('\n')
         .map(|line| format!("  {}", line))
         .collect::<Vec<_>>()
         .join("\n");
@@ -1455,7 +1455,7 @@ mod tests {
             .unwrap();
 
         let serialized = egraph.serialize(SerializeConfig::default());
-        let out = AnythingExtractor::default().extract(&serialized, &[]);
+        let out = AnythingExtractor.extract(&serialized, &[]);
 
         // TODO(@gussmith23) terrible assertion, but it's a start.
         assert_eq!(
@@ -1495,7 +1495,7 @@ endmodule",
             .unwrap();
 
         let serialized = egraph.serialize(SerializeConfig::default());
-        let out = AnythingExtractor::default().extract(&serialized, &[]);
+        let out = AnythingExtractor.extract(&serialized, &[]);
 
         println!("{}", to_verilog_egraph_serialize(&serialized, &out, ""));
     }
