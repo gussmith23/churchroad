@@ -824,12 +824,12 @@ type Ports = Vec<(String, ArcSort, Value)>;
 /// // Get expressions for each input.
 /// let input_exprs: Vec<String> = inputs
 ///     .iter()
-///     .map(|(sort, value)| value_to_string(value, sort.clone(), &egraph))
+///     .map(|(_name, sort, value)| value_to_string(value, sort.clone(), &egraph))
 ///     .collect();
 ///
 /// assert_eq!(input_exprs, vec!["(Var \"a\" 2)", "(Var \"b\" 1)"]);
 ///
-/// let output_expr = value_to_string(&outputs[0].1, outputs[0].0.clone(), &egraph);
+/// let output_expr = value_to_string(&outputs[0].2, outputs[0].1.clone(), &egraph);
 /// assert_eq!(output_expr, "(Op1 (Extract 0 0) (Op1 (Extract 0 0) (Op2 (And) (Var \"a\" 2) (Op1 (ZeroExtend 2) (Var \"b\" 1)))))");
 /// ```
 // TODO(@gussmith23): This really shouldn't require mutability.
