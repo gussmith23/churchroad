@@ -25,7 +25,8 @@ macro_rules! egglog_test {
             // let svg_path = Path::new($path).with_extension("svg");
             // serialized.to_svg_file(svg_path).unwrap();
 
-            $after_lambda(&mut egraph);
+            let after_lambda = $after_lambda;
+            after_lambda(&mut egraph);
         }
     };
 }
@@ -54,7 +55,7 @@ fn create_rewrites(
     fn extract_random(egraph: &egglog::EGraph, value: &Value, sort: &ArcSort, _seed: i64) -> Expr {
         warn!("This function currently always returns the same expr.");
         let mut termdag = TermDag::default();
-        let (_size, extracted) = egraph.extract(*value, &mut termdag, &sort);
+        let (_size, extracted) = egraph.extract(*value, &mut termdag, sort);
         termdag.term_to_expr(&extracted)
     }
 
@@ -116,7 +117,7 @@ egglog_test!(
             .eval_expr(&egglog::ast::Expr::Var((), "lut6out".into()))
             .unwrap();
         create_rewrites(
-            &egraph,
+            egraph,
             &value,
             &sort,
             1,

@@ -7,10 +7,10 @@ use egglog::{
     ast::{Literal, Symbol},
     constraint::{SimpleTypeConstraint, TypeConstraint},
     sort::{FromSort, I64Sort, IntoSort, Sort, VecSort},
-    util::IndexMap,
     ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
 };
 use egraph_serialize::ClassId;
+use indexmap::IndexMap;
 
 #[derive(Default)]
 pub struct AnythingExtractor;
@@ -42,14 +42,90 @@ pub fn to_verilog_egraph_serialize(
         format!("wire_{}", id)
     }
 
-    let inputs = String::new();
+    struct ModuleInstance {
+        module_class_name: String,
+        instance_name: String,
+        inputs: HashMap<String, ClassId>,
+        outputs: HashMap<String, ClassId>,
+    }
+    // Maps EClass ID to the module instance at that class.
+    let mut module_instantiations: HashMap<ClassId, ModuleInstance> = HashMap::new();
+
+    let mut inputs = String::new();
+    let mut outputs = String::new();
     let mut logic_declarations = String::new();
     let mut registers = String::new();
-    let module_declarations = String::new();
 
-    // Hack: just add all IDs to the queue.
-    let mut queue: Vec<ClassId> = choices.keys().cloned().collect();
+    // Collect all the outputs.
+    let mut queue: Vec<ClassId> = egraph
+        .nodes
+        .iter()
+        .filter_map(|(_id, node)| {
+            // op should be IsPort
+            let op = &node.op;
+            if op != "IsPort" {
+                return None;
+            }
+
+            assert_eq!(node.children.len(), 4);
+
+            if egraph[&node.children[2]].op != "Output" {
+                return None;
+            }
+
+            Some(egraph[&node.children[3]].eclass.clone())
+        })
+        .collect();
+
+    // Generate outputs.
+    for (_, node) in egraph.nodes.iter() {
+        // op should be IsPort
+        let op = &node.op;
+        if op != "IsPort" {
+            continue;
+        }
+
+        assert_eq!(node.children.len(), 4);
+
+        if egraph[&node.children[2]].op != "Output" {
+            continue;
+        }
+
+        outputs.push_str(&format!(
+            "output {name},\n",
+            name = egraph[&node.children[1]]
+                .op
+                .as_str()
+                .strip_prefix('\"')
+                .unwrap()
+                .strip_suffix('\"')
+                .unwrap()
+        ));
+
+        logic_declarations.push_str(&format!(
+            "logic {name} = {wire};\n",
+            name = egraph[&node.children[1]]
+                .op
+                .as_str()
+                .strip_prefix('\"')
+                .unwrap()
+                .strip_suffix('\"')
+                .unwrap(),
+            wire = id_to_wire_name(&egraph[&node.children[3]].eclass)
+        ))
+    }
+
     let mut done = HashSet::new();
+
+    fn maybe_push_expr_on_queue(
+        queue: &mut Vec<ClassId>,
+        done: &HashSet<ClassId>,
+        class_id: &ClassId,
+    ) {
+        if !queue.contains(class_id) && !done.contains(class_id) {
+            queue.push(class_id.clone());
+        }
+    }
 
     while let Some(id) = queue.pop() {
         done.insert(id.clone());
@@ -61,7 +137,14 @@ pub fn to_verilog_egraph_serialize(
             //
             // Ignore the Unit.
             "()" |
+            // Ignore various relations/facts.
+            "IsPort" |
+            "Input" |
+            "Output" |
             // Ignore the nodes for the ops themselves.
+            "ZeroExtend" |
+            "Concat" |
+            "Extract" |
             "Or" |
             "And" |
             "Add" |
@@ -72,9 +155,37 @@ pub fn to_verilog_egraph_serialize(
             // Ignore integer literals.
             v if v.parse::<i64>().is_ok() => (),
 
-            "Op1" => {
+            "Op0" | "Op1" | "Op2" => {
                 let op_node = &egraph[&term.children[0]];
                 match op_node.op.as_str() {
+                    "ZeroExtend" => {
+                        assert_eq!(op_node.children.len(), 1);
+                        assert_eq!(term.children.len(), 2);
+                        let bw = egraph[&op_node.children[0]].op.parse::<i64>().unwrap();
+                    logic_declarations.push_str(
+                        format!(
+                            "logic [{bw}-1:0] {this_wire} = {bw}'d{value};\n",
+                            this_wire = id_to_wire_name(&id),
+                            value = id_to_wire_name(&egraph[&term.children[1]].eclass)
+
+                        )
+                        .as_str(),
+                    );
+
+                    }
+                    "BV" => {
+                        assert_eq!(op_node.children.len(), 2);
+                        let value = egraph[&op_node.children[0]].op.parse::<i64>().unwrap();
+                        let bw = egraph[&op_node.children[1]].op.parse::<i64>().unwrap();
+
+                    logic_declarations.push_str(
+                        format!(
+                            "logic [{bw}-1:0] {this_wire} = {bw}'d{value};\n",
+                            this_wire = id_to_wire_name(&id),
+                        )
+                        .as_str(),
+                    );
+                    }
                     "Reg" => {
                         let default_val = egraph[&op_node.children[0]].op.parse::<i64>().unwrap();
                         let d_id = &egraph[&term.children[1]].eclass;
@@ -101,14 +212,156 @@ pub fn to_verilog_egraph_serialize(
                     if !done.contains(d_id) {
                         queue.push(d_id.clone());
                     }
-                    // if !done.contains(&clk_id) {
-                    //     queue.push(clk_id);
-                    // }
-                    }
+                    },
+                    "Concat" | "Xor" |"And" | "Or" =>  {
+                            assert_eq!(term.children.len(), 3);
+                    let expr0_id = &egraph[&term.children[1]].eclass;
+                    let  expr1_id = &egraph[&term.children[2]].eclass;
+                    logic_declarations.push_str(&format!(
+                        "logic {this_wire} = {op};\n",
+                        op = match op_node.op.as_str() {
+
+                            "Concat" => format!("{{ {expr0}, {expr1} }}",
+                        expr0 = id_to_wire_name(expr0_id),
+                        expr1 = id_to_wire_name(expr1_id),
+                        ),
+                            "Xor" => format!("{expr0}^{expr1}",
+                        expr0 = id_to_wire_name(expr0_id),
+                        expr1 = id_to_wire_name(expr1_id),
+                        ),
+                            "And" => format!("{expr0}&{expr1}",
+                        expr0 = id_to_wire_name(expr0_id),
+                        expr1 = id_to_wire_name(expr1_id),
+                        ),
+                            "Or" => format!("{expr0}|{expr1}",
+                        expr0 = id_to_wire_name(expr0_id),
+                        expr1 = id_to_wire_name(expr1_id),
+                        ),
+                        _ => unreachable!("missing a match arm"),
+                        } ,
+                        this_wire = id_to_wire_name(&term.eclass),
+                    ));
+
+                    maybe_push_expr_on_queue(&mut queue, &done, expr0_id);
+                    maybe_push_expr_on_queue(&mut queue, &done, expr1_id);
+                }
+                "Extract" => {//}, [hi_id, lo_id, expr_id]) => {
+                    assert_eq!(term.children.len(), 2);
+                    assert_eq!(op_node.children.len(), 2);
+                    let hi:i64 = egraph[&op_node.children[0]].op.parse().unwrap();
+                    let lo:i64 = egraph[&op_node.children[1]].op.parse().unwrap();
+                    let id = &term.eclass;
+                    let expr_id = &egraph[&term.children[1]].eclass;
+                    logic_declarations.push_str(&format!(
+                        "logic {this_wire} = {expr}[{hi}:{lo}];\n",
+                        hi = hi,
+                        lo = lo,
+                        this_wire = id_to_wire_name(id),
+                        expr = id_to_wire_name(expr_id),
+                    ));
+
+                    maybe_push_expr_on_queue(&mut queue, &done, expr_id);
+                }
+
                 v => todo!("{:?}", v),
 
                 }
 
+            }
+
+                "Var" => {//}, [name_id, bw_id]) => {
+                    assert_eq!(term.children.len(), 2);
+
+                        let name = egraph[&term.children[0]].op.as_str().strip_prefix('\"').unwrap().strip_suffix('\"').unwrap();
+                        let bw: i64 = egraph[&term.children[1]].op.parse().unwrap();
+
+                    inputs.push_str(
+                        format!("input [{bw}-1:0] {name},\n", bw = bw, name = name).as_str(),
+                    );
+
+                    logic_declarations.push_str(
+                        format!(
+                            "logic [{bw}-1:0] {this_wire} = {name};\n",
+                            bw = bw,
+                            this_wire = id_to_wire_name(&term.eclass),
+                            name = name
+                        )
+                        .as_str(),
+                    );
+                }
+
+                // Skip string literals.
+            _ if term.eclass.to_string().starts_with("String") => (),
+
+            "GetOutput" => {
+                assert_eq!(term.children.len(), 2);
+
+                let module_class = &egraph[&term.children[0]].eclass;
+                let _output_class = &egraph[&term.children[1]].eclass;
+                let output_name = egraph[&term.children[1]].op.as_str().strip_prefix('\"').unwrap().strip_suffix('\"').unwrap();
+
+                // get module class name (e.g. mymodule in `mymodule m (ports);`)
+                assert_eq!(egraph[module_class].nodes.len(),1);
+                let module_instance_node = &egraph[&egraph[module_class].nodes[0]];
+                assert_eq!(module_instance_node.op, "ModuleInstance");
+                assert_eq!(module_instance_node.children.len(), 3);
+                let module_class_name = egraph[&module_instance_node.children[0].clone()].op.as_str().strip_prefix('\"').unwrap().strip_suffix('\"').unwrap();
+
+
+                fn cons_list_to_vec(egraph: &egraph_serialize::EGraph, cons_class_id: &ClassId) -> Vec<ClassId> {
+                    assert_eq!(egraph[cons_class_id].nodes.len(), 1);
+                    let cons_node = &egraph[&egraph[cons_class_id].nodes[0]];
+                    match cons_node.op.as_str() {
+                        "StringCons" | "ExprCons" => {
+                            assert_eq!(cons_node.children.len(), 2);
+                            [egraph[&cons_node.children[0]].eclass.clone()].iter().chain(cons_list_to_vec(egraph, &egraph[&cons_node.children[1]].eclass).iter()).cloned().collect()
+                        }
+                        "StringNil" | "ExprNil" => {
+                            assert_eq!(cons_node.children.len(), 0);
+                            vec![]
+                        }
+                        _ => unreachable!()
+                    }
+
+                }
+
+                fn class_id_vec_to_strings(egraph: &egraph_serialize::EGraph, class_id_vec: Vec<ClassId>) -> Vec<String> {
+                    class_id_vec.iter().map(|id| {
+                        assert_eq!(egraph[id].nodes.len(), 1);
+                        egraph[&egraph[id].nodes[0]].op.as_str().strip_prefix('\"').unwrap().strip_suffix('\"').unwrap().to_owned()
+                    }).collect()
+                }
+
+                // Get module input names and input exprs.
+                let input_port_names= class_id_vec_to_strings(egraph, cons_list_to_vec(egraph, &egraph[&module_instance_node.children[1]].eclass));
+                let input_port_exprs=  cons_list_to_vec(egraph, &egraph[&module_instance_node.children[2]].eclass);
+                assert_eq!(input_port_exprs.len(), input_port_names.len());
+
+                for input_port_expr in &input_port_exprs {
+                    maybe_push_expr_on_queue(&mut queue, &done, input_port_expr);
+                }
+
+                // If we haven't seen this module yet, create a new module instance.
+                if !module_instantiations.contains_key(module_class) {
+                    module_instantiations.insert(module_class.clone(), ModuleInstance {
+                        module_class_name: module_class_name.to_owned(),
+                        instance_name: format!("module_{}", module_class),
+                        inputs: input_port_names.into_iter().zip(input_port_exprs.into_iter()).collect(),
+                        outputs: [(output_name.to_owned(), term.eclass.clone())].into(),
+                    });
+                } else if let Some(module_instance) = module_instantiations.get_mut(module_class) {
+                    module_instance.outputs.insert(output_name.to_owned(), term.eclass.clone());
+                }else {
+                    unreachable!("module_instantiations should contain the module class");
+                }
+
+                logic_declarations.push_str(
+                    format!(
+                        "logic {this_wire};\n",
+                        this_wire = id_to_wire_name(&term.eclass),
+                    )
+                    .as_str(),
+                );
             }
 
             // Term::Lit(Literal::Int(v)) => {
@@ -279,17 +532,65 @@ pub fn to_verilog_egraph_serialize(
         }
     }
 
+    // For display purposes, we can clean this up later.
+    let inputs = inputs
+        .split('\n')
+        .map(|line| format!("  {}", line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let outputs = outputs
+        .split('\n')
+        .map(|line| format!("  {}", line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let logic_declarations = logic_declarations
+        .split('\n')
+        .map(|line| format!("  {}", line))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let module_instantiations = module_instantiations
+        .iter()
+        .map(
+            |(
+                _class_id,
+                ModuleInstance {
+                    module_class_name,
+                    instance_name,
+                    inputs,
+                    outputs,
+                },
+            )| {
+                let inputs = inputs
+                    .iter()
+                    .map(|(name, id)| format!("    .{}({})", name, id_to_wire_name(id)))
+                    .collect::<Vec<_>>()
+                    .join(",\n");
+
+                let outputs = outputs
+                    .iter()
+                    .map(|(name, id)| format!("    .{}({})", name, id_to_wire_name(id)))
+                    .collect::<Vec<_>>()
+                    .join(",\n");
+
+                format!("  {module_class_name} {instance_name} (\n{inputs},\n{outputs});")
+            },
+        )
+        .collect::<Vec<_>>()
+        .join("\n");
+
     format!(
-        "module top({inputs});
-            {inputs}
-            {logic_declarations}
-            {registers}
-            {module_declarations}
-        endmodule",
+        "module top(
+{inputs}
+{outputs}
+);
+{logic_declarations}
+{registers}
+{module_instantiations}
+endmodule",
         inputs = inputs,
         logic_declarations = logic_declarations,
         registers = registers,
-        module_declarations = module_declarations,
     )
 }
 pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
@@ -1123,7 +1424,7 @@ mod tests {
             (let v2 (Wire "v2" 1))
 
             ; cells
-            (let some_module_instance (ModuleInstance "some_module" (vec-of "a" "b") (vec-of v0 v1)))
+            (let some_module_instance (ModuleInstance "some_module" (StringCons "a" (StringCons "b" (StringNil))) (ExprCons v0 (ExprCons v1 (ExprNil)))))
             (union (GetOutput some_module_instance "out") v2)
 
             ; inputs
@@ -1154,26 +1455,54 @@ mod tests {
                 (let reg (Op1 (Reg 0) placeholder))
                 (union placeholder reg)
                 (delete (Wire "placeholder" 8))
+                (IsPort "" "out" (Output) reg)
             "#,
             )
             .unwrap();
 
         let serialized = egraph.serialize(SerializeConfig::default());
-        let out = AnythingExtractor::default().extract(&serialized, &[]);
+        let out = AnythingExtractor.extract(&serialized, &[]);
 
         // TODO(@gussmith23) terrible assertion, but it's a start.
         assert_eq!(
-            "module top();
-            
-            logic wire_6 = 0;
-
-            always @(posedge clk) begin
+            "module top(
+  
+  output out,
+  
+);
+  logic out = wire_6;
+  logic wire_6 = 0;
+  
+always @(posedge clk) begin
                             wire_6 <= wire_6;
                         end
 
-            
-        endmodule",
+
+endmodule",
             to_verilog_egraph_serialize(&serialized, &out, "clk")
         );
+    }
+
+    #[test]
+    fn compile_module_instance() {
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+
+        egraph
+            .parse_and_run_program(
+                r#"
+                (let a (Var "a" 8))
+                (IsPort "" "a" (Input) a)
+                (let b (Var "b" 8))
+                (IsPort "" "b" (Input) b)
+                (IsPort "" "out" (Output) (GetOutput (ModuleInstance "some_module" (StringCons "a" (StringCons "b" (StringNil))) (ExprCons a (ExprCons b (ExprNil)))) "out"))
+            "#,
+            )
+            .unwrap();
+
+        let serialized = egraph.serialize(SerializeConfig::default());
+        let out = AnythingExtractor.extract(&serialized, &[]);
+
+        println!("{}", to_verilog_egraph_serialize(&serialized, &out, ""));
     }
 }
