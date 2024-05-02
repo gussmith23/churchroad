@@ -761,8 +761,8 @@ pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
     }
 }
 
-/// Port type, port value.
-type Ports = Vec<(ArcSort, Value)>;
+/// Port name, port type, port value.
+type Ports = Vec<(String, ArcSort, Value)>;
 
 /// ```
 /// use churchroad::*;
@@ -824,12 +824,12 @@ type Ports = Vec<(ArcSort, Value)>;
 /// // Get expressions for each input.
 /// let input_exprs: Vec<String> = inputs
 ///     .iter()
-///     .map(|(sort, value)| value_to_string(value, sort.clone(), &egraph))
+///     .map(|(_name, sort, value)| value_to_string(value, sort.clone(), &egraph))
 ///     .collect();
 ///
 /// assert_eq!(input_exprs, vec!["(Var \"a\" 2)", "(Var \"b\" 1)"]);
 ///
-/// let output_expr = value_to_string(&outputs[0].1, outputs[0].0.clone(), &egraph);
+/// let output_expr = value_to_string(&outputs[0].2, outputs[0].1.clone(), &egraph);
 /// assert_eq!(output_expr, "(Op1 (Extract 0 0) (Op1 (Extract 0 0) (Op2 (And) (Var \"a\" 2) (Op1 (ZeroExtend 2) (Var \"b\" 1)))))");
 /// ```
 // TODO(@gussmith23): This really shouldn't require mutability.
@@ -881,12 +881,18 @@ pub fn get_inputs_and_outputs(egraph: &mut EGraph) -> (Ports, Ports) {
             )
             .unwrap();
 
+        let port_name = children[1];
+        let port_name_str = match termdag.get(port_name) {
+            Term::Lit(Literal::String(name)) => name.to_string(),
+            _ => panic!(),
+        };
+
         match in_or_out {
             InOut::Input => {
-                inputs.push((sort, value));
+                inputs.push((port_name_str, sort, value));
             }
             InOut::Output => {
-                outputs.push((sort, value));
+                outputs.push((port_name_str, sort, value));
             }
         }
     }
