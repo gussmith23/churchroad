@@ -1,0 +1,3 @@
+(include "../../../egglog_src/churchroad.egg")
+(include "./out/alu.egg")
+(extract o_res)

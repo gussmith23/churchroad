@@ -1,0 +1,17 @@
+read_verilog -sv alu.sv;
+prep -top alu;
+hierarchy -check -top alu;
+splice; splitnets -driver;
+clean;
+techmap;
+dfflibmap -liberty mycells.lib;
+abc -liberty mycells.lib;
+read_verilog mycells.v;
+
+flatten;
+splice; splitnets -driver;
+clean;
+
+write_verilog out/alu_synth.v
+write_rtlil out/alu_synth.rtlil
+write_lakeroad out/alu.egg
