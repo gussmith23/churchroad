@@ -4,13 +4,13 @@ use std::{
 };
 
 use egglog::{
-    ast::{parse, Literal, Symbol},
+    ast::{Literal, Symbol},
     constraint::{SimpleTypeConstraint, TypeConstraint},
     sort::{FromSort, I64Sort, IntoSort, Sort, VecSort},
     util::IndexMap,
     ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
 };
-use egraph_serialize::{Class, ClassId, Node};
+use egraph_serialize::ClassId;
 
 #[derive(Default)]
 pub struct AnythingExtractor;
@@ -24,7 +24,7 @@ impl AnythingExtractor {
             .classes()
             .iter()
             .map(|(id, class)| {
-                let node_id = class.nodes.iter().next().unwrap().clone();
+                let node_id = class.nodes.first().unwrap().clone();
                 (id.clone(), node_id)
             })
             .collect()
@@ -42,10 +42,10 @@ pub fn to_verilog_egraph_serialize(
         format!("wire_{}", id)
     }
 
-    let mut inputs = String::new();
+    let inputs = String::new();
     let mut logic_declarations = String::new();
     let mut registers = String::new();
-    let mut module_declarations = String::new();
+    let module_declarations = String::new();
 
     // Hack: just add all IDs to the queue.
     let mut queue: Vec<ClassId> = choices.keys().cloned().collect();
@@ -95,10 +95,10 @@ pub fn to_verilog_egraph_serialize(
                         end\n",
                         // clk = id_to_wire_name(clk_id),
                         this_wire = id_to_wire_name(&id),
-                        d = id_to_wire_name(&d_id)
+                        d = id_to_wire_name(d_id)
                     ));
 
-                    if !done.contains(&d_id) {
+                    if !done.contains(d_id) {
                         queue.push(d_id.clone());
                     }
                     // if !done.contains(&clk_id) {
@@ -418,7 +418,7 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
                         expr = id_to_wire_name(*expr_id),
                     ));
 
-                    if !done.contains(&expr_id) {
+                    if !done.contains(expr_id) {
                         queue.push(*expr_id);
                     }
                 }
@@ -430,10 +430,10 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
                         expr1 = id_to_wire_name(*expr1_id),
                     ));
 
-                    if !done.contains(&expr0_id) {
+                    if !done.contains(expr0_id) {
                         queue.push(*expr0_id);
                     }
-                    if !done.contains(&expr1_id) {
+                    if !done.contains(expr1_id) {
                         queue.push(*expr1_id);
                     }
                 }
@@ -449,7 +449,7 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
                         expr = id_to_wire_name(*expr_id),
                     ));
 
-                    if !done.contains(&expr_id) {
+                    if !done.contains(expr_id) {
                         queue.push(*expr_id);
                     }
                 }
@@ -471,7 +471,7 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
                         y = id_to_wire_name(id),
                     ));
 
-                    if !done.contains(&expr_id) {
+                    if !done.contains(expr_id) {
                         queue.push(*expr_id);
                     }
                 }
@@ -556,10 +556,11 @@ fn add_debruijnify(egraph: &mut EGraph) {
                 let value = egraph.find(value);
 
                 // If we haven't assinged it a number yet, give it the next one.
-                if !seen_values.contains_key(&value) {
-                    seen_values.insert(value, next_id);
+                seen_values.entry(value).or_insert_with(|| {
+                    let id = next_id;
                     next_id += 1;
-                }
+                    id
+                });
 
                 // Add the number to the output vector.
                 out.push(seen_values[&value].store(&self.i64_sort).unwrap());
@@ -760,6 +761,9 @@ pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
     }
 }
 
+/// Port name, port type, port value.
+type Ports = Vec<(String, ArcSort, Value)>;
+
 /// ```
 /// use churchroad::*;
 /// use egglog::{ArcSort, EGraph, Term, TermDag, Value};
@@ -829,9 +833,7 @@ pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
 /// assert_eq!(output_expr, "(Op1 (Extract 0 0) (Op1 (Extract 0 0) (Op2 (And) (Var \"a\" 2) (Op1 (ZeroExtend 2) (Var \"b\" 1)))))");
 /// ```
 // TODO(@gussmith23): This really shouldn't require mutability.
-pub fn get_inputs_and_outputs(
-    egraph: &mut EGraph,
-) -> (Vec<(String, ArcSort, Value)>, Vec<(String, ArcSort, Value)>) {
+pub fn get_inputs_and_outputs(egraph: &mut EGraph) -> (Ports, Ports) {
     // Get the inputs and outputs.
     let mut inputs = vec![];
     let mut outputs = vec![];
@@ -895,7 +897,7 @@ pub fn get_inputs_and_outputs(
         }
     }
 
-    return (inputs, outputs);
+    (inputs, outputs)
 }
 
 #[cfg(test)]
@@ -1157,7 +1159,7 @@ mod tests {
             .unwrap();
 
         let serialized = egraph.serialize(SerializeConfig::default());
-        let out = (AnythingExtractor::default().extract(&serialized, &[]));
+        let out = AnythingExtractor::default().extract(&serialized, &[]);
 
         // TODO(@gussmith23) terrible assertion, but it's a start.
         assert_eq!(
