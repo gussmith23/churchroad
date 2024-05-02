@@ -761,6 +761,9 @@ pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
     }
 }
 
+/// Port type, port value.
+type Ports = Vec<(ArcSort, Value)>;
+
 /// ```
 /// use churchroad::*;
 /// use egglog::{ArcSort, EGraph, Term, TermDag, Value};
@@ -830,9 +833,7 @@ pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
 /// assert_eq!(output_expr, "(Op1 (Extract 0 0) (Op1 (Extract 0 0) (Op2 (And) (Var \"a\" 2) (Op1 (ZeroExtend 2) (Var \"b\" 1)))))");
 /// ```
 // TODO(@gussmith23): This really shouldn't require mutability.
-pub fn get_inputs_and_outputs(
-    egraph: &mut EGraph,
-) -> (Vec<(ArcSort, Value)>, Vec<(ArcSort, Value)>) {
+pub fn get_inputs_and_outputs(egraph: &mut EGraph) -> (Ports, Ports) {
     // Get the inputs and outputs.
     let mut inputs = vec![];
     let mut outputs = vec![];
