@@ -115,3 +115,8 @@ jobs:
         run: |
           docker run ${{ env.IMAGE_TAG }} \
             bash -c './fmt.sh && git status && [ -z "$(git status --porcelain)" ]'
+
+      - name: cargo clippy
+        run: |
+          docker run ${{ env.IMAGE_TAG }} \
+            bash -c 'cargo clippy -- --no-deps --deny warnings'
