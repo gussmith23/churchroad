@@ -101,9 +101,11 @@
 
 (sort ModuleInstanceSort)
 ;;; (module name: String, 
+;;;  parameter names: [String],
+;;;  parameter values: [Expr],
 ;;;  input port names: [String],
 ;;;  input port values: [Expr]) -> module instance
-(function ModuleInstance (String StringConsList ExprConsList) ModuleInstanceSort)
+(function ModuleInstance (String StringConsList ExprConsList StringConsList ExprConsList) ModuleInstanceSort)
 ;;; Get the output of a module instance.
 ;;; (module instance: ModuleInstanceSort,
 ;;;  output name: String) -> Churchroad expression
