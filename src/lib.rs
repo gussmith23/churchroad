@@ -1204,6 +1204,62 @@ pub fn get_inputs_and_outputs(egraph: &mut EGraph) -> (Ports, Ports) {
 /// Port name, port eclass.
 type PortsFromSerialized = Vec<(String, ClassId)>;
 
+/// ```
+/// use churchroad::*;
+/// use egglog::{EGraph, SerializeConfig};
+///
+/// let mut egraph = EGraph::default();
+/// import_churchroad(&mut egraph);
+/// egraph
+///     .parse_and_run_program(
+///         r#"
+///     ; wire declarations
+///     ; $and$<<EOF:2$1_Y
+///     (let v0 (Wire "v0" 2))
+///     ; a
+///     (let v1 (Wire "v1" 2))
+///     ; b
+///     (let v2 (Wire "v2" 1))
+///     ; o
+///     (let v3 (Wire "v3" 1))
+///
+///     ; cells
+///     ; TODO not handling signedness
+///     (let v4 (Op1 (ZeroExtend 2) v2))
+///     (union v0 (Op2 (And) v1 v4))
+///     (let v5 (Op1 (Extract 0 0) v0))
+///     (union v3 (Op1 (Extract 0 0) v5))
+///
+///     ; inputs
+///     (IsPort "" "a" (Input) (Var "a" 2))
+///     (union v1 (Var "a" 2))
+///     (IsPort "" "b" (Input) (Var "b" 1))
+///     (union v2 (Var "b" 1))
+///
+///     ; outputs
+///     (IsPort "" "o" (Output) v3)
+///
+///     ; delete wire expressions
+///     (delete (Wire "v0" 2))
+///     (delete (Wire "v1" 2))
+///     (delete (Wire "v2" 1))
+///     (delete (Wire "v3" 1))
+///     "#,
+///     )
+///     .unwrap();
+///
+/// let serialized = egraph.serialize(SerializeConfig::default());
+/// let (inputs, outputs) = get_inputs_and_outputs_serialized(&serialized);
+///
+/// // We should have found two inputs, a and b.
+/// assert_eq!(inputs.len(), 2);
+/// assert_eq!(inputs[0].0, "a");
+/// assert_eq!(inputs[1].0, "b");
+///
+/// // We should have found one output, o.
+/// assert_eq!(outputs.len(), 1);
+/// assert_eq!(outputs[0].0, "o");
+/// ```
 pub fn get_inputs_and_outputs_serialized(
     egraph: &egraph_serialize::EGraph,
 ) -> (PortsFromSerialized, PortsFromSerialized) {
@@ -1586,61 +1642,6 @@ endmodule",
             )
             .unwrap();
 
-        get_inputs_and_outputs(&mut egraph);
-    }
-
-    #[test]
-    fn inputs_and_outputs_serialized() {
-        let mut egraph = EGraph::default();
-        import_churchroad(&mut egraph);
-        egraph
-            .parse_and_run_program(
-                r#"
- ; wire declarations
- ; $and$<<EOF:2$1_Y
- (let v0 (Wire "v0" 2))
- ; a
- (let v1 (Wire "v1" 2))
- ; b
- (let v2 (Wire "v2" 1))
- ; o
- (let v3 (Wire "v3" 1))
-
- ; cells
- ; TODO not handling signedness
- (let v4 (Op1 (ZeroExtend 2) v2))
- (union v0 (Op2 (And) v1 v4))
- (let v5 (Op1 (Extract 0 0) v0))
- (union v3 (Op1 (Extract 0 0) v5))
-
- ; inputs
- (IsPort "" "a" (Input) (Var "a" 2))
- (union v1 (Var "a" 2))
- (IsPort "" "b" (Input) (Var "b" 1))
- (union v2 (Var "b" 1))
-
- ; outputs
- (IsPort "" "o" (Output) v3)
-
- ; delete wire expressions
- (delete (Wire "v0" 2))
- (delete (Wire "v1" 2))
- (delete (Wire "v2" 1))
- (delete (Wire "v3" 1))
- "#,
-            )
-            .unwrap();
-
-        let serialized = egraph.serialize(SerializeConfig::default());
-        let (inputs, outputs) = get_inputs_and_outputs_serialized(&serialized);
-
-        // We should have found two inputs, a and b.
-        assert_eq!(inputs.len(), 2);
-        assert_eq!(inputs[0].0, "a");
-        assert_eq!(inputs[1].0, "b");
-
-        // We should have found one output, o.
-        assert_eq!(outputs.len(), 1);
-        assert_eq!(outputs[0].0, "o");
+        get_inputs_and_outputs_serialized(&egraph.serialize(SerializeConfig::default()));
     }
 }
