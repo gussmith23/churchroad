@@ -1575,6 +1575,10 @@ struct LakeroadWorker
 			{
 				assert(cell->connections().size() == 4);
 				auto y = sigmap(cell->getPort(ID::Y));
+				// TODO(@gussmith23): Should we cast to y.size() here?
+				// If these fail, it's probably because splice/splitnets wasn't run.
+				assert(cell->getPort(ID::A).size() == y.size());
+				assert(cell->getPort(ID::B).size() == y.size());
 				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), y.size());
 				auto b_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::B)), y.size());
 				auto s_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::S)), -1);
@@ -1596,6 +1600,7 @@ struct LakeroadWorker
 					log_error("Expected 1-bit output for cell %s.\n", log_id(cell));
 
 				// Extend the inputs to the same width.
+				assert(a.size() == b.size());
 				int to_width = std::max(a.size(), b.size());
 				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), to_width);
 				auto b_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::B)), to_width);
