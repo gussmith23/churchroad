@@ -45,6 +45,7 @@ pub fn to_verilog_egraph_serialize(
     struct ModuleInstance {
         module_class_name: String,
         instance_name: String,
+        parameters: HashMap<String, ClassId>,
         inputs: HashMap<String, ClassId>,
         outputs: HashMap<String, ClassId>,
     }
@@ -304,7 +305,7 @@ pub fn to_verilog_egraph_serialize(
                 assert_eq!(egraph[module_class].nodes.len(),1);
                 let module_instance_node = &egraph[&egraph[module_class].nodes[0]];
                 assert_eq!(module_instance_node.op, "ModuleInstance");
-                assert_eq!(module_instance_node.children.len(), 3);
+                assert_eq!(module_instance_node.children.len(), 5);
                 let module_class_name = egraph[&module_instance_node.children[0].clone()].op.as_str().strip_prefix('\"').unwrap().strip_suffix('\"').unwrap();
 
 
@@ -333,12 +334,15 @@ pub fn to_verilog_egraph_serialize(
                 }
 
                 // Get module input names and input exprs.
-                let input_port_names= class_id_vec_to_strings(egraph, cons_list_to_vec(egraph, &egraph[&module_instance_node.children[1]].eclass));
-                let input_port_exprs=  cons_list_to_vec(egraph, &egraph[&module_instance_node.children[2]].eclass);
+                let parameter_names= class_id_vec_to_strings(egraph, cons_list_to_vec(egraph, &egraph[&module_instance_node.children[1]].eclass));
+                let parameter_exprs=  cons_list_to_vec(egraph, &egraph[&module_instance_node.children[2]].eclass);
+                let input_port_names= class_id_vec_to_strings(egraph, cons_list_to_vec(egraph, &egraph[&module_instance_node.children[3]].eclass));
+                let input_port_exprs=  cons_list_to_vec(egraph, &egraph[&module_instance_node.children[4]].eclass);
+                assert_eq!(parameter_exprs.len(), parameter_names.len());
                 assert_eq!(input_port_exprs.len(), input_port_names.len());
 
-                for input_port_expr in &input_port_exprs {
-                    maybe_push_expr_on_queue(&mut queue, &done, input_port_expr);
+                for expr in input_port_exprs.iter().chain(parameter_exprs.iter()) {
+                    maybe_push_expr_on_queue(&mut queue, &done, expr);
                 }
 
                 // If we haven't seen this module yet, create a new module instance.
@@ -346,6 +350,7 @@ pub fn to_verilog_egraph_serialize(
                     module_instantiations.insert(module_class.clone(), ModuleInstance {
                         module_class_name: module_class_name.to_owned(),
                         instance_name: format!("module_{}", module_class),
+                        parameters: parameter_names.into_iter().zip(parameter_exprs.into_iter()).collect(),
                         inputs: input_port_names.into_iter().zip(input_port_exprs.into_iter()).collect(),
                         outputs: [(output_name.to_owned(), term.eclass.clone())].into(),
                     });
@@ -557,10 +562,16 @@ pub fn to_verilog_egraph_serialize(
                 ModuleInstance {
                     module_class_name,
                     instance_name,
+                    parameters,
                     inputs,
                     outputs,
                 },
             )| {
+                let parameters = parameters
+                    .iter()
+                    .map(|(name, id)| format!("    .{}({})", name, id_to_wire_name(id)))
+                    .collect::<Vec<_>>()
+                    .join(",\n");
                 let inputs = inputs
                     .iter()
                     .map(|(name, id)| format!("    .{}({})", name, id_to_wire_name(id)))
@@ -573,7 +584,7 @@ pub fn to_verilog_egraph_serialize(
                     .collect::<Vec<_>>()
                     .join(",\n");
 
-                format!("  {module_class_name} {instance_name} (\n{inputs},\n{outputs});")
+                format!("  {module_class_name} #(\n{parameters}\n) {instance_name} (\n{inputs},\n{outputs});")
             },
         )
         .collect::<Vec<_>>()
@@ -1543,7 +1554,7 @@ mod tests {
             (let v2 (Wire "v2" 1))
 
             ; cells
-            (let some_module_instance (ModuleInstance "some_module" (StringCons "a" (StringCons "b" (StringNil))) (ExprCons v0 (ExprCons v1 (ExprNil)))))
+            (let some_module_instance (ModuleInstance "some_module" (StringCons "p" (StringNil)) (ExprCons (Op0 (BV 4 4)) (ExprNil)) (StringCons "a" (StringCons "b" (StringNil))) (ExprCons v0 (ExprCons v1 (ExprNil)))))
             (union (GetOutput some_module_instance "out") v2)
 
             ; inputs
@@ -1614,7 +1625,7 @@ endmodule",
                 (IsPort "" "a" (Input) a)
                 (let b (Var "b" 8))
                 (IsPort "" "b" (Input) b)
-                (IsPort "" "out" (Output) (GetOutput (ModuleInstance "some_module" (StringCons "a" (StringCons "b" (StringNil))) (ExprCons a (ExprCons b (ExprNil)))) "out"))
+                (IsPort "" "out" (Output) (GetOutput (ModuleInstance "some_module" (StringCons "p" (StringNil)) (ExprCons (Op0 (BV 4 4)) (ExprNil)) (StringCons "a" (StringCons "b" (StringNil))) (ExprCons a (ExprCons b (ExprNil)))) "out"))
             "#,
             )
             .unwrap();
@@ -1622,7 +1633,30 @@ endmodule",
         let serialized = egraph.serialize(SerializeConfig::default());
         let out = AnythingExtractor.extract(&serialized, &[]);
 
-        println!("{}", to_verilog_egraph_serialize(&serialized, &out, ""));
+        assert_eq!(
+            "module top(
+  input [8-1:0] b,
+  input [8-1:0] a,
+  
+  output out,
+  
+);
+  logic out = wire_23;
+  logic wire_23;
+  logic [4-1:0] wire_15 = 4'd4;
+  logic [8-1:0] wire_9 = b;
+  logic [8-1:0] wire_6 = a;
+  
+
+  some_module #(
+    .p(wire_15)
+) module_22 (
+    .b(wire_9),
+    .a(wire_6),
+    .out(wire_23));
+endmodule",
+            to_verilog_egraph_serialize(&serialized, &out, "")
+        );
     }
 
     #[test]
