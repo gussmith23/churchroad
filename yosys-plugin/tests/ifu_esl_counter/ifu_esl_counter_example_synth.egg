@@ -84,5 +84,3 @@
 (delete (Wire "v11" 1))
 (delete (Wire "v12" 1))
 (delete (Wire "v13" 1))
-
-(extract count_f)
