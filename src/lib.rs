@@ -1514,7 +1514,8 @@ endmodule",
         let serialized = egraph.serialize(SerializeConfig::default());
         let out = AnythingExtractor.extract(&serialized, &[]);
 
-        assert_eq!("module top(
+        assert_eq!(
+            "module top(
   input [8-1:0] b,
   input [8-1:0] a,
   
@@ -1534,6 +1535,8 @@ endmodule",
     .b(wire_9),
     .a(wire_6),
     .out(wire_23));
-endmodule", to_verilog_egraph_serialize(&serialized, &out, ""));
+endmodule",
+            to_verilog_egraph_serialize(&serialized, &out, "")
+        );
     }
 }
