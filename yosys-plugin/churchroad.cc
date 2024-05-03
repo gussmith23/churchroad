@@ -1600,7 +1600,9 @@ struct LakeroadWorker
 					log_error("Expected 1-bit output for cell %s.\n", log_id(cell));
 
 				// Extend the inputs to the same width.
-				assert(a.size() == b.size());
+				// TODO(@gussmith23): there might be Yosys pass to do this
+				// automatically; see:
+				// https://github.com/YosysHQ/yosys/discussions/4368
 				int to_width = std::max(a.size(), b.size());
 				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), to_width);
 				auto b_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::B)), to_width);
