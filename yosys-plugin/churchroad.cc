@@ -1478,8 +1478,7 @@ struct LakeroadWorker
 				assert(cell->connections().size() == 2);
 				// Do we need sigmap here?
 				auto y = sigmap(cell->getPort(ID::Y));
-				// should we be passing y.size() here?
-				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), y.size());
+				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), -1);
 				auto y_let_name = get_expression_for_signal(y, -1);
 
 				// Get OFFSET and Y_WIDTH parameters.
