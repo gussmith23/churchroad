@@ -614,6 +614,161 @@ endmodule",
         registers = registers,
     )
 }
+
+pub fn to_rewrite_rule_egraph_serialize(
+    egraph: &egraph_serialize::EGraph,
+    // TODO: not sure what choices are for
+    choices: &IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
+    clk_name: &str,
+) -> String {
+    let (inputs, outputs) = get_inputs_and_outputs_serialized(egraph);
+    for (str, class_id) in &inputs {
+        println!("inputs: {str}, class_id: {class_id}");
+    }
+
+    // Add all of the outputs to the queue
+    let mut queue: Vec<ClassId> = outputs.into_iter().map(|c| c.1).collect();
+    let mut done = HashSet::new();
+
+    fn maybe_push_expr_on_queue(
+        queue: &mut Vec<ClassId>,
+        done: &HashSet<ClassId>,
+        class_id: &ClassId,
+    ) {
+        if !queue.contains(class_id) && !done.contains(class_id) {
+            queue.push(class_id.clone());
+        }
+    }
+
+    // TODO: Need to handle extracts of Vars here
+    let id_to_wire_name = |id: &ClassId| -> String {
+        let v = inputs.iter().find(|(_k, v)| v == id);
+        match v {
+            Some((var, _id)) => var.to_string(),
+            None => format!("wire_{}", id),
+        }
+    };
+
+    let mut rules = String::new();
+
+    while let Some(id) = queue.pop() {
+        done.insert(id.clone());
+        let term = &egraph[&choices[&id]];
+
+        let op = &term.op;
+
+        match op.as_str() {
+            // Things to ignore.
+            //
+            // Ignore the Unit.
+            "()" |
+            // Ignore various relations/facts.
+            "IsPort" |
+            "Input" |
+            "Output" |
+            // Ignore the nodes for the ops themselves.
+            "ZeroExtend" |
+            "Concat" |
+            "Extract" |
+            "Or" |
+            "And" |
+            "Add" |
+            "Shr" |
+            "Eq" |
+            "Xor" |
+            "Reg" => (),
+            // Ignore integer literals.
+            v if v.parse::<i64>().is_ok() => (),
+
+            "Op0" | "Op1" | "Op2" => {
+                let op_node = &egraph[&term.children[0]];
+                dbg!(op_node);
+                // BV, ZeroExtend, Add, Reg, working
+                match op_node.op.as_str() {
+                    "ZeroExtend" => {
+                        assert_eq!(op_node.children.len(), 1);
+                        assert_eq!(term.children.len(), 2);
+                        let bw = egraph[&op_node.children[0]].op.parse::<i64>().unwrap();
+
+                        let o = format!(
+                            "(= {this_wire} (Op1 (ZeroExtend {bw}) {value}))\n",
+                            this_wire = id_to_wire_name(&id),
+                            value = id_to_wire_name(&egraph[&term.children[1]].eclass)
+                            );
+                        rules.push_str(o.as_str());
+                    },
+                    "BV" => {
+                        assert_eq!(op_node.children.len(), 2);
+                        let value = egraph[&op_node.children[0]].op.parse::<i64>().unwrap();
+                        let bw = egraph[&op_node.children[1]].op.parse::<i64>().unwrap();
+                        let o = format!(
+                            "(= {this_wire} (Op0 (BV {value} {bw})))\n",
+                            this_wire = id_to_wire_name(&id)
+                            );
+                        rules.push_str(o.as_str());
+                    },
+                    "Reg" => {
+                        let default_val = egraph[&op_node.children[0]].op.parse::<i64>().unwrap();
+                        let d_id = &egraph[&term.children[1]].eclass;
+                        let val_id = &egraph[&term.children[2]].eclass;
+                                                rules.push_str(
+                        format!(
+                                "(= {this_wire} (Op2 (Reg {default_val}) {val} {val1}))\n",
+                                this_wire = id_to_wire_name(&id),
+                                val = id_to_wire_name(d_id),
+                                val1 = id_to_wire_name(val_id)
+                                ).as_str()
+                            );
+                        if !done.contains(d_id) {
+                            queue.push(d_id.clone());
+                        }
+
+                        maybe_push_expr_on_queue(&mut queue, &done, &val_id);
+                    },
+                    "Concat" | "Xor" | "And" | "Or" | "Add" => {
+                    let expr0_id = &egraph[&term.children[1]].eclass;
+                    let  expr1_id = &egraph[&term.children[2]].eclass;
+
+                    rules.push_str(
+                        format!(
+                            "(= {this_wire} (Op2 ({op}) {expr0} {expr1}))\n",
+                            this_wire = id_to_wire_name(&id),
+                            op = op_node.op.as_str(),
+                            expr0 = id_to_wire_name(expr0_id),
+                            expr1 = id_to_wire_name(expr1_id)
+                            ).as_str()
+                        );
+                    maybe_push_expr_on_queue(&mut queue, &done, &expr0_id);
+                    maybe_push_expr_on_queue(&mut queue, &done, &expr1_id);
+                    },
+                    "Extract" => {
+                    assert_eq!(term.children.len(), 2);
+                    assert_eq!(op_node.children.len(), 2);
+                    todo!("Extract undone");
+                    },
+                    v => todo!("{:?}", v)
+
+                }
+            },
+            "Var" => { },
+
+            _ => todo!("{:?}", &term),
+        }
+    }
+
+    let rule = format!(
+        r#"(rule
+ ;; set of definitions
+ ({rules})
+ ;; set of declarations
+ ()
+)
+        "#
+    );
+
+    rule.into()
+}
+
 pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
     // let mut wires = HashMap::default();
 
@@ -1687,5 +1842,51 @@ endmodule",
             .unwrap();
 
         get_inputs_and_outputs_serialized(&egraph.serialize(SerializeConfig::default()));
+    }
+    #[test]
+    fn compile_rewrite_rule() {
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+        egraph
+            .parse_and_run_program(
+                r#"
+(let v0 (Wire "v0" 4))
+; clk
+(let v1 (Wire "v1" 1))
+; out
+(let v2 (Wire "v2" 4))
+
+; cells
+; 1'1
+(let v3 (Op0 (BV 1 1)))
+; TODO not handling signedness
+(let v4 (Op1 (ZeroExtend 4) v3))
+(union v0 (Op2 (Add) v2 v4))
+; TODO: assuming 0 default for Reg
+(union v2 (Op2 (Reg 0) v1 v0))
+
+; inputs
+(let clk (Var "clk" 1))
+
+
+(IsPort "" "clk" (Input) clk)
+(union v1 clk)
+
+; outputs
+(let out v2)
+(IsPort "" "out" (Output) out)
+
+; delete wire expressions
+(delete (Wire "v0" 4))
+(delete (Wire "v1" 1))
+(delete (Wire "v2" 4))
+                "#,
+            )
+            .unwrap();
+        let serialized = egraph.serialize(SerializeConfig::default());
+        let out = AnythingExtractor.extract(&serialized, &[]);
+
+        let v1 = to_rewrite_rule_egraph_serialize(&serialized, &out, "");
+        println!("out:\n{}", v1);
     }
 }
