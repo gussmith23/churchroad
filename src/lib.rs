@@ -538,16 +538,24 @@ pub fn to_verilog_egraph_serialize(
     }
 
     // For display purposes, we can clean this up later.
-    let inputs = inputs
-        .split('\n')
-        .map(|line| format!("  {}", line))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let outputs = outputs
-        .split('\n')
-        .map(|line| format!("  {}", line))
-        .collect::<Vec<_>>()
-        .join("\n");
+    // We sort to make the output stable.
+    let inputs = {
+        let mut out = inputs
+            .split('\n')
+            .map(|line| format!("  {}", line))
+            .collect::<Vec<_>>();
+
+        out.sort();
+        out.join("\n")
+    };
+    let outputs = {
+        let mut out = outputs
+            .split('\n')
+            .map(|line| format!("  {}", line))
+            .collect::<Vec<_>>();
+        out.sort();
+        out.join("\n")
+    };
     let logic_declarations = logic_declarations
         .split('\n')
         .map(|line| format!("  {}", line))
@@ -572,17 +580,19 @@ pub fn to_verilog_egraph_serialize(
                     .map(|(name, id)| format!("    .{}({})", name, id_to_wire_name(id)))
                     .collect::<Vec<_>>()
                     .join(",\n");
-                let inputs = inputs
+                let inputs = {let mut out = inputs
                     .iter()
                     .map(|(name, id)| format!("    .{}({})", name, id_to_wire_name(id)))
-                    .collect::<Vec<_>>()
-                    .join(",\n");
+                    .collect::<Vec<_>>();
+                    out.sort();
+                    out.join(",\n")};
 
-                let outputs = outputs
+                let outputs = {let mut out = outputs
                     .iter()
                     .map(|(name, id)| format!("    .{}({})", name, id_to_wire_name(id)))
-                    .collect::<Vec<_>>()
-                    .join(",\n");
+                    .collect::<Vec<_>>();
+                    out.sort();
+                    out.join(",\n")};
 
                 format!("  {module_class_name} #(\n{parameters}\n) {instance_name} (\n{inputs},\n{outputs});")
             },
@@ -1597,8 +1607,8 @@ mod tests {
         assert_eq!(
             "module top(
   
-  output out,
   
+  output out,
 );
   logic out = wire_6;
   logic wire_6 = 0;
@@ -1635,11 +1645,11 @@ endmodule",
 
         assert_eq!(
             "module top(
-  input [8-1:0] b,
+  
   input [8-1:0] a,
+  input [8-1:0] b,
   
   output out,
-  
 );
   logic out = wire_23;
   logic wire_23;
@@ -1651,8 +1661,8 @@ endmodule",
   some_module #(
     .p(wire_15)
 ) module_22 (
-    .b(wire_9),
     .a(wire_6),
+    .b(wire_9),
     .out(wire_23));
 endmodule",
             to_verilog_egraph_serialize(&serialized, &out, "")
