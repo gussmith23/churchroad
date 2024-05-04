@@ -9,7 +9,7 @@ use egglog::{
     sort::{FromSort, I64Sort, IntoSort, Sort, VecSort},
     ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
 };
-use egraph_serialize::ClassId;
+use egraph_serialize::{ClassId, Node};
 use indexmap::IndexMap;
 
 #[derive(Default)]
@@ -538,16 +538,24 @@ pub fn to_verilog_egraph_serialize(
     }
 
     // For display purposes, we can clean this up later.
-    let inputs = inputs
-        .split('\n')
-        .map(|line| format!("  {}", line))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let outputs = outputs
-        .split('\n')
-        .map(|line| format!("  {}", line))
-        .collect::<Vec<_>>()
-        .join("\n");
+    // We sort to make the output stable.
+    let inputs = {
+        let mut out = inputs
+            .split('\n')
+            .map(|line| format!("  {}", line))
+            .collect::<Vec<_>>();
+
+        out.sort();
+        out.join("\n")
+    };
+    let outputs = {
+        let mut out = outputs
+            .split('\n')
+            .map(|line| format!("  {}", line))
+            .collect::<Vec<_>>();
+        out.sort();
+        out.join("\n")
+    };
     let logic_declarations = logic_declarations
         .split('\n')
         .map(|line| format!("  {}", line))
@@ -572,17 +580,19 @@ pub fn to_verilog_egraph_serialize(
                     .map(|(name, id)| format!("    .{}({})", name, id_to_wire_name(id)))
                     .collect::<Vec<_>>()
                     .join(",\n");
-                let inputs = inputs
+                let inputs = {let mut out = inputs
                     .iter()
                     .map(|(name, id)| format!("    .{}({})", name, id_to_wire_name(id)))
-                    .collect::<Vec<_>>()
-                    .join(",\n");
+                    .collect::<Vec<_>>();
+                    out.sort();
+                    out.join(",\n")};
 
-                let outputs = outputs
+                let outputs = {let mut out = outputs
                     .iter()
                     .map(|(name, id)| format!("    .{}({})", name, id_to_wire_name(id)))
-                    .collect::<Vec<_>>()
-                    .join(",\n");
+                    .collect::<Vec<_>>();
+                    out.sort();
+                    out.join(",\n")};
 
                 format!("  {module_class_name} #(\n{parameters}\n) {instance_name} (\n{inputs},\n{outputs});")
             },
@@ -1212,6 +1222,125 @@ pub fn get_inputs_and_outputs(egraph: &mut EGraph) -> (Ports, Ports) {
     (inputs, outputs)
 }
 
+/// Port name, port eclass.
+type PortsFromSerialized = Vec<(String, ClassId)>;
+
+/// ```
+/// use churchroad::*;
+/// use egglog::{EGraph, SerializeConfig};
+///
+/// let mut egraph = EGraph::default();
+/// import_churchroad(&mut egraph);
+/// egraph
+///     .parse_and_run_program(
+///         r#"
+///     ; wire declarations
+///     ; $and$<<EOF:2$1_Y
+///     (let v0 (Wire "v0" 2))
+///     ; a
+///     (let v1 (Wire "v1" 2))
+///     ; b
+///     (let v2 (Wire "v2" 1))
+///     ; o
+///     (let v3 (Wire "v3" 1))
+///
+///     ; cells
+///     ; TODO not handling signedness
+///     (let v4 (Op1 (ZeroExtend 2) v2))
+///     (union v0 (Op2 (And) v1 v4))
+///     (let v5 (Op1 (Extract 0 0) v0))
+///     (union v3 (Op1 (Extract 0 0) v5))
+///
+///     ; inputs
+///     (IsPort "" "a" (Input) (Var "a" 2))
+///     (union v1 (Var "a" 2))
+///     (IsPort "" "b" (Input) (Var "b" 1))
+///     (union v2 (Var "b" 1))
+///
+///     ; outputs
+///     (IsPort "" "o" (Output) v3)
+///
+///     ; delete wire expressions
+///     (delete (Wire "v0" 2))
+///     (delete (Wire "v1" 2))
+///     (delete (Wire "v2" 1))
+///     (delete (Wire "v3" 1))
+///     "#,
+///     )
+///     .unwrap();
+///
+/// let serialized = egraph.serialize(SerializeConfig::default());
+/// let (inputs, outputs) = get_inputs_and_outputs_serialized(&serialized);
+///
+/// // We should have found two inputs, a and b.
+/// assert_eq!(inputs.len(), 2);
+/// assert_eq!(inputs[0].0, "a");
+/// assert_eq!(inputs[1].0, "b");
+///
+/// // We should have found one output, o.
+/// assert_eq!(outputs.len(), 1);
+/// assert_eq!(outputs[0].0, "o");
+/// ```
+pub fn get_inputs_and_outputs_serialized(
+    egraph: &egraph_serialize::EGraph,
+) -> (PortsFromSerialized, PortsFromSerialized) {
+    // Find IsPort relations.
+    #[derive(Clone)]
+    enum InputOrOutput {
+        Input(String, ClassId),
+        Output(String, ClassId),
+    }
+
+    fn is_port(node: &Node, egraph: &egraph_serialize::EGraph) -> Option<InputOrOutput> {
+        if node.op != "IsPort" {
+            return None;
+        }
+
+        assert_eq!(node.children.len(), 4);
+
+        let inout = &node.children[2];
+
+        let expr = egraph[&node.children[3]].eclass.clone();
+
+        let name = egraph[&node.children[1]]
+            .op
+            .strip_prefix('\"')
+            .unwrap()
+            .strip_suffix('\"')
+            .unwrap()
+            .to_string();
+
+        match egraph[inout].op.as_str() {
+            "Input" => Some(InputOrOutput::Input(name, expr)),
+            "Output" => Some(InputOrOutput::Output(name, expr)),
+            _ => panic!(),
+        }
+    }
+
+    let inputs_and_outputs = egraph
+        .nodes
+        .iter()
+        .filter_map(|(_id, node)| is_port(node, egraph))
+        .collect::<Vec<_>>();
+
+    let inputs = inputs_and_outputs
+        .iter()
+        .filter_map(|io| match io {
+            InputOrOutput::Input(n, v) => Some((n.clone(), v.clone())),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let outputs = inputs_and_outputs
+        .iter()
+        .filter_map(|io| match io {
+            InputOrOutput::Output(n, v) => Some((n.clone(), v.clone())),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    (inputs, outputs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1478,8 +1607,8 @@ mod tests {
         assert_eq!(
             "module top(
   
-  output out,
   
+  output out,
 );
   logic out = wire_6;
   logic wire_6 = 0;
@@ -1516,11 +1645,11 @@ endmodule",
 
         assert_eq!(
             "module top(
-  input [8-1:0] b,
+  
   input [8-1:0] a,
+  input [8-1:0] b,
   
   output out,
-  
 );
   logic out = wire_23;
   logic wire_23;
@@ -1532,11 +1661,31 @@ endmodule",
   some_module #(
     .p(wire_15)
 ) module_22 (
-    .b(wire_9),
     .a(wire_6),
+    .b(wire_9),
     .out(wire_23));
 endmodule",
             to_verilog_egraph_serialize(&serialized, &out, "")
         );
+    }
+
+    #[test]
+    fn get_inputs_and_outputs_with_cycle() {
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+
+        egraph
+            .parse_and_run_program(
+                r#"
+                (let placeholder (Wire "placeholder" 8))
+                (let reg (Op1 (Reg 0) placeholder))
+                (union placeholder reg)
+                (delete (Wire "placeholder" 8))
+                (IsPort "" "out" (Output) reg)
+            "#,
+            )
+            .unwrap();
+
+        get_inputs_and_outputs_serialized(&egraph.serialize(SerializeConfig::default()));
     }
 }
