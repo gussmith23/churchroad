@@ -111,17 +111,17 @@ WORKDIR /root
 
 # Build Verilator.
 RUN source /root/dependencies.sh \
-&& apt-get install -y git help2man perl python3 make autoconf g++ flex bison ccache \
-&& apt-get install -y libgoogle-perftools-dev numactl perl-doc \
-&& apt-get install -y libfl2  \
-&& apt-get install -y libfl-dev  \
-&& git clone $VERILATOR_URL \
-&& cd verilator \
-&& git checkout $VERILATOR_COMMIT_HASH \
-&& autoconf \
-&& ./configure --prefix="/root/.local" \
-&& make -j ${MAKE_JOBS} \
-&& make -j ${MAKE_JOBS} install
+  && apt-get install -y git help2man perl python3 make autoconf g++ flex bison ccache \
+  && apt-get install -y libgoogle-perftools-dev numactl perl-doc \
+  && apt-get install -y libfl2  \
+  && apt-get install -y libfl-dev  \
+  && git clone $VERILATOR_URL \
+  && cd verilator \
+  && git checkout $VERILATOR_COMMIT_HASH \
+  && autoconf \
+  && ./configure --prefix="/root/.local" \
+  && make -j ${MAKE_JOBS} \
+  && make -j ${MAKE_JOBS} install
  
 
 # Add other Churchroad files. It's useful to put this as far down as possible.
