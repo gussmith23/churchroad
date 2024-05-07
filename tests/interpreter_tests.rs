@@ -3,7 +3,7 @@
 use std::{collections::HashMap, io::Write, path::PathBuf};
 
 use egraph_serialize::NodeId;
-use rand::RngCore;
+use rand::{rngs::StdRng, RngCore, SeedableRng};
 
 use egglog::{EGraph, SerializeConfig};
 
@@ -150,14 +150,7 @@ fn verilator_intepreter_fuzz_test(
     let makefile_path = test_output_dir.join("Makefile");
 
     // just grab the filename without any leading directories
-    let filename = verilog_module_path
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .split('/')
-        .last()
-        .unwrap();
+    let filename = verilog_module_path.file_name().unwrap().to_str().unwrap();
 
     let testbench_prog = std::fs::read_to_string(testbench_template_path)
         .unwrap()
@@ -291,7 +284,8 @@ fn verilator_intepreter_fuzz_test(
         .write_all(format!("{} {} {}\n", num_inputs, num_test_cases, num_clock_cycles).as_bytes())
         .unwrap();
 
-    let mut rng = rand::thread_rng();
+    // create seeded rng
+    let mut rng = StdRng::seed_from_u64(0xb0bacafe);
     let mut interpreter_results: Vec<InterpreterResult> = Vec::new();
     for _ in 0..num_test_cases {
         let mut env: HashMap<&str, Vec<u64>> = HashMap::new();
