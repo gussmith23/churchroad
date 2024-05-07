@@ -2,6 +2,7 @@
 
 use std::{collections::HashMap, io::Write, path::PathBuf};
 
+use egraph_serialize::NodeId;
 use rand::RngCore;
 
 use egglog::{EGraph, SerializeConfig};
@@ -67,15 +68,12 @@ fn prep_interpreter(
         )
         .unwrap();
     let serialized = egraph.serialize(SerializeConfig::default());
-    let (_, is_root_node) = serialized
+    let (_, is_output_node) = serialized
         .nodes
         .iter()
-        .find(|(_, n)| n.op == "IsRoot")
+        .find(|(_, n)| n.op == "IsPort" && n.children[2] == NodeId::from("Output-0"))
         .unwrap();
-    if is_root_node.children.len() != 1 {
-        panic!("IsRoot relation must have exactly one child");
-    }
-    let root_id = is_root_node.children.first().unwrap();
+    let root_id = is_output_node.children.last().unwrap();
     let (_, root_node) = serialized
         .nodes
         .iter()
