@@ -12,6 +12,7 @@
 (datatype Op
   (And)
   (Add)
+  (Mul)
   (Or)
   (Xor)
   (Shr)
@@ -141,6 +142,7 @@
 (AllBitwidthsMatch (Or))
 (AllBitwidthsMatch (Xor))
 (AllBitwidthsMatch (Shr))
+(AllBitwidthsMatch (Mul))
 ; Have to write this one as a rule, unfortunately.
 (ruleset core)
 (rule ((Reg n)) ((AllBitwidthsMatch (Reg n))) :ruleset core)

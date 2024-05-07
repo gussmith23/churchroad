@@ -1539,4 +1539,89 @@ endmodule",
             to_verilog_egraph_serialize(&serialized, &out, "")
         );
     }
+
+    #[test]
+    fn smoketest_2024_05_06_wide_fma() {
+        let churchroad_program = r#"
+            ; wire declarations
+            ; $mul$/Users/gus/churchroad/yosys-plugin/tests/wide-fma.sv:10$1_Y
+            (let v0 (Wire "v0" 32))
+            ; a
+            (let v1 (Wire "v1" 32))
+            ; b
+            (let v2 (Wire "v2" 32))
+            ; c
+            (let v3 (Wire "v3" 32))
+            ; out
+            (let v4 (Wire "v4" 32))
+            
+            ; cells
+            (union v4 (Op2 (Add) v0 v3))
+            (union v0 (Op2 (Mul) v1 v2))
+            
+            ; inputs
+            (let a (Var "a" 32))
+            (IsPort "" "a" (Input) a)
+            (union v1 a)
+            (let b (Var "b" 32))
+            (IsPort "" "b" (Input) b)
+            (union v2 b)
+            (let c (Var "c" 32))
+            (IsPort "" "c" (Input) c)
+            (union v3 c)
+            
+            ; outputs
+            (let out v4)
+            (IsPort "" "out" (Output) out)
+            
+            ; delete wire expressions
+            (delete (Wire "v0" 32))
+            (delete (Wire "v1" 32))
+            (delete (Wire "v2" 32))
+            (delete (Wire "v3" 32))
+            (delete (Wire "v4" 32))
+            "#;
+
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+        egraph.parse_and_run_program(&churchroad_program).unwrap();
+
+        egraph.parse_and_run_program(r#"
+            (run-schedule (saturate typing))
+            (check (HasType out (Bitvector 32)))
+        "#).unwrap();
+
+        egraph.parse_and_run_program(r#"
+            ; Rewrite larger FMA into smaller FMA that could fit on one DSP.
+            (rule
+                (
+                    (= bigmul (Op2 (Mul) a b))
+                    (HasType a (Bitvector n))
+                    (HasType b (Bitvector n))
+                    (= (% n 2) 0)
+                )
+                (
+                    (let mid (/ n 2))
+                    (let ahi (Op1 (Extract (- n 1) mid) a))
+                    (let alo (Op1 (Extract (- mid 1) 0) a))
+                    (let bhi (Op1 (Extract (- n 1) mid) b))
+                    (let blo (Op1 (Extract (- mid 1) 0) b))
+                    (let mul0 (Op2 (Mul) )))
+
+                )
+              )
+        "#).unwrap();
+
+        // 2: 10 * 1: 01
+        // =
+        // 10 * 1 + (10 * 0) * 10
+        // 1*1*10 + 0*1 + (1*0*10 + 0*0)*10
+
+        // 0010 (2) * 0011 (3)
+        
+        // a1a0 * b1b0
+        // = a1*b1*4 + a1*b0*2 + a0*b1*2 + a0*b0
+        //
+        // 
+    }
 }
