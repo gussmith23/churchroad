@@ -89,11 +89,23 @@
 
 (function apply (Module ExprVec) Expr)
 
+;;; TODO(@gussmith23): need cons list instead of using built-in vec.
+;;; would love to use vec instead.
+;;; this issue kinda pertains to this: https://github.com/egraphs-good/egglog/issues/370
+(datatype StringConsList
+  (StringCons String StringConsList)
+  (StringNil))
+(datatype ExprConsList
+  (ExprCons Expr ExprConsList)
+  (ExprNil))
+
 (sort ModuleInstanceSort)
 ;;; (module name: String, 
+;;;  parameter names: [String],
+;;;  parameter values: [Expr],
 ;;;  input port names: [String],
 ;;;  input port values: [Expr]) -> module instance
-(function ModuleInstance (String StringVec ExprVec) ModuleInstanceSort)
+(function ModuleInstance (String StringConsList ExprConsList StringConsList ExprConsList) ModuleInstanceSort)
 ;;; Get the output of a module instance.
 ;;; (module instance: ModuleInstanceSort,
 ;;;  output name: String) -> Churchroad expression

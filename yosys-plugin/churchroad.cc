@@ -1478,8 +1478,7 @@ struct LakeroadWorker
 				assert(cell->connections().size() == 2);
 				// Do we need sigmap here?
 				auto y = sigmap(cell->getPort(ID::Y));
-				// should we be passing y.size() here?
-				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), y.size());
+				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), -1);
 				auto y_let_name = get_expression_for_signal(y, -1);
 
 				// Get OFFSET and Y_WIDTH parameters.
@@ -1575,6 +1574,10 @@ struct LakeroadWorker
 			{
 				assert(cell->connections().size() == 4);
 				auto y = sigmap(cell->getPort(ID::Y));
+				// TODO(@gussmith23): Should we cast to y.size() here?
+				// If these fail, it's probably because splice/splitnets wasn't run.
+				assert(cell->getPort(ID::A).size() == y.size());
+				assert(cell->getPort(ID::B).size() == y.size());
 				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), y.size());
 				auto b_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::B)), y.size());
 				auto s_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::S)), -1);
@@ -1596,6 +1599,9 @@ struct LakeroadWorker
 					log_error("Expected 1-bit output for cell %s.\n", log_id(cell));
 
 				// Extend the inputs to the same width.
+				// TODO(@gussmith23): there might be Yosys pass to do this
+				// automatically; see:
+				// https://github.com/YosysHQ/yosys/discussions/4368
 				int to_width = std::max(a.size(), b.size());
 				auto a_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::A)), to_width);
 				auto b_let_name = get_expression_for_signal(sigmap(cell->getPort(ID::B)), to_width);
