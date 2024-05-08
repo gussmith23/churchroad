@@ -14,7 +14,6 @@ fn prep_interpreter(
     module_verilog_path: PathBuf,
     test_output_dir: PathBuf,
     top_module_name: &str,
-    output_name: &str,
 ) -> (egraph_serialize::EGraph, egraph_serialize::Node) {
     if std::env::var("CHURCHROAD_DIR").is_err() {
         panic!("Please set the CHURCHROAD_DIR environment variable!");
@@ -68,14 +67,14 @@ fn prep_interpreter(
         .iter()
         .find(|(_, n)| n.op == "IsPort" && n.children[2] == NodeId::from("Output-0"))
         .unwrap();
-    let root_id = is_output_node.children.last().unwrap();
-    let (_, root_node) = serialized
+    let output_id = is_output_node.children.last().unwrap();
+    let (_, output_node) = serialized
         .nodes
         .iter()
-        .find(|(node_id, _)| **node_id == *root_id)
+        .find(|(node_id, _)| **node_id == *output_id)
         .unwrap();
 
-    (serialized.clone(), root_node.clone())
+    (serialized.clone(), output_node.clone())
 }
 
 #[test]
@@ -267,12 +266,11 @@ fn verilator_intepreter_fuzz_test(
 
     let num_inputs = inputs.len();
 
-    // TODO(@ninehusky): this is going to assume we only want to interpret on the first output included in `outputs`.
+    // TODO(@ninehusky): this is going to assume we only want to interpret on one output found in the EGraph.
     let (serialized, root_node) = prep_interpreter(
         verilog_module_path.clone(),
         test_output_dir.clone(),
         top_module_name,
-        outputs[0].0,
     );
 
     sim_proc_stdin
@@ -347,7 +345,6 @@ macro_rules! interpreter_test {
                 PathBuf::from($verilog_path),
                 std::env::temp_dir(),
                 $module_name,
-                $out,
             );
 
             assert_eq!(
@@ -359,7 +356,7 @@ macro_rules! interpreter_test {
 }
 
 interpreter_test!(
-    test_alu_0,
+    test_alu_and_single_cycle,
     InterpreterResult::Bitvector(0b01010101, 8),
     "tests/interpreter_tests/verilog/ALU.sv",
     "ALU",
@@ -374,15 +371,30 @@ interpreter_test!(
 );
 
 interpreter_test!(
-    test_alu_1,
-    InterpreterResult::Bitvector(0b11111111, 8),
+    test_alu_and_single_cycle_2,
+    InterpreterResult::Bitvector(0b01010101, 8),
     "tests/interpreter_tests/verilog/ALU.sv",
     "ALU",
     0,
     &[
-        ("a", vec![0b01010101]),
-        ("b", vec![0b11111111]),
-        ("op", vec![0])
+        ("a", vec![0b01010101, 0b10101010]),
+        ("b", vec![0b11111111, 0b00000000]),
+        ("op", vec![1, 0])
+    ]
+    .into(),
+    "out"
+);
+
+interpreter_test!(
+    test_alu_or_second_cycle,
+    InterpreterResult::Bitvector(0b10101010, 8),
+    "tests/interpreter_tests/verilog/ALU.sv",
+    "ALU",
+    1,
+    &[
+        ("a", vec![0b01010101, 0b10101010]),
+        ("b", vec![0b11111111, 0b00000000]),
+        ("op", vec![1, 0])
     ]
     .into(),
     "out"
