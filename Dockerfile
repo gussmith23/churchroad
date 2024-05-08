@@ -104,10 +104,6 @@ ENV CHURCHROAD_DIR=/root/churchroad
 
 # Install Verilator.
 WORKDIR /root
-# We need to clone Verilator at this specific repository in order to get
-# the CXX flags to go through. Once this commit is merged,
-# we can probably change this to mainline Verilator.
-# See: https://github.com/verilator/verilator/pull/5031
 
 # Build Verilator.
 RUN apt install -y help2man && source /root/dependencies.sh \
