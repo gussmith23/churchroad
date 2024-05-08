@@ -62,11 +62,6 @@ fn prep_interpreter(
     egraph
         .parse_and_run_program(&std::fs::read_to_string(churchroad_src_path).unwrap())
         .unwrap();
-    egraph
-        .parse_and_run_program(
-            format!("(relation IsRoot (Expr)) (IsRoot {})", output_name).as_str(),
-        )
-        .unwrap();
     let serialized = egraph.serialize(SerializeConfig::default());
     let (_, is_output_node) = serialized
         .nodes
