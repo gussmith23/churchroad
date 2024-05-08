@@ -221,7 +221,7 @@ fn interpret_helper(
                             (val >> j) & mask
                         }
                     };
-                    assert!(i - j + 1 <= 64);
+                    assert!(i - j < 64);
                     Ok(InterpreterResult::Bitvector(val, i - j + 1))
                 }
                 "Concat" => match (&children[0], &children[1]) {
