@@ -25,13 +25,8 @@ pub fn interpret(
     time: usize,
     env: &HashMap<&str, Vec<u64>>,
 ) -> Result<InterpreterResult, String> {
-    let result = match egraph
-        .classes()
-        .iter()
-        .filter(|(id, _)| id == &class_id)
-        .next()
-    {
-        Some((id, _)) => interpret_helper(&egraph, id, time, env),
+    let result = match egraph.classes().iter().find(|(id, _)| *id == class_id) {
+        Some((id, _)) => interpret_helper(egraph, id, time, env),
         None => return Err("No class with the given ID.".to_string()),
     };
 
@@ -69,16 +64,15 @@ fn interpret_helper(
             let name = &name[1..name.len() - 1];
 
             Ok(InterpreterResult::Bitvector(
-                env.get(name)
+                *env.get(name)
                     .unwrap_or_else(|| panic!("didn't find var {:?}", name))
                     .get(time)
-                    .unwrap()
-                    .clone(),
+                    .unwrap(),
                 bw,
             ))
         }
         "Op0" | "Op1" | "Op2" | "Op3" => {
-            assert!(node.children.len() >= 1);
+            assert!(!node.children.is_empty());
             let op = egraph.nodes.get(&node.children[0]).unwrap();
 
             let children: Vec<_> = node
@@ -178,10 +172,7 @@ fn interpret_helper(
                         }
                     };
 
-                    Ok(InterpreterResult::Bitvector(
-                        val,
-                        (i - j + 1).try_into().unwrap(),
-                    ))
+                    Ok(InterpreterResult::Bitvector(val, i - j + 1))
                 }
                 "Concat" => match (&children[0], &children[1]) {
                     (
