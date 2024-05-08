@@ -110,18 +110,16 @@ WORKDIR /root
 # See: https://github.com/verilator/verilator/pull/5031
 
 # Build Verilator.
-RUN source /root/dependencies.sh \
-  && apt-get install -y git help2man perl python3 make autoconf g++ flex bison ccache \
-  && apt-get install -y libgoogle-perftools-dev numactl perl-doc \
-  && apt-get install -y libfl2  \
-  && apt-get install -y libfl-dev  \
-  && git clone $VERILATOR_URL \
+RUN apt install -y help2man && source /root/dependencies.sh \
+  && git clone https://github.com/verilator/verilator.git \
   && cd verilator \
-  && git checkout $VERILATOR_COMMIT_HASH \
+  && git checkout ${VERILATOR_COMMIT_HASH} \
   && autoconf \
-  && ./configure --prefix="/root/.local" \
+  && ./configure \
   && make -j ${MAKE_JOBS} \
-  && make -j ${MAKE_JOBS} install
+  && make install \
+  && cd .. \
+  && rm -rf verilator
  
 
 # Add other Churchroad files. It's useful to put this as far down as possible.

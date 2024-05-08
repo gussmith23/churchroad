@@ -21,5 +21,4 @@
 
 export YOSYS_COMMIT_HASH="f8d4d7128cf72456cc03b0738a8651ac5dbe52e1"
 
-export VERILATOR_URL="https://github.com/selimsandal/verilator.git"
-export VERILATOR_COMMIT_HASH="42a7152100fde299f2ee658d7ec9c338f033ce12"
+export VERILATOR_COMMIT_HASH="522bead374d6b7b2adb316304126e5361b18bcf1"
