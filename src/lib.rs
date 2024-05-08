@@ -18,7 +18,57 @@ pub enum InterpreterResult {
     // Bitvector(value, bitwidth)
     Bitvector(u64, u64),
 }
-// Interprets a Churchroad program.
+
+/// Interprets a Churchroad program.
+///
+/// ```
+/// use churchroad::*;
+/// use egglog::{EGraph, SerializeConfig};
+/// use egraph_serialize::NodeId;
+/// let mut egraph = EGraph::default();
+/// import_churchroad(&mut egraph);
+/// egraph.parse_and_run_program(
+/// r#"
+/// (let v0 (Wire "v0" 1))
+/// (let v1 (Wire "v1" 1))
+/// (let v2 (Wire "v2" 1))
+/// (union v2 (Op2 (And) v0 v1))
+/// (let a (Var "a" 1))
+/// (IsPort "" "a" (Input) a)
+/// (union v0 a)
+/// (let b (Var "b" 1))
+/// (IsPort "" "b" (Input) b)
+/// (union v1 b)
+/// (let out v2)
+/// (IsPort "" "out" (Output) out)
+/// (delete (Wire "v0" 1))
+/// (delete (Wire "v1" 1))
+/// (delete (Wire "v2" 1))
+/// "#
+/// ).unwrap();
+///
+/// let serialized = egraph.serialize(SerializeConfig::default());
+///
+/// // now, let's get the class ID of the output node
+/// let (_, is_output_node) = serialized
+///     .nodes
+///     .iter()
+///     .find(|(_, n)| n.op == "IsPort" && n.children[2] == NodeId::from("Output-0"))
+///     .unwrap();
+/// let output_id = is_output_node.children.last().unwrap();
+/// let (_, output_node) = serialized
+///     .nodes
+///     .iter()
+///     .find(|(node_id, _)| **node_id == *output_id)
+///     .unwrap();
+///
+/// let result = interpret(&serialized, &output_node.eclass, 0,
+///     &[("a", vec![1]), ("b", vec![1])].into()
+/// );
+///
+/// assert_eq!(result, Ok(InterpreterResult::Bitvector(1, 1)));
+///
+/// ```
 pub fn interpret(
     egraph: &egraph_serialize::EGraph,
     class_id: &ClassId,
@@ -137,6 +187,7 @@ fn interpret_helper(
                         })
                         .collect::<Vec<_>>()[..];
 
+                    assert!(args[1] <= 64);
                     Ok(InterpreterResult::Bitvector(args[0], args[1]))
                 }
                 "Extract" => {
@@ -166,12 +217,11 @@ fn interpret_helper(
                             // TODO(@ninehusky): here, we should also assert that j >= 0 if churchroad handles signed numbers
                             assert!(*bw > i && i >= j);
 
-                            // TODO(@ninehusky): check this, because copilot wrote this
                             let mask = (1 << (i - j + 1)) - 1;
                             (val >> j) & mask
                         }
                     };
-
+                    assert!(i - j + 1 <= 64);
                     Ok(InterpreterResult::Bitvector(val, i - j + 1))
                 }
                 "Concat" => match (&children[0], &children[1]) {
@@ -180,6 +230,7 @@ fn interpret_helper(
                         Ok(InterpreterResult::Bitvector(b, b_bw)),
                     ) => {
                         let result = (a << b_bw) | b;
+                        assert!(a_bw + b_bw <= 64);
                         Ok(InterpreterResult::Bitvector(result, a_bw + b_bw))
                     }
                     _ => todo!(),
@@ -194,6 +245,7 @@ fn interpret_helper(
                         .op
                         .parse()
                         .unwrap();
+                    assert!(extension_bw <= 64);
                     match children[0] {
                         Ok(InterpreterResult::Bitvector(val, _)) => {
                             Ok(InterpreterResult::Bitvector(val, extension_bw))
