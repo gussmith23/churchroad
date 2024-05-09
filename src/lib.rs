@@ -1586,12 +1586,46 @@ endmodule",
         import_churchroad(&mut egraph);
         egraph.parse_and_run_program(&churchroad_program).unwrap();
 
-        egraph.parse_and_run_program(r#"
+        egraph
+            .parse_and_run_program(
+                r#"
             (run-schedule (saturate typing))
             (check (HasType out (Bitvector 32)))
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
-        egraph.parse_and_run_program(r#"
+        // Verifying the following rewrite with Rosette (note that we really
+        // should do this with higher bitwidth -- I don't consider this verified
+        // at the moment)
+        // > (require rosette)
+        // > (define-symbolic a b (bitvector 2))
+        // > (define ahi (bit 1 a))
+        // > (define alo (bit 0 a))
+        // > (define bhi (bit 1 b))
+        // > (define blo (bit 0 b))
+        // > (define part0 (zero-extend (bvmul alo blo) (bitvector 2)))
+        // > (define part1 (bvshl (zero-extend (bvmul alo bhi) (bitvector 2)) (bv 1 2)))
+        // > (define part2 (bvshl (zero-extend (bvmul ahi blo) (bitvector 2)) (bv 1 2)))
+        // > (verify (assert (bvmul a b) (bvadd part0 part1 part2)))
+        // (unsat)
+        //
+        // Ok, here's for 8 bits:
+        // > (require rosette)
+        // > (define-symbolic a b (bitvector 8))
+        // > (define ahi (extract 7 5 a))
+        // > (define ahi (extract 7 4 a))
+        // > (define alo (extract 3 0 a))
+        // > (define bhi (extract 7 4 b))
+        // > (define blo (extract 3 0 b))
+        // > (define part0 (zero-extend (bvmul alo blo) (bitvector 8)))
+        // > (define part1 (bvshl (zero-extend (bvmul alo bhi) (bitvector 8)) (bv 4 8)))
+        // > (define part2 (bvshl (zero-extend (bvmul ahi blo) (bitvector 8)) (bv 4 8)))
+        // > (verify (assert (bvmul a b) (bvadd part0 part1 part2)))
+        // (unsat)
+        egraph
+            .parse_and_run_program(
+                r#"
             ; Rewrite larger FMA into smaller FMA that could fit on one DSP.
             (rule
                 (
@@ -1606,11 +1640,16 @@ endmodule",
                     (let alo (Op1 (Extract (- mid 1) 0) a))
                     (let bhi (Op1 (Extract (- n 1) mid) b))
                     (let blo (Op1 (Extract (- mid 1) 0) b))
-                    (let mul0 (Op2 (Mul) )))
-
+                    (let mul0 (Op1 (ZeroExtend n) (Op2 (Mul) alo blo)))
+                    (let mul1 (Op1 (Shl) (Op1 (ZeroExtend n) (Op2 (Mul) ahi blo))))
+                    (let mul2 (Op1 (Shl) (Op1 (ZeroExtend n) (Op2 (Mul) alo bhi))))
+                    (let smallmuls (Op2 (Add) (Op2 (Add) mul0 mul1) mul2))
+                    (union bigmul smallmuls)
                 )
               )
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
 
         // 2: 10 * 1: 01
         // =
@@ -1618,10 +1657,15 @@ endmodule",
         // 1*1*10 + 0*1 + (1*0*10 + 0*0)*10
 
         // 0010 (2) * 0011 (3)
-        
+
         // a1a0 * b1b0
         // = a1*b1*4 + a1*b0*2 + a0*b1*2 + a0*b0
         //
-        // 
+        //
+
+        egraph.parse_and_run_program(r#"
+            (run 5)
+        "#).unwrap();
+
     }
 }

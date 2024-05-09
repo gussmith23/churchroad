@@ -15,7 +15,9 @@
   (Mul)
   (Or)
   (Xor)
+  ;;; TODO(@gussmith23): logical or arithmetic?
   (Shr)
+  (Shl)
   ; Returns a bitvector of width 1.
   (Eq)
   ; Bitwise not.
