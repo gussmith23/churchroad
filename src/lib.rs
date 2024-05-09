@@ -1,3 +1,5 @@
+use egraph_serialize::{ClassId, Node};
+use indexmap::IndexMap;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -9,8 +11,254 @@ use egglog::{
     sort::{FromSort, I64Sort, IntoSort, Sort, VecSort},
     ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
 };
-use egraph_serialize::{ClassId, Node};
-use indexmap::IndexMap;
+
+// The result of interpreting a Churchroad program.
+#[derive(Debug, PartialEq, Clone)]
+pub enum InterpreterResult {
+    // Bitvector(value, bitwidth)
+    Bitvector(u64, u64),
+}
+
+/// Interprets a Churchroad program.
+///
+/// ```
+/// use churchroad::*;
+/// use egglog::{EGraph, SerializeConfig};
+/// use egraph_serialize::NodeId;
+/// let mut egraph = EGraph::default();
+/// import_churchroad(&mut egraph);
+/// egraph.parse_and_run_program(
+/// r#"
+/// (let v0 (Wire "v0" 1))
+/// (let v1 (Wire "v1" 1))
+/// (let v2 (Wire "v2" 1))
+/// (union v2 (Op2 (And) v0 v1))
+/// (let a (Var "a" 1))
+/// (IsPort "" "a" (Input) a)
+/// (union v0 a)
+/// (let b (Var "b" 1))
+/// (IsPort "" "b" (Input) b)
+/// (union v1 b)
+/// (let out v2)
+/// (IsPort "" "out" (Output) out)
+/// (delete (Wire "v0" 1))
+/// (delete (Wire "v1" 1))
+/// (delete (Wire "v2" 1))
+/// "#
+/// ).unwrap();
+///
+/// let serialized = egraph.serialize(SerializeConfig::default());
+///
+/// // now, let's get the class ID of the output node
+/// let (_, is_output_node) = serialized
+///     .nodes
+///     .iter()
+///     .find(|(_, n)| n.op == "IsPort" && n.children[2] == NodeId::from("Output-0"))
+///     .unwrap();
+/// let output_id = is_output_node.children.last().unwrap();
+/// let (_, output_node) = serialized
+///     .nodes
+///     .iter()
+///     .find(|(node_id, _)| **node_id == *output_id)
+///     .unwrap();
+///
+/// let result = interpret(&serialized, &output_node.eclass, 0,
+///     &[("a", vec![1]), ("b", vec![1])].into()
+/// );
+///
+/// assert_eq!(result, Ok(InterpreterResult::Bitvector(1, 1)));
+///
+/// ```
+pub fn interpret(
+    egraph: &egraph_serialize::EGraph,
+    class_id: &ClassId,
+    time: usize,
+    env: &HashMap<&str, Vec<u64>>,
+) -> Result<InterpreterResult, String> {
+    let result = match egraph.classes().iter().find(|(id, _)| *id == class_id) {
+        Some((id, _)) => interpret_helper(egraph, id, time, env),
+        None => return Err("No class with the given ID.".to_string()),
+    };
+
+    result
+}
+
+fn interpret_helper(
+    egraph: &egraph_serialize::EGraph,
+    id: &ClassId,
+    time: usize,
+    env: &HashMap<&str, Vec<u64>>,
+) -> Result<InterpreterResult, String> {
+    let node_ids = &egraph.classes().get(id).unwrap().nodes;
+    if node_ids.len() != 1 {
+        return Err(format!(
+            "There should be exactly one node in the class, but there are {}.",
+            node_ids.len()
+        ));
+    }
+
+    let node_id = node_ids.first().unwrap();
+    let node = egraph.nodes.get(node_id).unwrap();
+
+    match node.op.as_str() {
+        "Var" => {
+            let bw: u64 = egraph
+                .nodes
+                .get(&node.children[1])
+                .unwrap()
+                .op
+                .parse()
+                .unwrap();
+            let name = egraph.nodes.get(&node.children[0]).unwrap().op.as_str();
+            // cut off the quotes on the beginning and end
+            let name = &name[1..name.len() - 1];
+
+            Ok(InterpreterResult::Bitvector(
+                *env.get(name)
+                    .unwrap_or_else(|| panic!("didn't find var {:?}", name))
+                    .get(time)
+                    .unwrap(),
+                bw,
+            ))
+        }
+        "Op0" | "Op1" | "Op2" | "Op3" => {
+            assert!(!node.children.is_empty());
+            let op = egraph.nodes.get(&node.children[0]).unwrap();
+
+            let children: Vec<_> = node
+                .children
+                .iter()
+                .skip(1)
+                .map(|id| {
+                    let child = egraph.nodes.get(id).unwrap();
+                    interpret_helper(egraph, &child.eclass, time, env)
+                })
+                .collect();
+
+            match op.op.as_str() {
+                // Binary operations that preserve bitwidth.
+                "And" | "Or" | "Shr" => {
+                    assert_eq!(children.len(), 2);
+                    match (&children[0], &children[1]) {
+                        (
+                            Ok(InterpreterResult::Bitvector(a, a_bw)),
+                            Ok(InterpreterResult::Bitvector(b, b_bw)),
+                        ) => {
+                            assert_eq!(a_bw, b_bw);
+                            let result = match op.op.as_str() {
+                                "And" => a & b,
+                                "Or" => a | b,
+                                "Shr" => a >> b,
+                                _ => unreachable!(),
+                            };
+                            Ok(InterpreterResult::Bitvector(result, *a_bw))
+                        }
+                        _ => todo!(),
+                    }
+                }
+                "Mux" => {
+                    assert_eq!(children.len(), 3);
+
+                    match children[0] {
+                        Ok(InterpreterResult::Bitvector(cond, _)) => {
+                            if cond == 0 {
+                                children[1].clone()
+                            } else {
+                                children[2].clone()
+                            }
+                        }
+                        _ => todo!(),
+                    }
+                }
+                "BV" => {
+                    assert_eq!(op.children.len(), 2);
+                    let args = &op
+                        .children
+                        .iter()
+                        .map(|id| {
+                            let (_, node) = egraph
+                                .nodes
+                                .iter()
+                                .find(|(node_id, _)| **node_id == *id)
+                                .unwrap();
+                            assert_eq!(node.children.len(), 0);
+                            let val: u64 = node.op.parse().unwrap();
+                            val
+                        })
+                        .collect::<Vec<_>>()[..];
+
+                    assert!(args[1] <= 64);
+                    Ok(InterpreterResult::Bitvector(args[0], args[1]))
+                }
+                "Extract" => {
+                    assert_eq!(op.children.len(), 2);
+                    let args = &op
+                        .children
+                        .iter()
+                        .map(|id| {
+                            let (_, node) = egraph
+                                .nodes
+                                .iter()
+                                .find(|(node_id, _)| **node_id == *id)
+                                .unwrap();
+                            assert_eq!(node.children.len(), 0);
+                            let val: u64 = node.op.parse().unwrap();
+                            val
+                        })
+                        .collect::<Vec<_>>()[..];
+
+                    let i = args[0];
+                    let j = args[1];
+
+                    let val = match children[0].as_ref().unwrap() {
+                        InterpreterResult::Bitvector(val, bw) => {
+                            // from Rosette docs:
+                            // https://docs.racket-lang.org/rosette-guide/sec_bitvectors.html#%28def._%28%28lib._rosette%2Fbase%2Fbase..rkt%29._extract%29%29
+                            // TODO(@ninehusky): here, we should also assert that j >= 0 if churchroad handles signed numbers
+                            assert!(*bw > i && i >= j);
+
+                            let mask = (1 << (i - j + 1)) - 1;
+                            (val >> j) & mask
+                        }
+                    };
+                    assert!(i - j < 64);
+                    Ok(InterpreterResult::Bitvector(val, i - j + 1))
+                }
+                "Concat" => match (&children[0], &children[1]) {
+                    (
+                        Ok(InterpreterResult::Bitvector(a, a_bw)),
+                        Ok(InterpreterResult::Bitvector(b, b_bw)),
+                    ) => {
+                        let result = (a << b_bw) | b;
+                        assert!(a_bw + b_bw <= 64);
+                        Ok(InterpreterResult::Bitvector(result, a_bw + b_bw))
+                    }
+                    _ => todo!(),
+                },
+                "ZeroExtend" => {
+                    let extension_bw: u64 = egraph
+                        .nodes
+                        .iter()
+                        .find(|(id, _)| *id == &op.children[0])
+                        .unwrap()
+                        .1
+                        .op
+                        .parse()
+                        .unwrap();
+                    assert!(extension_bw <= 64);
+                    match children[0] {
+                        Ok(InterpreterResult::Bitvector(val, _)) => {
+                            Ok(InterpreterResult::Bitvector(val, extension_bw))
+                        }
+                        _ => todo!(),
+                    }
+                }
+                _ => todo!("unimplemented op: {:?}", op.op),
+            }
+        }
+        _ => todo!("unimplemented node type: {:?}", node.op),
+    }
+}
 
 #[derive(Default)]
 pub struct AnythingExtractor;
