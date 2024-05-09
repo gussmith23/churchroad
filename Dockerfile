@@ -104,8 +104,6 @@ ENV CHURCHROAD_DIR=/root/churchroad
 
 # Install Verilator.
 WORKDIR /root
-
-# Build Verilator.
 RUN apt install -y help2man && source /root/dependencies.sh \
   && git clone https://github.com/verilator/verilator.git \
   && cd verilator \
