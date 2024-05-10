@@ -91,8 +91,12 @@ fn main() {
 
         // now, run the interpreter
         for time in 0..time_steps {
-            let output = interpret(&serialized, &output_node.eclass, time, &input_map);
-            println!("{:?}", output);
+            match interpret(&serialized, &output_node.eclass, time, &input_map) {
+                Ok(churchroad::InterpreterResult::Bitvector(val, bw)) => {
+                    println!("({}, {})", val, bw);
+                }
+                _ => panic!(),
+            }
         }
     }
 }
