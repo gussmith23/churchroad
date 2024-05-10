@@ -89,19 +89,19 @@ fn test_lut6_0() {
     let makefile_template_path = churchroad_dir.join("tests/interpreter_tests/Makefile.template");
 
     let inputs = vec![
-        ("INIT", 64),
-        ("I0", 1),
-        ("I1", 1),
-        ("I2", 1),
-        ("I3", 1),
-        ("I4", 1),
-        ("I5", 1),
+        ("INIT".to_string(), 64),
+        ("I0".to_string(), 1),
+        ("I1".to_string(), 1),
+        ("I2".to_string(), 1),
+        ("I3".to_string(), 1),
+        ("I4".to_string(), 1),
+        ("I5".to_string(), 1),
     ];
-    let outputs: Vec<(&str, i32)> = vec![("O", 1)];
+    let outputs: Vec<(String, i32)> = vec![("O".to_string(), 1)];
 
     let include_dirs = vec![churchroad_dir.join("tests/interpreter_tests/verilog/")];
 
-    verilator_intepreter_fuzz_test(
+    verilator_interpreter_fuzz_test(
         testbench_template_path,
         makefile_template_path,
         "LUT6",
@@ -128,12 +128,12 @@ fn test_lut6_0() {
 // num_test_cases: number of test cases to run
 // num_clock_cycles: number of clock cycles to run each test case for
 // filename: name of the file to run Verilator on. For example, if the file is `adder.v`, this should be `"adder.v"`
-fn verilator_intepreter_fuzz_test(
+fn verilator_interpreter_fuzz_test(
     testbench_template_path: PathBuf,
     makefile_template_path: PathBuf,
     top_module_name: &str,
-    inputs: Vec<(&str, i32)>,
-    outputs: Vec<(&str, i32)>,
+    inputs: Vec<(String, i32)>,
+    outputs: Vec<(String, i32)>,
     include_dirs: Vec<PathBuf>,
     test_output_dir: PathBuf,
     num_test_cases: usize,
@@ -281,7 +281,7 @@ fn verilator_intepreter_fuzz_test(
     let mut rng = StdRng::seed_from_u64(0xb0bacafe);
     let mut interpreter_results: Vec<InterpreterResult> = Vec::new();
     for _ in 0..num_test_cases {
-        let mut env: HashMap<&str, Vec<u64>> = HashMap::new();
+        let mut env: HashMap<String, Vec<u64>> = HashMap::new();
         let input_values: Vec<Vec<u64>> = inputs
             .iter()
             .map(|(name, bw)| {
@@ -295,7 +295,7 @@ fn verilator_intepreter_fuzz_test(
                         val
                     })
                     .collect();
-                env.insert(name, vals.clone());
+                env.insert(String::from(name), vals.clone());
                 vals
             })
             .collect();
@@ -362,9 +362,9 @@ interpreter_test!(
     "ALU",
     0,
     &[
-        ("a", vec![0b01010101]),
-        ("b", vec![0b11111111]),
-        ("op", vec![1])
+        ("a".to_string(), vec![0b01010101]),
+        ("b".to_string(), vec![0b11111111]),
+        ("op".to_string(), vec![1])
     ]
     .into(),
     "out"
@@ -377,9 +377,9 @@ interpreter_test!(
     "ALU",
     0,
     &[
-        ("a", vec![0b01010101, 0b10101010]),
-        ("b", vec![0b11111111, 0b00000000]),
-        ("op", vec![1, 0])
+        ("a".to_string(), vec![0b01010101, 0b10101010]),
+        ("b".to_string(), vec![0b11111111, 0b00000000]),
+        ("op".to_string(), vec![1, 0])
     ]
     .into(),
     "out"
@@ -392,9 +392,9 @@ interpreter_test!(
     "ALU",
     1,
     &[
-        ("a", vec![0b01010101, 0b10101010]),
-        ("b", vec![0b11111111, 0b00000000]),
-        ("op", vec![1, 0])
+        ("a".to_string(), vec![0b01010101, 0b10101010]),
+        ("b".to_string(), vec![0b11111111, 0b00000000]),
+        ("op".to_string(), vec![1, 0])
     ]
     .into(),
     "out"
