@@ -1627,6 +1627,7 @@ endmodule",
             .parse_and_run_program(
                 r#"
             ; Rewrite larger FMA into smaller FMA that could fit on one DSP.
+            (ruleset mul)
             (rule
                 (
                     (= bigmul (Op2 (Mul) a b))
@@ -1646,6 +1647,7 @@ endmodule",
                     (let smallmuls (Op2 (Add) (Op2 (Add) mul0 mul1) mul2))
                     (union bigmul smallmuls)
                 )
+                :ruleset mul
               )
         "#,
             )
@@ -1663,9 +1665,20 @@ endmodule",
         //
         //
 
-        egraph.parse_and_run_program(r#"
-            (run 5)
-        "#).unwrap();
+        dbg!(egraph
+            .parse_and_run_program(
+                r#"
+            (run-schedule (repeat 5 (seq (saturate typing) (repeat 5 mul))))
+            (run-schedule (saturate typing))
+            (query-extract (Op2 (Mul) ?a ?b))
+            (query-extract (Bitvector n))
 
+            (run typing 5)
+            (check (HasType (Var "a" 32) (Bitvector 32)))
+            (query-extract (HasType (Op1 (Extract ?v0 ?v1) ?expr) (Bitvector 16)))
+            (check (HasType (Op1 (Extract 31 16) (Var "a" 32)) (Bitvector 16)))
+        "#,
+            )
+            .unwrap());
     }
 }
