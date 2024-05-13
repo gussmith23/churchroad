@@ -234,7 +234,7 @@
 (rule
   ((Op1 (Extract high low) expr)
    (HasType expr (Bitvector n))
-   (>= 0 low)
+   (>= low 0)
    (< high n))
   ((HasType (Op1 (Extract high low) expr) (Bitvector (+ 1 (- high low)))))
   :ruleset typing)
