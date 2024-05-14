@@ -1,0 +1,41 @@
+`include "{filename}"
+module testbench;
+
+
+{input_output_declarations}
+
+integer num_inputs;
+integer num_test_cases;
+integer num_clock_cycles;
+
+logic [{max_input_bitwidth}-1:0] inputs[]; 
+
+{test_module_name} simulate_with_verilator_test_module({test_module_port_list});
+
+localparam CLK_PERIOD = 10;
+localparam STDIN = 32'h8000_0000;
+
+initial begin
+  $fscanf(STDIN, "%d %d %d\n", num_inputs, num_test_cases, num_clock_cycles);
+  $display("num_inputs = %d, num_test_cases = %d, num_clock_cycles = %d\n",
+    num_inputs, num_test_cases, num_clock_cycles);
+
+  inputs = new[num_inputs];
+
+  for (int i = 0; i < num_test_cases; i++) begin
+    $display("Test case %d\n", i);
+    for (int j = 0; j < num_clock_cycles; j++) begin
+      for (int k = 0; k < num_inputs; k++) begin
+        $fscanf(STDIN, "%X\n", inputs[k]);
+        $display("at time %d, inputs[%d] = %d\n", j, k, inputs[k]);
+      end
+      // {display_inputs}
+      #CLK_PERIOD;
+      {display_outputs}
+    end
+  end
+
+  $finish;
+end
+
+endmodule

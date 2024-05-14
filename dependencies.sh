@@ -20,3 +20,5 @@
 # cloned on a `git clone --recursive`.
 
 export YOSYS_COMMIT_HASH="f8d4d7128cf72456cc03b0738a8651ac5dbe52e1"
+
+export VERILATOR_COMMIT_HASH="522bead374d6b7b2adb316304126e5361b18bcf1"

@@ -102,6 +102,20 @@ RUN pip install -r requirements.txt
 
 ENV CHURCHROAD_DIR=/root/churchroad
 
+# Install Verilator.
+WORKDIR /root
+RUN apt install -y help2man && source /root/dependencies.sh \
+  && git clone https://github.com/verilator/verilator.git \
+  && cd verilator \
+  && git checkout ${VERILATOR_COMMIT_HASH} \
+  && autoconf \
+  && ./configure \
+  && make -j ${MAKE_JOBS} \
+  && make install \
+  && cd .. \
+  && rm -rf verilator
+ 
+
 # Add other Churchroad files. It's useful to put this as far down as possible.
 # In general, only ADD files just before they're needed. This maximizes the
 # ability to cache intermediate containers and minimizes rebuilding.
