@@ -867,34 +867,9 @@ pub fn to_rewrite_rule_egraph_serialize(
     egraph: &egraph_serialize::EGraph,
     // TODO: not sure what choices are for
     choices: &IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
+    name: &str,
 ) -> String {
     let (inputs, outputs) = get_inputs_and_outputs_serialized(egraph);
-    for (str, class_id) in &inputs {
-        println!("inputs: {str}, class_id: {class_id}");
-    }
-    for (str, class_id) in &outputs {
-        println!("outputs: {str}, class_id: {class_id}");
-    }
-
-    // TODO: need to figure out how to convert inputs to modules
-    fn vec_list_to_cons(v: Vec<String>) -> String {
-        let mut str: String = String::new();
-        if v.len() == 0 {
-            return str;
-        }
-
-        for i in &v {
-            let s = format!("(StringCons \"{i}\"");
-            str.push_str(s.as_str());
-        }
-        str.push_str("(StringNil)");
-
-        for _i in &v {
-            str.push_str(")");
-        }
-
-        return str;
-    }
 
     // Add all of the outputs to the queue
     let mut queue: Vec<ClassId> = outputs.into_iter().map(|c| c.1).collect();
@@ -952,7 +927,6 @@ pub fn to_rewrite_rule_egraph_serialize(
 
             "Op0" | "Op1" | "Op2" => {
                 let op_node = &egraph[&term.children[0]];
-                dbg!(op_node);
                 // BV, ZeroExtend, Add, Reg, working
                 match op_node.op.as_str() {
                     "ZeroExtend" => {
@@ -1027,19 +1001,59 @@ pub fn to_rewrite_rule_egraph_serialize(
     }
 
     // TODO: need to figure out how to do definitions - what does this look like for register.?
-    for (s, _) in &inputs {
-        println!("input {s}");
+    fn vec_list_to_str_cons(v: &Vec<String>) -> String {
+        let mut str: String = String::new();
+        if v.len() == 0 {
+            return str;
+        }
+
+        for i in v {
+            let s = format!("(StringCons \"{i}\" ");
+            str.push_str(s.as_str());
+        }
+        str.push_str("(StringNil)");
+
+        for _i in v {
+            str.push_str(")");
+        }
+
+        return str;
     }
-    let inputs_str = vec_list_to_cons(inputs.iter().map(|a| a.0.clone()).collect());
+    fn vec_list_to_expr_cons(v: &Vec<String>) -> String {
+        let mut str: String = String::new();
+        if v.len() == 0 {
+            return str;
+        }
+
+        for i in v {
+            let s = format!("(ExprCons {i} ");
+            str.push_str(s.as_str());
+        }
+        str.push_str("(ExprNil)");
+
+        for _i in v {
+            str.push_str(")");
+        }
+
+        return str;
+    }
+    let input_names = inputs.iter().map(|a| a.0.clone()).collect();
+    let inputs_str = vec_list_to_str_cons(&input_names);
+    let expr_cons = vec_list_to_expr_cons(&input_names);
 
     let rule = format!(
         r#"(rule
  ;; set of definitions
  ({rules})
  ;; set of declarations
- ({inputs_str})
+ (
+     (let instance (ModuleInstance "{name}" (StringNil) (ExprNil) 
+                    {inputs_str}
+                    {expr_cons}
+                    )
+      )
 )
-        "#
+:ruleset module_rewrites)"#
     );
 
     rule.into()
@@ -2161,9 +2175,27 @@ endmodule",
             .unwrap();
 
         let serialized = egraph.serialize(SerializeConfig::default());
-        let out = AnythingExtractor.extract(&serialized, &[]);
+        let imap = AnythingExtractor.extract(&serialized, &[]);
 
-        let v1 = to_rewrite_rule_egraph_serialize(&serialized, &out);
-        println!("out:\n{}", v1);
+        let out = to_rewrite_rule_egraph_serialize(&serialized, &imap, "REG");
+
+        assert_eq!(
+            r#"(rule
+ ;; set of definitions
+ ((= wire_24 (Op2 (Reg 0) clk wire_6))
+(= wire_6 (Op2 (Add) wire_24 wire_15))
+(= wire_15 (Op1 (ZeroExtend 4) wire_12))
+)
+ ;; set of declarations
+ (
+     (let instance (ModuleInstance "REG" (StringNil) (ExprNil) 
+                    (StringCons "clk" (StringNil))
+                    (ExprCons clk (ExprNil))
+                    )
+      )
+)
+:ruleset module_rewrites)"#,
+            out
+        );
     }
 }
