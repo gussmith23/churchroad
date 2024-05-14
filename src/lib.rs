@@ -967,7 +967,7 @@ pub fn to_rewrite_rule_egraph_serialize(
                             queue.push(d_id.clone());
                         }
 
-                        maybe_push_expr_on_queue(&mut queue, &done, &val_id);
+                        maybe_push_expr_on_queue(&mut queue, &done, val_id);
                     },
                     "Concat" | "Xor" | "And" | "Or" | "Add" => {
                     let expr0_id = &egraph[&term.children[1]].eclass;
@@ -982,8 +982,8 @@ pub fn to_rewrite_rule_egraph_serialize(
                             expr1 = id_to_wire_name(expr1_id)
                             ).as_str()
                         );
-                    maybe_push_expr_on_queue(&mut queue, &done, &expr0_id);
-                    maybe_push_expr_on_queue(&mut queue, &done, &expr1_id);
+                    maybe_push_expr_on_queue(&mut queue, &done, expr0_id);
+                    maybe_push_expr_on_queue(&mut queue, &done, expr1_id);
                     },
                     "Extract" => {
                     assert_eq!(term.children.len(), 2);
@@ -1003,7 +1003,7 @@ pub fn to_rewrite_rule_egraph_serialize(
     // TODO: need to figure out how to do definitions - what does this look like for register.?
     fn vec_list_to_str_cons(v: &Vec<String>) -> String {
         let mut str: String = String::new();
-        if v.len() == 0 {
+        if v.is_empty() {
             return str;
         }
 
@@ -1014,14 +1014,14 @@ pub fn to_rewrite_rule_egraph_serialize(
         str.push_str("(StringNil)");
 
         for _i in v {
-            str.push_str(")");
+            str.push(')');
         }
 
-        return str;
+        str
     }
     fn vec_list_to_expr_cons(v: &Vec<String>) -> String {
         let mut str: String = String::new();
-        if v.len() == 0 {
+        if v.is_empty() {
             return str;
         }
 
@@ -1032,10 +1032,10 @@ pub fn to_rewrite_rule_egraph_serialize(
         str.push_str("(ExprNil)");
 
         for _i in v {
-            str.push_str(")");
+            str.push(')');
         }
 
-        return str;
+        str
     }
     let input_names = inputs.iter().map(|a| a.0.clone()).collect();
     let inputs_str = vec_list_to_str_cons(&input_names);
@@ -1056,7 +1056,7 @@ pub fn to_rewrite_rule_egraph_serialize(
 :ruleset module_rewrites)"#
     );
 
-    rule.into()
+    rule
 }
 
 pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
