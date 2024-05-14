@@ -619,11 +619,33 @@ pub fn to_rewrite_rule_egraph_serialize(
     egraph: &egraph_serialize::EGraph,
     // TODO: not sure what choices are for
     choices: &IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
-    clk_name: &str,
 ) -> String {
     let (inputs, outputs) = get_inputs_and_outputs_serialized(egraph);
     for (str, class_id) in &inputs {
         println!("inputs: {str}, class_id: {class_id}");
+    }
+    for (str, class_id) in &outputs {
+        println!("outputs: {str}, class_id: {class_id}");
+    }
+
+    // TODO: need to figure out how to convert inputs to modules
+    fn vec_list_to_cons(v: Vec<String>) -> String {
+        let mut str: String = String::new();
+        if v.len() == 0 {
+            return str;
+        }
+
+        for i in &v {
+            let s = format!("(StringCons \"{i}\"");
+            str.push_str(s.as_str());
+        }
+        str.push_str("(StringNil)");
+
+        for _i in &v {
+            str.push_str(")");
+        }
+
+        return str;
     }
 
     // Add all of the outputs to the queue
@@ -756,12 +778,18 @@ pub fn to_rewrite_rule_egraph_serialize(
         }
     }
 
+    // TODO: need to figure out how to do definitions - what does this look like for register.?
+    for (s, _) in &inputs {
+        println!("input {s}");
+    }
+    let inputs_str = vec_list_to_cons(inputs.iter().map(|a| a.0.clone()).collect());
+
     let rule = format!(
         r#"(rule
  ;; set of definitions
  ({rules})
  ;; set of declarations
- ()
+ ({inputs_str})
 )
         "#
     );
@@ -1883,10 +1911,11 @@ endmodule",
                 "#,
             )
             .unwrap();
+
         let serialized = egraph.serialize(SerializeConfig::default());
         let out = AnythingExtractor.extract(&serialized, &[]);
 
-        let v1 = to_rewrite_rule_egraph_serialize(&serialized, &out, "");
+        let v1 = to_rewrite_rule_egraph_serialize(&serialized, &out);
         println!("out:\n{}", v1);
     }
 }
