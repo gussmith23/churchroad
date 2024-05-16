@@ -63,7 +63,7 @@ pub enum InterpreterResult {
 ///     .unwrap();
 ///
 /// let result = interpret(&serialized, &output_node.eclass, 0,
-///     &[("a", vec![1]), ("b", vec![1])].into()
+///     &[("a".to_string(), vec![1]), ("b".to_string(), vec![1])].into()
 /// );
 ///
 /// assert_eq!(result, Ok(InterpreterResult::Bitvector(1, 1)));
@@ -73,7 +73,7 @@ pub fn interpret(
     egraph: &egraph_serialize::EGraph,
     class_id: &ClassId,
     time: usize,
-    env: &HashMap<&str, Vec<u64>>,
+    env: &HashMap<String, Vec<u64>>,
 ) -> Result<InterpreterResult, String> {
     let result = match egraph.classes().iter().find(|(id, _)| *id == class_id) {
         Some((id, _)) => interpret_helper(egraph, id, time, env),
@@ -87,7 +87,7 @@ fn interpret_helper(
     egraph: &egraph_serialize::EGraph,
     id: &ClassId,
     time: usize,
-    env: &HashMap<&str, Vec<u64>>,
+    env: &HashMap<String, Vec<u64>>,
 ) -> Result<InterpreterResult, String> {
     let node_ids = &egraph.classes().get(id).unwrap().nodes;
     if node_ids.len() != 1 {
