@@ -865,7 +865,6 @@ endmodule",
 
 pub fn to_rewrite_rule_egraph_serialize(
     egraph: &egraph_serialize::EGraph,
-    // TODO: not sure what choices are for
     choices: &IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
     name: &str,
 ) -> String {
@@ -885,7 +884,6 @@ pub fn to_rewrite_rule_egraph_serialize(
         }
     }
 
-    // TODO: Need to handle extracts of Vars here
     let id_to_wire_name = |id: &ClassId| -> String {
         let v = inputs.iter().find(|(_k, v)| v == id);
         match v {
@@ -896,6 +894,9 @@ pub fn to_rewrite_rule_egraph_serialize(
 
     let mut rules = String::new();
 
+    // This is to deal with the generation of (Op2 (Extract b b) (Var x)) -> "x_b"
+    // Keys are the variable names and values are list of which bits are extracted
+    // This is used at the end to Concat all of the variables together.
     let mut input_extract_map: HashMap<String, Vec<i64>> = HashMap::new();
 
     while let Some(id) = queue.pop() {
@@ -935,13 +936,15 @@ pub fn to_rewrite_rule_egraph_serialize(
                         assert_eq!(op_node.children.len(), 1);
                         assert_eq!(term.children.len(), 2);
                         let bw = egraph[&op_node.children[0]].op.parse::<i64>().unwrap();
-
+                        let val_id = &egraph[&term.children[1]].eclass;
                         let o = format!(
                             "(= {this_wire} (Op1 (ZeroExtend {bw}) {value}))\n",
                             this_wire = id_to_wire_name(&id),
-                            value = id_to_wire_name(&egraph[&term.children[1]].eclass)
+                            value = id_to_wire_name(val_id)
                             );
                         rules.push_str(o.as_str());
+
+                        maybe_push_expr_on_queue(&mut queue, &done, val_id);
                     },
 
                     "Not" => {
@@ -1111,7 +1114,10 @@ pub fn to_rewrite_rule_egraph_serialize(
     let expr_cons = vec_list_to_expr_cons(&input_names);
 
     let mut maybe_let = String::new();
-    for (k, v) in &mut input_extract_map {
+    let mut vec = input_extract_map.drain().collect::<Vec<_>>();
+    vec.sort();
+
+    for (k, v) in &mut vec {
         // let s = format!("(let {} (Wire \"{}\"))", &k, &k);
         // sort the vector
         v.sort();
@@ -2265,6 +2271,7 @@ endmodule",
  ((= wire_24 (Op2 (Reg 0) clk wire_6))
 (= wire_6 (Op2 (Add) wire_24 wire_15))
 (= wire_15 (Op1 (ZeroExtend 4) wire_12))
+(= wire_12 (Op0 (BV 1 1)))
 )
  ;; set of declarations
  (
@@ -2368,8 +2375,8 @@ endmodule",
 )
  ;; set of declarations
  (
-(let i_b (Op2 (Concat) i_b_0 i_b_1))
 (let i_a (Op2 (Concat) i_a_0 i_a_1))
+(let i_b (Op2 (Concat) i_b_0 i_b_1))
 
 (let instance (ModuleInstance "ALU" (StringNil) (ExprNil) 
                     (StringCons "i_a" (StringCons "i_b" (StringNil)))
