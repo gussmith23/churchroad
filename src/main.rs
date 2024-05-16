@@ -52,6 +52,11 @@ fn main() {
     std::io::stdin().read_line(&mut num_inputs).unwrap();
     let num_inputs: usize = num_inputs.trim().parse().unwrap();
 
+    println!(
+        "Ok, {} test cases, {} time steps, {} inputs.",
+        test_cases, time_steps, num_inputs
+    );
+
     for _ in 0..test_cases {
         let mut input_map: HashMap<String, Vec<u64>> = HashMap::new();
         for time in 0..time_steps {
@@ -60,16 +65,15 @@ fn main() {
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input).unwrap();
 
-                let inputs = input.trim().split(": ").collect::<Vec<&str>>();
+                let inputs = input.trim().split(":").collect::<Vec<&str>>();
                 assert!(
                     inputs.len() == 2,
-                    "input must be of form 'variable_name: value'"
+                    "input must be of form 'variable_name:value'"
                 );
 
                 let var_name = inputs[0].to_string();
                 let value: u64 = inputs[1].trim().parse().unwrap();
 
-                println!("input map is: {:?}", input_map);
                 let mut old_inputs = input_map.get(&var_name).unwrap_or(&vec![]).clone();
 
                 if old_inputs.len() > time {
