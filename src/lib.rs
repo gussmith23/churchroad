@@ -895,6 +895,9 @@ pub fn to_rewrite_rule_egraph_serialize(
     };
 
     let mut rules = String::new();
+    
+    let mut input_extract_map : HashMap<String, Vec<i64>> = HashMap::new();
+
 
     while let Some(id) = queue.pop() {
         done.insert(id.clone());
@@ -940,6 +943,19 @@ pub fn to_rewrite_rule_egraph_serialize(
                             value = id_to_wire_name(&egraph[&term.children[1]].eclass)
                             );
                         rules.push_str(o.as_str());
+                    },
+
+                    "Not" => {
+                        assert_eq!(term.children.len(), 2);
+                        let val_id = &egraph[&term.children[1]].eclass; 
+                        let o = format!(
+                            "(= {this_wire} (Op1 (Not)  {value}))\n",
+                            this_wire = id_to_wire_name(&id),
+                            value = id_to_wire_name(val_id)
+                            );
+                        rules.push_str(o.as_str());
+                        maybe_push_expr_on_queue(&mut queue, &done, val_id);
+
                     },
                     "BV" => {
                         assert_eq!(op_node.children.len(), 2);
@@ -988,7 +1004,35 @@ pub fn to_rewrite_rule_egraph_serialize(
                     "Extract" => {
                     assert_eq!(term.children.len(), 2);
                     assert_eq!(op_node.children.len(), 2);
-                    todo!("Extract undone");
+                    // TODO: need to think out the semantics of when Extract 
+                    // hi != lo
+                    // i.e. how to construct the module
+                    let hi:i64 = egraph[&op_node.children[0]].op.parse().unwrap();
+                    let lo:i64 = egraph[&op_node.children[1]].op.parse().unwrap();
+                    assert_eq!(hi, lo);
+                    let id = &term.eclass;
+                    // TODO: I need to check if an expression is an input here
+                    let expr_id = &egraph[&term.children[1]].eclass;
+
+                    let v = inputs.iter().find(|(_k, v)| v == expr_id);
+                    let expr = match v {
+                     Some((var, _id)) => {
+                         let v = input_extract_map.entry(var.clone()).or_insert(Vec::new());
+                         v.push(hi);
+
+                         format!("{}_{hi}", var.to_string())
+                     },
+                     None => format!("(Op1 (Extract {hi} {lo}) wire_{})", id),
+                    };
+                    rules.push_str(
+                        format!(
+                            "(= {this_wire} {expr})\n",
+                            this_wire = id_to_wire_name(&id),
+                            ).as_str()
+                        );
+
+                    maybe_push_expr_on_queue(&mut queue, &done, expr_id);
+
                     },
                     v => todo!("{:?}", v)
 
@@ -1037,9 +1081,48 @@ pub fn to_rewrite_rule_egraph_serialize(
 
         str
     }
+
+    fn vec_list_to_concat(v: &mut Vec<String>) -> String {
+        assert!(v.len() >= 2);
+        let mut str: String = String::new();
+        // assuming it's [v0, v1, v2...]
+        // want (Concat v0 (Concat v1 v0))
+        if v.len() == 2 {
+            let s = format!("(Op2 (Concat) {} {})", v[0], v[1]);
+            str.push_str(s.as_str());
+            return s;
+        }
+        let sz: usize = v.len() - 2;
+        for i in &mut v[0..sz] {
+            let s = format!("(Op2 (Concat) {i} ");
+            str.push_str(s.as_str());
+        }
+        let s = format!("(Op2 (Concat) {} {})", v[v.len() - 2], v[v.len() - 1]);
+        str.push_str(s.as_str());
+
+        for _i in &mut v[0..sz] {
+            str.push(')');
+        }
+
+        str
+    }
+
+
+
     let input_names = inputs.iter().map(|a| a.0.clone()).collect();
     let inputs_str = vec_list_to_str_cons(&input_names);
     let expr_cons = vec_list_to_expr_cons(&input_names);
+
+    let mut maybe_let = String::new();
+    for (k, v) in &mut input_extract_map {
+        // let s = format!("(let {} (Wire \"{}\"))", &k, &k);
+        // sort the vector
+        v.sort();
+        let mut v1: Vec<_> = v.into_iter().map(|bw| format!("{k}_{bw}")).collect();
+        let s1 = vec_list_to_concat(&mut v1);
+        let s = format!("(let {k} {s1})\n");
+        maybe_let.push_str(s.as_str());
+    }
 
     let rule = format!(
         r#"(rule
@@ -1047,13 +1130,12 @@ pub fn to_rewrite_rule_egraph_serialize(
  ({rules})
  ;; set of declarations
  (
-     (let instance (ModuleInstance "{name}" (StringNil) (ExprNil) 
+{maybe_let}
+(let instance (ModuleInstance "{name}" (StringNil) (ExprNil) 
                     {inputs_str}
                     {expr_cons}
                     )
-      )
-)
-:ruleset module_rewrites)"#
+      )) :ruleset module_rewrites)"#
     );
 
     rule
@@ -2178,6 +2260,7 @@ endmodule",
         let imap = AnythingExtractor.extract(&serialized, &[]);
 
         let out = to_rewrite_rule_egraph_serialize(&serialized, &imap, "REG");
+        println!("{out}");
 
         assert_eq!(
             r#"(rule
@@ -2188,14 +2271,114 @@ endmodule",
 )
  ;; set of declarations
  (
-     (let instance (ModuleInstance "REG" (StringNil) (ExprNil) 
+
+(let instance (ModuleInstance "REG" (StringNil) (ExprNil) 
                     (StringCons "clk" (StringNil))
                     (ExprCons clk (ExprNil))
                     )
-      )
-)
-:ruleset module_rewrites)"#,
+      )) :ruleset module_rewrites)"#,
             out
         );
     }
+
+    #[test]
+    fn compile_rewrite_rule_1() {
+        let mut egraph = EGraph::default();
+        import_churchroad(&mut egraph);
+        egraph
+            .parse_and_run_program(
+                r#"
+; wire declarations
+; $abc$84$auto$blifparse.cc:396:parse_blif$85.A
+(let v0 (Wire "v0" 1))
+; $abc$84$auto$blifparse.cc:396:parse_blif$85.Y
+(let v1 (Wire "v1" 1))
+; $abc$84$auto$blifparse.cc:396:parse_blif$86.A
+(let v2 (Wire "v2" 1))
+; $abc$84$auto$blifparse.cc:396:parse_blif$86.Y
+(let v3 (Wire "v3" 1))
+; $abc$84$auto$blifparse.cc:396:parse_blif$87.B
+(let v4 (Wire "v4" 1))
+; $abc$84$auto$blifparse.cc:396:parse_blif$87.Y
+(let v5 (Wire "v5" 1))
+; $abc$84$auto$blifparse.cc:396:parse_blif$88.B
+(let v6 (Wire "v6" 1))
+; $abc$84$auto$blifparse.cc:396:parse_blif$88.Y
+(let v7 (Wire "v7" 1))
+; i_a
+(let v8 (Wire "v8" 2))
+; i_b
+(let v9 (Wire "v9" 2))
+; o_res
+(let v10 (Wire "v10" 2))
+
+; cells
+(union v10 (Op2 (Concat) v7 v5))
+(union v4 (Op1 (Extract 0 0) v9))
+(union v6 (Op1 (Extract 1 1) v9))
+(union v0 (Op1 (Extract 0 0) v8))
+(union v2 (Op1 (Extract 1 1) v8))
+(union v1 (Op1 (Not) v0))
+(union v3 (Op1 (Not) v2))
+(union v5 (Op2 (Xor) v1 v4))
+(union v7 (Op2 (Xor) v3 v6))
+
+; inputs
+(let i_a (Var "i_a" 2))
+(IsPort "" "i_a" (Input) i_a)
+(union v8 i_a)
+(let i_b (Var "i_b" 2))
+(IsPort "" "i_b" (Input) i_b)
+(union v9 i_b)
+
+; outputs
+(let o_res v10)
+(IsPort "" "o_res" (Output) o_res)
+
+; delete wire expressions
+(delete (Wire "v0" 1))
+(delete (Wire "v1" 1))
+(delete (Wire "v2" 1))
+(delete (Wire "v3" 1))
+(delete (Wire "v4" 1))
+(delete (Wire "v5" 1))
+(delete (Wire "v6" 1))
+(delete (Wire "v7" 1))
+(delete (Wire "v8" 2))
+(delete (Wire "v9" 2))
+(delete (Wire "v10" 2))
+                "#
+            )
+            .unwrap();
+
+        let serialized = egraph.serialize(SerializeConfig::default());
+        let imap = AnythingExtractor.extract(&serialized, &[]);
+
+        let out = to_rewrite_rule_egraph_serialize(&serialized, &imap, "ALU");
+        println!("\n{out}\nend");
+        assert_eq!(r#"(rule
+ ;; set of definitions
+ ((= wire_46 (Op2 (Concat) wire_20 wire_16))
+(= wire_16 (Op2 (Xor) wire_8 wire_14))
+(= wire_14 i_b_0)
+(= wire_8 (Op1 (Not)  wire_6))
+(= wire_6 i_a_0)
+(= wire_20 (Op2 (Xor) wire_12 wire_18))
+(= wire_18 i_b_1)
+(= wire_12 (Op1 (Not)  wire_10))
+(= wire_10 i_a_1)
+)
+ ;; set of declarations
+ (
+(let i_b (Op2 (Concat) i_b_0 i_b_1))
+(let i_a (Op2 (Concat) i_a_0 i_a_1))
+
+(let instance (ModuleInstance "ALU" (StringNil) (ExprNil) 
+                    (StringCons "i_a" (StringCons "i_b" (StringNil)))
+                    (ExprCons i_a (ExprCons i_b (ExprNil)))
+                    )
+      )) :ruleset module_rewrites)"#, out)
+        // println!("rule:\n {out}");
+    }
+
 }
