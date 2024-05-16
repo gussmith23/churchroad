@@ -1084,7 +1084,7 @@ pub fn to_rewrite_rule_egraph_serialize(
         str
     }
 
-    fn vec_list_to_concat(v: &mut Vec<String>) -> String {
+    fn vec_list_to_concat(v: &mut [String]) -> String {
         assert!(v.len() >= 2);
         let mut str: String = String::new();
         // assuming it's [v0, v1, v2...]
