@@ -895,9 +895,8 @@ pub fn to_rewrite_rule_egraph_serialize(
     };
 
     let mut rules = String::new();
-    
-    let mut input_extract_map : HashMap<String, Vec<i64>> = HashMap::new();
 
+    let mut input_extract_map: HashMap<String, Vec<i64>> = HashMap::new();
 
     while let Some(id) = queue.pop() {
         done.insert(id.clone());
@@ -947,7 +946,7 @@ pub fn to_rewrite_rule_egraph_serialize(
 
                     "Not" => {
                         assert_eq!(term.children.len(), 2);
-                        let val_id = &egraph[&term.children[1]].eclass; 
+                        let val_id = &egraph[&term.children[1]].eclass;
                         let o = format!(
                             "(= {this_wire} (Op1 (Not)  {value}))\n",
                             this_wire = id_to_wire_name(&id),
@@ -1017,17 +1016,17 @@ pub fn to_rewrite_rule_egraph_serialize(
                     let v = inputs.iter().find(|(_k, v)| v == expr_id);
                     let expr = match v {
                      Some((var, _id)) => {
-                         let v = input_extract_map.entry(var.clone()).or_insert(Vec::new());
+                         let v = input_extract_map.entry(var.clone()).or_default();
                          v.push(hi);
 
-                         format!("{}_{hi}", var.to_string())
+                         format!("{}_{hi}", var)
                      },
                      None => format!("(Op1 (Extract {hi} {lo}) wire_{})", id),
                     };
                     rules.push_str(
                         format!(
                             "(= {this_wire} {expr})\n",
-                            this_wire = id_to_wire_name(&id),
+                            this_wire = id_to_wire_name(id),
                             ).as_str()
                         );
 
@@ -1107,8 +1106,6 @@ pub fn to_rewrite_rule_egraph_serialize(
         str
     }
 
-
-
     let input_names = inputs.iter().map(|a| a.0.clone()).collect();
     let inputs_str = vec_list_to_str_cons(&input_names);
     let expr_cons = vec_list_to_expr_cons(&input_names);
@@ -1118,7 +1115,7 @@ pub fn to_rewrite_rule_egraph_serialize(
         // let s = format!("(let {} (Wire \"{}\"))", &k, &k);
         // sort the vector
         v.sort();
-        let mut v1: Vec<_> = v.into_iter().map(|bw| format!("{k}_{bw}")).collect();
+        let mut v1: Vec<_> = v.iter_mut().map(|bw| format!("{k}_{bw}")).collect();
         let s1 = vec_list_to_concat(&mut v1);
         let s = format!("(let {k} {s1})\n");
         maybe_let.push_str(s.as_str());
@@ -2347,7 +2344,7 @@ endmodule",
 (delete (Wire "v8" 2))
 (delete (Wire "v9" 2))
 (delete (Wire "v10" 2))
-                "#
+                "#,
             )
             .unwrap();
 
@@ -2356,7 +2353,8 @@ endmodule",
 
         let out = to_rewrite_rule_egraph_serialize(&serialized, &imap, "ALU");
         println!("\n{out}\nend");
-        assert_eq!(r#"(rule
+        assert_eq!(
+            r#"(rule
  ;; set of definitions
  ((= wire_46 (Op2 (Concat) wire_20 wire_16))
 (= wire_16 (Op2 (Xor) wire_8 wire_14))
@@ -2377,8 +2375,9 @@ endmodule",
                     (StringCons "i_a" (StringCons "i_b" (StringNil)))
                     (ExprCons i_a (ExprCons i_b (ExprNil)))
                     )
-      )) :ruleset module_rewrites)"#, out)
+      )) :ruleset module_rewrites)"#,
+            out
+        )
         // println!("rule:\n {out}");
     }
-
 }
