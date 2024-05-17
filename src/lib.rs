@@ -136,6 +136,17 @@ fn interpret_helper(
                 .collect();
 
             match op.op.as_str() {
+                // Operations that condense to a single bit.
+                "ReduceOr" => {
+                    assert_eq!(children.len(), 1);
+                    match children[0] {
+                        Ok(InterpreterResult::Bitvector(val, _)) => {
+                            let new_val = if val == 0 { 0 } else { 1 };
+                            Ok(InterpreterResult::Bitvector(new_val, 1))
+                        }
+                        _ => todo!(),
+                    }
+                }
                 // Binary operations that preserve bitwidth.
                 "And" | "Or" | "Shr" => {
                     assert_eq!(children.len(), 2);

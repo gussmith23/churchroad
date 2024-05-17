@@ -12,14 +12,23 @@
 (datatype Op
   (And)
   (Add)
+  (Sub)
+  (Mul)
   (Or)
   (Xor)
   (Shr)
   ; Returns a bitvector of width 1.
   (Eq)
+  (Ne)
   ; Bitwise not.
   (Not)
+  ; Reduce operations.
+  (ReduceOr)
+  (ReduceAnd)
+  (ReduceXor)
   (LogicNot)
+  (LogicAnd)
+  (LogicOr)
   ; (Mux select-expr expr expr)
   (Mux)
   
@@ -39,7 +48,9 @@
 
   ; (Op1 (ZeroExtend bitwidth) expr)
   (ZeroExtend i64)
-  )
+  ; (Op1 (SignExtend bitwidth) expr)
+  (SignExtend i64)
+)
 
 (datatype Graph 
   ;;; Hole with a bitwidth.

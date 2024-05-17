@@ -1504,11 +1504,11 @@ struct LakeroadWorker
 
 				// Get the max width of the inputs. This determines the width we need to
 				// extend both inputs to.
-				auto max_input_width = std::max(cell->getPort(ID::A).size(), cell->getPort(ID::B).size());
+				auto max_width = std::max(cell->getPort(ID::A).size(), std::max(cell->getPort(ID::B).size(), cell->getPort(ID::Y).size()));
 
 				assert(cell->connections().size() == 3);
-				auto a_let_name = get_expression_for_signal(cell->getPort(ID::A), max_input_width);
-				auto b_let_name = get_expression_for_signal(cell->getPort(ID::B), max_input_width);
+				auto a_let_name = get_expression_for_signal(cell->getPort(ID::A), max_width);
+				auto b_let_name = get_expression_for_signal(cell->getPort(ID::B), max_width);
 				auto y_let_name = get_expression_for_signal(cell->getPort(ID::Y), -1);
 
 				std::string op_str;
@@ -1542,9 +1542,9 @@ struct LakeroadWorker
 				// This is an assumption we're currently making. Doesn't have to be the
 				// case. We may also need to extend the result in the future, when this
 				// assertion fails.
-				assert(cell->getPort(ID::Y).size() <= max_input_width);
-				if (cell->getPort(ID::Y).size() < max_input_width)
+				if (cell->getPort(ID::Y).size() < max_width) {
 					op_str = stringf("(Op1 (Extract %d %d) %s)", cell->getPort(ID::Y).size() - 1, 0, op_str.c_str());
+				}
 
 				f << stringf("(union %s %s)\n", y_let_name.c_str(), op_str.c_str()).c_str();
 			}
