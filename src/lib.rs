@@ -1085,7 +1085,10 @@ pub fn to_rewrite_rule_egraph_serialize(
     }
 
     fn vec_list_to_concat(v: &mut [String]) -> String {
-        assert!(v.len() >= 2);
+        assert!(v.len() > 0);
+        if v.len() == 1 {
+            return v[0].clone();
+        }
         let mut str: String = String::new();
         // assuming it's [v0, v1, v2...]
         // want (Concat v0 (Concat v1 v0))
