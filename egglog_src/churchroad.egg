@@ -149,9 +149,13 @@
 (relation AllBitwidthsMatch (Op))
 (AllBitwidthsMatch (And))
 (AllBitwidthsMatch (Add))
+(AllBitwidthsMatch (Sub))
+(AllBitwidthsMatch (Mul))
 (AllBitwidthsMatch (Or))
 (AllBitwidthsMatch (Xor))
 (AllBitwidthsMatch (Shr))
+;;; TODO(@ninehusky): don't we need this here?
+(AllBitwidthsMatch (Not))
 ; Have to write this one as a rule, unfortunately.
 (ruleset core)
 (rule ((Reg n)) ((AllBitwidthsMatch (Reg n))) :ruleset core)
@@ -160,6 +164,7 @@
 ;;; bitwidth is the indicated constant.
 (relation InputBitwidthsMatchOutputBitwidthConst (Op i64))
 (InputBitwidthsMatchOutputBitwidthConst (Eq) 1)
+(InputBitwidthsMatchOutputBitwidthConst (Ne) 1)
 
 ;;; Bitwise: Indicates that an op `(op a b ...)` can be written 
 ;;; `(concat (op a[0] b[0] ...) (op a[1] b[1] ...) ...)`.
@@ -167,6 +172,7 @@
 (Bitwise (And))
 (Bitwise (Or))
 (Bitwise (Xor))
+;;; (Bitwise (Not)) TODO(@ninehusky): don't we need this here?
 
 
 ;;; Typing judgements.
@@ -241,7 +247,7 @@
 (rule
   ((Op1 (Extract high low) expr)
    (HasType expr (Bitvector n))
-   (>= 0 low)
+   (>= low 0)
    (< high n))
   ((HasType (Op1 (Extract high low) expr) (Bitvector (+ 1 (- high low)))))
   :ruleset typing)
@@ -250,9 +256,33 @@
   ((HasType (Op1 (ZeroExtend bitwidth) expr) (Bitvector bitwidth)))
   :ruleset typing)
 (rule
-  ((Op1 (Reg init) expr)
+  ((Op1 (LogicNot) expr))
+  ((HasType (Op1 (LogicNot) expr) (Bitvector 1)))
+  :ruleset typing)
+(rule
+  ((Op1 (ReduceOr) expr))
+  ((HasType (Op1 (ReduceOr) expr) (Bitvector 1)))
+  :ruleset typing)
+(rule
+  ((Op1 (ReduceAnd) expr))
+  ((HasType (Op1 (ReduceAnd) expr) (Bitvector 1)))
+  :ruleset typing)
+(rule
+  ((Op1 (ReduceXor) expr))
+  ((HasType (Op1 (ReduceXor) expr) (Bitvector 1)))
+  :ruleset typing)
+(rule
+  ((Op2 (Reg init) clock-expr data-expr)
    (HasType expr (Bitvector n)))
-  ((HasType (Op1 (Reg init) expr) (Bitvector n)))
+  ((HasType (Op2 (Reg init) clock-expr data-expr) (Bitvector n)))
+  :ruleset typing)
+(rule
+  ((Op2 (LogicOr) a-expr b-expr))
+  ((HasType (Op2 (LogicOr) a-expr b-expr) (Bitvector 1)))
+  :ruleset typing)
+(rule
+  ((Op2 (LogicAnd) a-expr b-expr))
+  ((HasType (Op2 (LogicAnd) a-expr b-expr) (Bitvector 1)))
   :ruleset typing)
 
 ;;; Rewrites that are likely to expand the egraph.
