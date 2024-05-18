@@ -1,4 +1,0 @@
-(let v0 (Wire "a" 8))
-(let v1 (Wire "b" 8))
-
-(let v2 (Op2 (LogicAnd) v0 v1))
