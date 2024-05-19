@@ -555,18 +555,18 @@ interpreter_test_churchroad!(
     InterpreterResult::Bitvector(1, 1)
 );
 
-// interpreter_test_churchroad!(
-//     reduce_and_single_operation,
-//     r#"
-//     (let v0 (Var "a" 8))
-//     (let v1 (Op1 (ReduceAnd) v0))
-//     (IsPort "" "v1" (Output) v1)
-//     "#,
-//     0,
-//     "v1",
-//     &[("a", vec![0b11111101])].into(),
-//     InterpreterResult::Bitvector(0, 1)
-// );
+interpreter_test_churchroad!(
+    reduce_and_single_operation,
+    r#"
+    (let v0 (Var "a" 8))
+    (let v1 (Op1 (ReduceAnd) v0))
+    (IsPort "" "v1" (Output) v1)
+    "#,
+    0,
+    "v1",
+    &[("a", vec![0b11111111])].into(),
+    InterpreterResult::Bitvector(1, 1)
+);
 
 interpreter_test_churchroad!(
     logic_not_single_operation,
@@ -777,23 +777,24 @@ interpreter_test_verilog!(
     "DSP48E2",
     0,
     &[
-        ("ACASCREG", vec![1]),
+        // The following is the configuration for a DSP48E2 that is an "addmuland" in 0 stages
+        ("ACASCREG", vec![0]),
         ("ADREG", vec![0]),
         ("ALUMODEREG", vec![0]),
-        ("AMULTSEL", vec![0]),
-        ("AREG", vec![1]),
+        ("AMULTSEL", vec![2]),
+        ("AREG", vec![0]),
         ("AUTORESET_PATDET", vec![3]),
-        ("AUTORESET_PRIORITY", vec![6]),
+        ("AUTORESET_PRIORITY", vec![4]),
         ("A_INPUT", vec![7]),
-        ("BCASCREG", vec![1]),
+        ("BCASCREG", vec![0]),
         ("BMULTSEL", vec![1]),
-        ("BREG", vec![1]),
+        ("BREG", vec![(0)]),
         ("B_INPUT", vec![7]),
         ("CARRYINREG", vec![0]),
         ("CARRYINSELREG", vec![0]),
         ("CREG", vec![0]),
         ("DREG", vec![0]),
-        ("INMODEREG", vec![1]),
+        ("INMODEREG", vec![0]),
         ("IS_ALUMODE_INVERTED", vec![0]),
         ("IS_CARRYIN_INVERTED", vec![0]),
         ("IS_CLK_INVERTED", vec![0]),
@@ -811,7 +812,7 @@ interpreter_test_verilog!(
         ("IS_RSTP_INVERTED", vec![0]),
         ("MASK", vec![0]),
         ("MREG", vec![0]),
-        ("OPMODEREG", vec![1]),
+        ("OPMODEREG", vec![0]),
         ("PATTERN", vec![0]),
         ("PREADDINSEL", vec![0]),
         ("PREG", vec![0]),
@@ -823,16 +824,18 @@ interpreter_test_verilog!(
         ("USE_SIMD", vec![12]),
         ("USE_WIDEXOR", vec![13]),
         ("XORSIMD", vec![26]),
+        // ("A", vec![({ a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a[7], a })]),
         ("A", vec![2]),
         ("ACIN", vec![0]),
-        ("ALUMODE", vec![7]),
-        ("B", vec![3]),
-        // .B({ b[11], b[11], b[11], b[11], b[11], b[11], b } ),
+        ("ALUMODE", vec![3]),
+        // ("B", vec![({ 10'h000, b })]),
+        ("B", vec![1]),
         ("BCIN", vec![0]),
+        // ("C", vec![({ c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c })]),
         ("C", vec![0]),
         ("CARRYCASCIN", vec![0]),
         ("CARRYIN", vec![0]),
-        ("CARRYINSEL", vec![7]),
+        ("CARRYINSEL", vec![0]),
         ("CEA1", vec![1]),
         ("CEA2", vec![1]),
         ("CEAD", vec![1]),
@@ -846,11 +849,13 @@ interpreter_test_verilog!(
         ("CEINMODE", vec![1]),
         ("CEM", vec![1]),
         ("CEP", vec![1]),
-        ("CLK", vec![1]),
+        ("CLK", vec![0]),
+        // ("D", vec![({ c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c[7], c })]),
         ("D", vec![0]),
         ("INMODE", vec![8]),
         ("MULTSIGNIN", vec![0]),
-        ("OPMODE", vec![181]),
+        ("OPMODE", vec![0x135]),
+        // ("P", vec![({ P_0[47:8], out })]),
         ("PCIN", vec![0]),
         ("RSTA", vec![0]),
         ("RSTALLCARRYIN", vec![0]),
