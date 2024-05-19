@@ -1,4 +1,4 @@
-use egraph_serialize::{ClassId, Node};
+use egraph_serialize::{ClassId, Node, NodeId};
 use indexmap::IndexMap;
 use std::{
     collections::{HashMap, HashSet},
@@ -76,11 +76,39 @@ pub fn interpret(
     env: &HashMap<&str, Vec<u64>>,
 ) -> Result<InterpreterResult, String> {
     let result = match egraph.classes().iter().find(|(id, _)| *id == class_id) {
-        Some((id, _)) => interpret_helper(egraph, id, time, env),
+        Some((id, _)) => interpret_helper(egraph, id, time, env, &mut HashMap::default()),
         None => return Err("No class with the given ID.".to_string()),
     };
 
     result
+}
+
+pub fn get_bitwidth_for_node(
+    egraph: &egraph_serialize::EGraph,
+    id: &NodeId,
+) -> Result<u64, String> {
+    // find the HasType node which has the id as its first child
+    println!("looking for hastype for id {:?}", id);
+    match egraph
+        .nodes
+        .iter()
+        .find(|(_, node)| node.op.as_str() == "HasType" && node.children[0] == *id)
+    {
+        Some((_, has_type_node)) => {
+            let type_node = egraph.nodes.get(&has_type_node.children[1]).unwrap();
+            assert!(type_node.op == "Bitvector");
+
+            let bw: u64 = egraph
+                .nodes
+                .get(&type_node.children[0])
+                .unwrap()
+                .op
+                .parse()
+                .unwrap();
+            Ok(bw)
+        }
+        None => return Err("No HasType node found for the given ID.".to_string()),
+    }
 }
 
 fn interpret_helper(
@@ -88,7 +116,11 @@ fn interpret_helper(
     id: &ClassId,
     time: usize,
     env: &HashMap<&str, Vec<u64>>,
+    cache: &mut HashMap<ClassId, InterpreterResult>,
 ) -> Result<InterpreterResult, String> {
+    if cache.contains_key(id) {
+        return Ok(cache[id].clone());
+    }
     let node_ids = &egraph.classes().get(id).unwrap().nodes;
     if node_ids.len() != 1 {
         return Err(format!(
@@ -100,7 +132,7 @@ fn interpret_helper(
     let node_id = node_ids.first().unwrap();
     let node = egraph.nodes.get(node_id).unwrap();
 
-    match node.op.as_str() {
+    let result = match node.op.as_str() {
         "Var" => {
             let bw: u64 = egraph
                 .nodes
@@ -125,30 +157,80 @@ fn interpret_helper(
             assert!(!node.children.is_empty());
             let op = egraph.nodes.get(&node.children[0]).unwrap();
 
+            // TODO: handle Reg
+            if op.op.as_str() == "Reg" {
+                if time == 0 {
+                    let initial_value = egraph.nodes.get(&op.children[0]).unwrap();
+                    return Ok(InterpreterResult::Bitvector(
+                        initial_value.op.parse().unwrap(),
+                        get_bitwidth_for_node(egraph, &node.children[2]).unwrap(),
+                    ));
+                } else {
+                    // TODO(@ninehusky): copilot wrote this!!
+                    let d = egraph.nodes.get(&node.children[1]).unwrap();
+                    return interpret_helper(egraph, &d.eclass, time - 1, env, cache);
+                }
+            }
             let children: Vec<_> = node
                 .children
                 .iter()
                 .skip(1)
                 .map(|id| {
                     let child = egraph.nodes.get(id).unwrap();
-                    interpret_helper(egraph, &child.eclass, time, env)
+                    interpret_helper(egraph, &child.eclass, time, env, cache)
                 })
                 .collect();
 
             match op.op.as_str() {
-                // Operations that condense to a single bit.
-                "ReduceOr" => {
-                    assert_eq!(children.len(), 1);
-                    match children[0] {
-                        Ok(InterpreterResult::Bitvector(val, _)) => {
-                            let new_val = if val == 0 { 0 } else { 1 };
-                            Ok(InterpreterResult::Bitvector(new_val, 1))
+                // Binary operations that condense to a single bit.
+                "Eq" | "LogicOr" => {
+                    assert_eq!(children.len(), 2);
+                    let result = match op.op.as_str() {
+                        "Eq" => {
+                            let a = match &children[0] {
+                                Ok(InterpreterResult::Bitvector(val, _)) => *val,
+                                _ => todo!(),
+                            };
+                            let b = match &children[1] {
+                                Ok(InterpreterResult::Bitvector(val, _)) => *val,
+                                _ => todo!(),
+                            };
+                            a == b
                         }
+                        "LogicOr" => {
+                            let result = children.iter().any(|child| match child {
+                                Ok(InterpreterResult::Bitvector(val, _)) => *val == 1,
+                                _ => todo!(),
+                            });
+                            result
+                        }
+                        _ => todo!(),
+                    };
+                    Ok(InterpreterResult::Bitvector(result as u64, 1))
+                }
+                // Unary operations that condense to a single bit.
+                "ReduceOr" | "LogicNot" => {
+                    assert_eq!(children.len(), 1);
+                    match op.op.as_str() {
+                        "ReduceOr" => {
+                            let result = children.iter().all(|child| match child {
+                                Ok(InterpreterResult::Bitvector(val, _)) => *val == 1,
+                                _ => todo!(),
+                            });
+                            Ok(InterpreterResult::Bitvector(result as u64, 1))
+                        }
+                        "LogicNot" => match children[0] {
+                            Ok(InterpreterResult::Bitvector(val, _)) => {
+                                let new_val = if val == 0 { 1 } else { 0 };
+                                Ok(InterpreterResult::Bitvector(new_val, 1))
+                            }
+                            _ => todo!(),
+                        },
                         _ => todo!(),
                     }
                 }
                 // Binary operations that preserve bitwidth.
-                "And" | "Or" | "Shr" => {
+                "And" | "Or" | "Shr" | "Xor" => {
                     assert_eq!(children.len(), 2);
                     match (&children[0], &children[1]) {
                         (
@@ -160,6 +242,7 @@ fn interpret_helper(
                                 "And" => a & b,
                                 "Or" => a | b,
                                 "Shr" => a >> b,
+                                "Xor" => a ^ b,
                                 _ => unreachable!(),
                             };
                             Ok(InterpreterResult::Bitvector(result, *a_bw))
@@ -226,7 +309,14 @@ fn interpret_helper(
                             // from Rosette docs:
                             // https://docs.racket-lang.org/rosette-guide/sec_bitvectors.html#%28def._%28%28lib._rosette%2Fbase%2Fbase..rkt%29._extract%29%29
                             // TODO(@ninehusky): here, we should also assert that j >= 0 if churchroad handles signed numbers
-                            assert!(*bw > i && i >= j);
+                            assert!(
+                                *bw > i && i >= j,
+                                "i is {}, j is {} node has bw {}, has node_id {:?}",
+                                i,
+                                j,
+                                bw,
+                                node.children[1]
+                            );
 
                             let mask = (1 << (i - j + 1)) - 1;
                             (val >> j) & mask
@@ -268,7 +358,11 @@ fn interpret_helper(
             }
         }
         _ => todo!("unimplemented node type: {:?}", node.op),
+    };
+    if result.is_ok() {
+        cache.insert(id.clone(), result.clone().unwrap());
     }
+    result
 }
 
 #[derive(Default)]

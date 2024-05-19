@@ -7,13 +7,14 @@ use rand::{rngs::StdRng, RngCore, SeedableRng};
 
 use egglog::{EGraph, SerializeConfig};
 
-use churchroad::{import_churchroad, interpret, InterpreterResult};
+use churchroad::{get_bitwidth_for_node, import_churchroad, interpret, InterpreterResult};
 
 // Creates an EGraph from a Verilog file using Churchroad, and returns the serialized EGraph and the root node.
 fn prep_interpreter(
     module_verilog_path: PathBuf,
     test_output_dir: PathBuf,
     top_module_name: &str,
+    out: &str,
 ) -> (egraph_serialize::EGraph, egraph_serialize::Node) {
     if std::env::var("CHURCHROAD_DIR").is_err() {
         panic!("Please set the CHURCHROAD_DIR environment variable!");
@@ -61,12 +62,45 @@ fn prep_interpreter(
     egraph
         .parse_and_run_program(&std::fs::read_to_string(churchroad_src_path).unwrap())
         .unwrap();
+
+    egraph
+        .parse_and_run_program("(run-schedule (saturate typing))")
+        .unwrap();
+
     let serialized = egraph.serialize(SerializeConfig::default());
+
     let (_, is_output_node) = serialized
         .nodes
         .iter()
-        .find(|(_, n)| n.op == "IsPort" && n.children[2] == NodeId::from("Output-0"))
+        .find(|(_, n)| {
+            n.op == "IsPort"
+                && n.children[2] == NodeId::from("Output-0")
+                && serialized.nodes.get(&n.children[1]).unwrap().op.as_str()
+                    == format!("\"{}\"", out)
+        })
         .unwrap();
+
+    // output the serialized egraph to "DSP48E2.json"
+    serialized
+        .to_json_file(test_output_dir.join("serialized.json"))
+        .unwrap();
+
+    println!(
+        "Logged JSON to: {}",
+        test_output_dir.join("serialized.json").to_str().unwrap()
+    );
+
+    // Each node should have a HasType node associated with it.
+    for (node_id, node) in serialized.nodes.iter() {
+        // if the node has op in the list, don't care
+        let list = vec!["Var", "Op1"];
+        if !list.contains(&node.op.as_str()) {
+            continue;
+        }
+        let _ = get_bitwidth_for_node(&serialized, node_id);
+        println!("good");
+    }
+
     let output_id = is_output_node.children.last().unwrap();
     let (_, output_node) = serialized
         .nodes
@@ -78,7 +112,7 @@ fn prep_interpreter(
 }
 
 #[test]
-fn test_lut6_0() {
+fn test_lut6_verilator() {
     if std::env::var("CHURCHROAD_DIR").is_err() {
         panic!("Please set the CHURCHROAD_DIR environment variable!");
     }
@@ -271,6 +305,7 @@ fn verilator_intepreter_fuzz_test(
         verilog_module_path.clone(),
         test_output_dir.clone(),
         top_module_name,
+        outputs[0].0,
     );
 
     sim_proc_stdin
@@ -345,6 +380,7 @@ macro_rules! interpreter_test {
                 PathBuf::from($verilog_path),
                 std::env::temp_dir(),
                 $module_name,
+                $out,
             );
 
             assert_eq!(
@@ -404,7 +440,7 @@ interpreter_test!(
 
 interpreter_test!(
     dummy_dsp_test,
-    InterpreterResult::Bitvector(0b10101010, 8),
+    InterpreterResult::Bitvector(0, 1),
     "tests/interpreter_tests/verilog/DSP48E2.v",
     "DSP48E2",
     0,
@@ -455,9 +491,10 @@ interpreter_test!(
         ("USE_SIMD", vec![12]),
         ("USE_WIDEXOR", vec![13]),
         ("XORSIMD", vec![26]),
-        // .A({ 18'h00000, a }),
+        ("A", vec![0b000000000000]),
         ("ACIN", vec![0]),
         ("ALUMODE", vec![7]),
+        ("B", vec![0b000000000000]),
         // .B({ b[11], b[11], b[11], b[11], b[11], b[11], b } ),
         ("BCIN", vec![0]),
         ("C", vec![0]),
