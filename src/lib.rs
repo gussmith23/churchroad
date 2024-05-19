@@ -87,8 +87,6 @@ pub fn get_bitwidth_for_node(
     egraph: &egraph_serialize::EGraph,
     id: &NodeId,
 ) -> Result<u64, String> {
-    // find the HasType node which has the id as its first child
-    println!("looking for hastype for id {:?}", id);
     match egraph
         .nodes
         .iter()
@@ -157,7 +155,6 @@ fn interpret_helper(
             assert!(!node.children.is_empty());
             let op = egraph.nodes.get(&node.children[0]).unwrap();
 
-            // TODO: handle Reg
             if op.op.as_str() == "Reg" {
                 if time == 0 {
                     let initial_value = egraph.nodes.get(&op.children[0]).unwrap();
@@ -167,7 +164,7 @@ fn interpret_helper(
                     ));
                 } else {
                     // TODO(@ninehusky): copilot wrote this!!
-                    let d = egraph.nodes.get(&node.children[1]).unwrap();
+                    let d = egraph.nodes.get(&node.children[2]).unwrap();
                     return interpret_helper(egraph, &d.eclass, time - 1, env, cache);
                 }
             }
@@ -183,7 +180,7 @@ fn interpret_helper(
 
             match op.op.as_str() {
                 // Binary operations that condense to a single bit.
-                "Eq" | "LogicOr" => {
+                "Eq" | "LogicOr" | "LogicAnd" | "Ne" => {
                     assert_eq!(children.len(), 2);
                     let result = match op.op.as_str() {
                         "Eq" => {
@@ -197,9 +194,28 @@ fn interpret_helper(
                             };
                             a == b
                         }
+                        "Ne" => {
+                            let a = match &children[0] {
+                                Ok(InterpreterResult::Bitvector(val, _)) => *val,
+                                _ => todo!(),
+                            };
+                            let b = match &children[1] {
+                                Ok(InterpreterResult::Bitvector(val, _)) => *val,
+                                _ => todo!(),
+                            };
+                            a != b
+                        }
                         "LogicOr" => {
                             let result = children.iter().any(|child| match child {
-                                Ok(InterpreterResult::Bitvector(val, _)) => *val == 1,
+                                Ok(InterpreterResult::Bitvector(val, _)) => *val != 0,
+                                _ => todo!(),
+                            });
+                            result
+                        }
+                        "LogicAnd" => {
+                            // if any of the children are false, the result is false
+                            let result = children.iter().all(|child| match child {
+                                Ok(InterpreterResult::Bitvector(val, _)) => *val != 0,
                                 _ => todo!(),
                             });
                             result
@@ -213,10 +229,11 @@ fn interpret_helper(
                     assert_eq!(children.len(), 1);
                     match op.op.as_str() {
                         "ReduceOr" => {
-                            let result = children.iter().all(|child| match child {
-                                Ok(InterpreterResult::Bitvector(val, _)) => *val == 1,
+                            let value = match children[0] {
+                                Ok(InterpreterResult::Bitvector(val, _)) => val,
                                 _ => todo!(),
-                            });
+                            };
+                            let result = value != 0;
                             Ok(InterpreterResult::Bitvector(result as u64, 1))
                         }
                         "LogicNot" => match children[0] {
@@ -229,8 +246,19 @@ fn interpret_helper(
                         _ => todo!(),
                     }
                 }
+                // Unary operations that preserve bitwidth.
+                "Not" => {
+                    assert_eq!(children.len(), 1);
+                    match children[0] {
+                        Ok(InterpreterResult::Bitvector(val, bw)) => {
+                            let result = !val & ((1 << bw) - 1);
+                            Ok(InterpreterResult::Bitvector(result, bw))
+                        }
+                        _ => todo!(),
+                    }
+                }
                 // Binary operations that preserve bitwidth.
-                "And" | "Or" | "Shr" | "Xor" => {
+                "And" | "Or" | "Shr" | "Xor" | "Add" | "Sub" | "Mul" => {
                     assert_eq!(children.len(), 2);
                     match (&children[0], &children[1]) {
                         (
@@ -243,6 +271,9 @@ fn interpret_helper(
                                 "Or" => a | b,
                                 "Shr" => a >> b,
                                 "Xor" => a ^ b,
+                                "Add" => (a + b) & ((1 << a_bw) - 1),
+                                "Sub" => (a - b) & ((1 << a_bw) - 1),
+                                "Mul" => (a * b) & ((1 << a_bw) - 1),
                                 _ => unreachable!(),
                             };
                             Ok(InterpreterResult::Bitvector(result, *a_bw))
@@ -276,8 +307,9 @@ fn interpret_helper(
                                 .find(|(node_id, _)| **node_id == *id)
                                 .unwrap();
                             assert_eq!(node.children.len(), 0);
-                            let val: u64 = node.op.parse().unwrap();
-                            val
+                            // TODO(@ninehusky): here, reading node.op.parse() as i64, then convert to u64
+                            let val: i64 = node.op.parse().unwrap();
+                            val as u64
                         })
                         .collect::<Vec<_>>()[..];
 
