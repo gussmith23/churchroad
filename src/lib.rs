@@ -225,7 +225,7 @@ fn interpret_helper(
                     Ok(InterpreterResult::Bitvector(result as u64, 1))
                 }
                 // Unary operations that condense to a single bit.
-                "ReduceOr" | "LogicNot" => {
+                "ReduceOr" | "ReduceAnd" | "LogicNot" => {
                     assert_eq!(children.len(), 1);
                     match op.op.as_str() {
                         "ReduceOr" => {
@@ -235,6 +235,16 @@ fn interpret_helper(
                             };
                             let result = value != 0;
                             Ok(InterpreterResult::Bitvector(result as u64, 1))
+                        }
+                        "ReduceAnd" => {
+                            // if any bit of children[0] is 0, the result is 0
+                            match children[0] {
+                                Ok(InterpreterResult::Bitvector(val, bw)) => {
+                                    let result = val == (1 << bw) - 1;
+                                    Ok(InterpreterResult::Bitvector(result as u64, 1))
+                                }
+                                _ => todo!(),
+                            }
                         }
                         "LogicNot" => match children[0] {
                             Ok(InterpreterResult::Bitvector(val, _)) => {
@@ -272,7 +282,10 @@ fn interpret_helper(
                                 "Shr" => a >> b,
                                 "Xor" => a ^ b,
                                 "Add" => (a + b) & ((1 << a_bw) - 1),
-                                "Sub" => (a - b) & ((1 << a_bw) - 1),
+                                "Sub" => {
+                                    println!("a: {}, b: {}", a, b);
+                                    (b - a) & ((1 << a_bw) - 1)
+                                }
                                 "Mul" => (a * b) & ((1 << a_bw) - 1),
                                 _ => unreachable!(),
                             };
