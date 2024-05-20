@@ -110,6 +110,7 @@ fn prep_interpreter(
     (serialized.clone(), output_node.clone())
 }
 
+// TODO(@ninehusky): macroify this
 #[test]
 fn test_lut6_combinational_verilator() {
     if std::env::var("CHURCHROAD_DIR").is_err() {
@@ -153,6 +154,41 @@ fn test_lut6_combinational_verilator() {
     );
 }
 
+// TODO(@ninehusky): macroify this
+#[test]
+fn test_counter_verilator() {
+    if std::env::var("CHURCHROAD_DIR").is_err() {
+        panic!("Please set the CHURCHROAD_DIR environment variable!");
+    }
+    let churchroad_dir_str: String = std::env::var("CHURCHROAD_DIR").unwrap();
+    let churchroad_dir = std::path::Path::new(&churchroad_dir_str);
+    let testbench_template_path =
+        churchroad_dir.join("tests/interpreter_tests/verilog/testbench.sv.template");
+    let makefile_template_path = churchroad_dir.join("tests/interpreter_tests/Makefile.template");
+
+    let inputs = vec![("clk", 1)];
+    let outputs = vec![("count", 4)];
+
+    let include_dirs = vec![
+        churchroad_dir.join("tests/interpreter_tests/verilog/"),
+        churchroad_dir.join("tests/interpreter_tests/verilog/toy_examples/"),
+    ];
+
+    verilator_intepreter_fuzz_test(
+        testbench_template_path,
+        makefile_template_path,
+        "counter",
+        inputs,
+        outputs,
+        include_dirs,
+        std::env::temp_dir(),
+        3,
+        10,
+        churchroad_dir.join("tests/interpreter_tests/verilog/toy_examples/counter.sv"),
+        Some("clk"),
+    );
+}
+
 // This test runs verilator against our interpreter, failing if the outputs of the two differ.
 //
 // testbench_template_path: path to the testbench template file
@@ -177,7 +213,7 @@ fn verilator_intepreter_fuzz_test(
     num_test_cases: usize,
     num_clock_cycles: usize,
     verilog_module_path: PathBuf,
-    clock: Option<String>,
+    clock_name: Option<&str>,
 ) {
     let testbench_path = test_output_dir.join("testbench.sv");
     let makefile_path = test_output_dir.join("Makefile");
@@ -185,14 +221,33 @@ fn verilator_intepreter_fuzz_test(
     // just grab the filename without any leading directories
     let filename = verilog_module_path.file_name().unwrap().to_str().unwrap();
 
-    let set_clock_expr = match clock {
-        None => String::from(""),
-        Some(ref clk) => format!("{} = 1'b1;", clk),
-    };
-
-    let clear_clock_expr = match clock {
-        None => String::from(""),
-        Some(clk) => format!("{} = 1'b0;", clk),
+    let test_module_input_list = {
+        let inputs_expr = format!(
+            "{}",
+            inputs
+                .iter()
+                .enumerate()
+                .map(|(i, (name, _))| format!(".{}(inputs[{}])", name, i))
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
+        let outputs_expr = format!(
+            "{}",
+            outputs
+                .iter()
+                .map(|(name, _)| format!(".{}({})", name, name))
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
+        let mut final_expr = String::from("");
+        if inputs_expr.len() > 0 {
+            final_expr.push_str(inputs_expr.as_str());
+        }
+        if outputs_expr.len() > 0 {
+            final_expr.push_str(", ");
+            final_expr.push_str(outputs_expr.as_str());
+        };
+        final_expr
     };
 
     let testbench_prog = std::fs::read_to_string(testbench_template_path)
@@ -212,39 +267,29 @@ fn verilator_intepreter_fuzz_test(
             .as_str(),
         )
         .replace("{test_module_name}", top_module_name)
-        .replace(
-            "{test_module_port_list}",
-            format!(
-                "{}, {}",
-                format!(
-                    "{}",
-                    inputs
-                        .iter()
-                        .enumerate()
-                        .map(|(i, (name, _))| format!(".{}(inputs[{}])", name, i))
-                        .collect::<Vec<String>>()
-                        .join(",\n")
-                ),
-                format!(
-                    "{}",
-                    outputs
-                        .iter()
-                        .map(|(name, _)| format!(".{}({})", name, name))
-                        .collect::<Vec<String>>()
-                        .join(", ")
-                        .as_str()
-                )
-            )
-            .as_str(),
-        )
+        .replace("{test_module_port_list}", test_module_input_list.as_str())
         .replace(
             "{max_input_bitwidth}",
             inputs
                 .iter()
                 .map(|(_, bitwidth)| bitwidth)
                 .max()
-                .unwrap()
+                .unwrap_or(&1)
                 .to_string()
+                .as_str(),
+        )
+        .replace(
+            "{display_inputs}",
+            inputs
+                .iter()
+                .map(|(name, _)| {
+                    format!(
+                        "$display(\"inputs: {} %d\\n\", simulate_with_verilator_test_module.{});",
+                        name, name
+                    )
+                })
+                .collect::<Vec<String>>()
+                .join("\n")
                 .as_str(),
         )
         .replace(
@@ -260,9 +305,9 @@ fn verilator_intepreter_fuzz_test(
                 .collect::<Vec<String>>()
                 .join("\n")
                 .as_str(),
-        )
-        .replace("{set_clock}", set_clock_expr.as_str())
-        .replace("{clear_clock}", clear_clock_expr.as_str());
+        );
+    // .replace("{set_clock}", set_clock_expr.as_str())
+    // .replace("{clear_clock}", clear_clock_expr.as_str());
 
     let executable_name = "executable";
     let verilator_output_dir = test_output_dir.join("obj_dir");
@@ -338,7 +383,7 @@ fn verilator_intepreter_fuzz_test(
             .iter()
             .map(|(name, bw)| {
                 // generate num_clock_cycles random values for each input
-                let vals: Vec<u64> = (0..num_clock_cycles)
+                let mut vals: Vec<u64> = (0..num_clock_cycles)
                     .map(|_| {
                         let mut val = rng.next_u64();
                         if *bw != 64 {
@@ -347,6 +392,11 @@ fn verilator_intepreter_fuzz_test(
                         val
                     })
                     .collect();
+                if clock_name.is_some() && name == &clock_name.unwrap() {
+                    vals = (0..num_clock_cycles)
+                        .map(|i| if i % 2 == 0 { 0 } else { 1 })
+                        .collect();
+                }
                 env.insert(name, vals.clone());
                 vals
             })
@@ -354,6 +404,7 @@ fn verilator_intepreter_fuzz_test(
 
         for t in 0..num_clock_cycles {
             for input in input_values.iter() {
+                dbg!(&input_values);
                 sim_proc_stdin
                     .write_all(format!("{:X}\n", input[t]).as_bytes())
                     .unwrap();
@@ -369,8 +420,8 @@ fn verilator_intepreter_fuzz_test(
     let verilator_output_values: Vec<u64> = output_str
         .lines()
         // filter all lines that don't start with "output: "
-        .filter(|line| line.len() > 0 && line.starts_with("output: "))
-        .map(|line| line.trim_start_matches("output: ").parse().unwrap())
+        .filter(|line| line.len() > 0 && line.starts_with("output:  "))
+        .map(|line| line.trim_start_matches("output:  ").parse().unwrap())
         .collect();
 
     for (InterpreterResult::Bitvector(val, _), verilator_result) in interpreter_results
@@ -452,15 +503,15 @@ macro_rules! interpreter_test_churchroad {
 interpreter_test_churchroad!(
     add_single_operation,
     r#"
-    (let v0 (Var "a" 8))
-    (let v1 (Var "b" 8))
+    (let v0 (Var "a" 4))
+    (let v1 (Var "b" 4))
     (let v2 (Op2 (Add) v0 v1))
     (IsPort "" "v2" (Output) v2)
     "#,
     0,
     "v2",
-    &[("a", vec![0b11111111]), ("b", vec![0b00000001])].into(),
-    InterpreterResult::Bitvector(0b0, 8)
+    &[("a", vec![0b1000]), ("b", vec![0b0001])].into(),
+    InterpreterResult::Bitvector(9, 4)
 );
 
 interpreter_test_churchroad!(
@@ -723,7 +774,7 @@ interpreter_test_churchroad!(
     "#,
     1,
     "v1",
-    &[("a", vec![0b10101010, 0b0]), ("clk", vec![1, 1])].into(),
+    &[("a", vec![0b10101010, 0b0]), ("clk", vec![0, 1])].into(),
     InterpreterResult::Bitvector(0b10101010, 8)
 );
 
@@ -784,6 +835,26 @@ interpreter_test_verilog!(
     ]
     .into(),
     "out"
+);
+
+interpreter_test_verilog!(
+    test_counter_first_cycle,
+    InterpreterResult::Bitvector(2, 4),
+    "tests/interpreter_tests/verilog/toy_examples/counter.sv",
+    "counter",
+    5,
+    &[("clk", vec![0, 0, 1, 1, 0, 1])].into(),
+    "count"
+);
+
+interpreter_test_verilog!(
+    test_counter_third_cycle,
+    InterpreterResult::Bitvector(3, 4),
+    "tests/interpreter_tests/verilog/toy_examples/counter.sv",
+    "counter",
+    6,
+    &[("clk", vec![0, 1, 0, 1, 0, 1, 0])].into(),
+    "count"
 );
 
 // Test just to see if the interpreter even loads in the DSP

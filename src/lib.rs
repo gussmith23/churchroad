@@ -116,9 +116,9 @@ fn interpret_helper(
     env: &HashMap<&str, Vec<u64>>,
     cache: &mut HashMap<ClassId, InterpreterResult>,
 ) -> Result<InterpreterResult, String> {
-    if cache.contains_key(id) {
-        return Ok(cache[id].clone());
-    }
+    // if cache.contains_key(id) {
+    //     return Ok(cache[id].clone());
+    // }
     let node_ids = &egraph.classes().get(id).unwrap().nodes;
     if node_ids.len() != 1 {
         return Err(format!(
@@ -163,9 +163,18 @@ fn interpret_helper(
                         get_bitwidth_for_node(egraph, &node.children[2]).unwrap(),
                     ));
                 } else {
-                    // TODO(@ninehusky): copilot wrote this!!
-                    let d = egraph.nodes.get(&node.children[2]).unwrap();
-                    return interpret_helper(egraph, &d.eclass, time - 1, env, cache);
+                    let clk = egraph.nodes.get(&node.children[1]).unwrap();
+                    let InterpreterResult::Bitvector(prev_clk_val, _) =
+                        interpret_helper(egraph, &clk.eclass, time - 1, env, cache).unwrap();
+                    let InterpreterResult::Bitvector(curr_clk_val, _) =
+                        interpret_helper(egraph, &clk.eclass, time, env, cache).unwrap();
+
+                    if prev_clk_val == 0 && curr_clk_val == 1 {
+                        let d = egraph.nodes.get(&node.children[2]).unwrap();
+                        return interpret_helper(egraph, &d.eclass, time - 1, env, cache);
+                    } else {
+                        return interpret_helper(egraph, id, time - 1, env, cache);
+                    }
                 }
             }
             let children: Vec<_> = node
