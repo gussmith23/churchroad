@@ -282,10 +282,7 @@ fn interpret_helper(
                                 "Shr" => a >> b,
                                 "Xor" => a ^ b,
                                 "Add" => (a + b) & ((1 << a_bw) - 1),
-                                "Sub" => {
-                                    println!("a: {}, b: {}", a, b);
-                                    (b - a) & ((1 << a_bw) - 1)
-                                }
+                                "Sub" => (a - b) & ((1 << a_bw) - 1),
                                 "Mul" => (a * b) & ((1 << a_bw) - 1),
                                 _ => unreachable!(),
                             };
