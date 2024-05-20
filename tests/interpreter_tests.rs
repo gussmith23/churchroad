@@ -744,7 +744,7 @@ interpreter_test_churchroad!(
 interpreter_test_verilog!(
     test_alu_and_single_cycle,
     InterpreterResult::Bitvector(0b01010101, 8),
-    "tests/interpreter_tests/verilog/ALU.sv",
+    "tests/interpreter_tests/verilog/toy_examples/ALU.sv",
     "ALU",
     0,
     &[
@@ -759,7 +759,7 @@ interpreter_test_verilog!(
 interpreter_test_verilog!(
     test_alu_and_single_cycle_2,
     InterpreterResult::Bitvector(0b01010101, 8),
-    "tests/interpreter_tests/verilog/ALU.sv",
+    "tests/interpreter_tests/verilog/toy_examples/ALU.sv",
     "ALU",
     0,
     &[
@@ -774,7 +774,7 @@ interpreter_test_verilog!(
 interpreter_test_verilog!(
     test_alu_or_second_cycle,
     InterpreterResult::Bitvector(0b10101010, 8),
-    "tests/interpreter_tests/verilog/ALU.sv",
+    "tests/interpreter_tests/verilog/toy_examples/ALU.sv",
     "ALU",
     1,
     &[
@@ -791,7 +791,7 @@ interpreter_test_verilog!(
 interpreter_test_verilog!(
     dummy_dsp_test,
     InterpreterResult::Bitvector(1, 48),
-    "tests/interpreter_tests/verilog/DSP48E2.v",
+    "tests/interpreter_tests/verilog/xilinx_ultrascale_plus/DSP48E2.v",
     "DSP48E2",
     0,
     &[
