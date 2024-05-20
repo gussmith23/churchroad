@@ -111,7 +111,7 @@ fn prep_interpreter(
 }
 
 #[test]
-fn test_lut6_verilator() {
+fn test_lut6_combinational_verilator() {
     if std::env::var("CHURCHROAD_DIR").is_err() {
         panic!("Please set the CHURCHROAD_DIR environment variable!");
     }
@@ -132,7 +132,10 @@ fn test_lut6_verilator() {
     ];
     let outputs: Vec<(&str, i32)> = vec![("O", 1)];
 
-    let include_dirs = vec![churchroad_dir.join("tests/interpreter_tests/verilog/")];
+    let include_dirs = vec![
+        churchroad_dir.join("tests/interpreter_tests/verilog/"),
+        churchroad_dir.join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus/"),
+    ];
 
     verilator_intepreter_fuzz_test(
         testbench_template_path,
@@ -143,8 +146,10 @@ fn test_lut6_verilator() {
         include_dirs,
         std::env::temp_dir(),
         100,
-        5,
-        churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
+        0,
+        churchroad_dir
+            .join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus/LUT6-modified.v"),
+        None,
     );
 }
 
@@ -172,12 +177,23 @@ fn verilator_intepreter_fuzz_test(
     num_test_cases: usize,
     num_clock_cycles: usize,
     verilog_module_path: PathBuf,
+    clock: Option<String>,
 ) {
     let testbench_path = test_output_dir.join("testbench.sv");
     let makefile_path = test_output_dir.join("Makefile");
 
     // just grab the filename without any leading directories
     let filename = verilog_module_path.file_name().unwrap().to_str().unwrap();
+
+    let set_clock_expr = match clock {
+        None => String::from(""),
+        Some(ref clk) => format!("{} = 1'b1;", clk),
+    };
+
+    let clear_clock_expr = match clock {
+        None => String::from(""),
+        Some(clk) => format!("{} = 1'b0;", clk),
+    };
 
     let testbench_prog = std::fs::read_to_string(testbench_template_path)
         .unwrap()
@@ -244,7 +260,9 @@ fn verilator_intepreter_fuzz_test(
                 .collect::<Vec<String>>()
                 .join("\n")
                 .as_str(),
-        );
+        )
+        .replace("{set_clock}", set_clock_expr.as_str())
+        .replace("{clear_clock}", clear_clock_expr.as_str());
 
     let executable_name = "executable";
     let verilator_output_dir = test_output_dir.join("obj_dir");
