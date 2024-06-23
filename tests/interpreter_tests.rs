@@ -100,7 +100,7 @@ fn test_lut6_0() {
 
     let include_dirs = vec![churchroad_dir.join("tests/interpreter_tests/verilog/")];
 
-    verilator_intepreter_fuzz_test(
+    run_verilator(
         testbench_template_path,
         "LUT6",
         inputs,
@@ -111,6 +111,84 @@ fn test_lut6_0() {
         5,
         churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
     );
+}
+
+fn verilator_vs_interpreter(
+    num_test_cases: usize,
+    num_clock_cycles: usize,
+    testbench_template_path: PathBuf,
+    top_module_name: &str,
+    inputs: Vec<(&str, i32)>,
+    outputs: Vec<(&str, i32)>,
+    include_dirs: Vec<PathBuf>,
+    test_output_dir: PathBuf,
+    verilog_module_path: PathBuf,
+) {
+    // create seeded rng
+    let mut rng = StdRng::seed_from_u64(0xb0bacafe);
+    let mut interpreter_results: Vec<InterpreterResult> = Vec::new();
+    let test_vectors: Vec<Vec<Vec<u64>>> = (0..num_test_cases)
+        .map(|_| {
+            (0..num_clock_cycles)
+                .map(|_| {
+                    inputs
+                        .iter()
+                        .map(|(_, bw)| {
+                            assert!(*bw <= 64);
+                            rng.next_u64() & ((1 << bw) - 1)
+                        })
+                        .collect()
+                })
+                .collect()
+        })
+        .collect();
+
+    // Interpret all test vectors.
+    for (test_case_idx, test_case) in test_vectors.iter().enumerate() {
+        let mut env: HashMap<&str, Vec<u64>> = HashMap::new();
+
+        let env = inputs
+            .iter()
+            .enumerate()
+            .map(|(input_idx, (name, _))| {
+                (
+                    name.clone(),
+                    test_case
+                        .iter()
+                        .map(|vals_at_timestep| vals_at_timestep[input_idx])
+                        .collect(),
+                )
+            })
+            .collect();
+        let result = interpret(&serialized, &root_node.eclass, t, &env).unwrap();
+        interpreter_results.push(result);
+    }
+
+    let verilator_output_values: Vec<u64> = run_verilator(
+        testbench_template_path,
+        top_module_name,
+        inputs,
+        outputs,
+        test_vectors,
+        include_dirs,
+        test_output_dir,
+        verilog_module_path,
+    );
+
+    let test_output_path = test_output_dir.join("test_output.txt");
+    let test_error_path = test_output_dir.join("test_error.txt");
+
+    std::fs::write(&test_output_path, output_str).unwrap();
+    std::fs::write(&test_error_path, output.stderr).unwrap();
+
+    for (InterpreterResult::Bitvector(val, _), verilator_result) in interpreter_results
+        .iter()
+        .zip(verilator_output_values.iter())
+    {
+        assert_eq!(val, verilator_result);
+    }
+
+    println!("logged output to: {}", test_output_path.to_str().unwrap());
 }
 
 // This test runs verilator against our interpreter, failing if the outputs of the two differ.
@@ -125,17 +203,21 @@ fn test_lut6_0() {
 // num_test_cases: number of test cases to run
 // num_clock_cycles: number of clock cycles to run each test case for
 // filename: name of the file to run Verilator on. For example, if the file is `adder.v`, this should be `"adder.v"`
-fn verilator_intepreter_fuzz_test(
+// test_vectors: A vector of vectors of vectors. the ith entry in the outermost
+//   vector contains the inputs for the ith test case. The jth entry in the ith
+//   test case are the inputs at clock cycle j. The kth entry in the jth set of
+//   inputs is the value of the kth input at clock cycle j, where the inputs are
+//   ordered as they appear in the inputs vector.
+fn run_verilator(
     testbench_template_path: PathBuf,
     top_module_name: &str,
     inputs: Vec<(&str, i32)>,
     outputs: Vec<(&str, i32)>,
+    test_vectors: Vec<Vec<Vec<u64>>>,
     include_dirs: Vec<PathBuf>,
     test_output_dir: PathBuf,
-    num_test_cases: usize,
-    num_clock_cycles: usize,
     verilog_module_path: PathBuf,
-) {
+) -> Vec<u64> {
     let testbench_path = test_output_dir.join("testbench.sv");
 
     // just grab the filename without any leading directories
@@ -253,46 +335,32 @@ fn verilator_intepreter_fuzz_test(
         top_module_name,
     );
 
+    let num_test_cases = test_vectors.len();
+    let num_clock_cycles = if num_test_cases > 0 {
+        test_vectors[0].len()
+    } else {
+        0
+    };
+    assert!(test_vectors.iter().all(|v| v.len() == num_clock_cycles));
+    assert!(test_vectors
+        .iter()
+        .all(|v| v.iter().all(|inputs| inputs.len() == num_inputs)));
+
     sim_proc_stdin
         .write_all(format!("{} {} {}\n", num_inputs, num_test_cases, num_clock_cycles).as_bytes())
         .unwrap();
 
-    // create seeded rng
-    let mut rng = StdRng::seed_from_u64(0xb0bacafe);
-    let mut interpreter_results: Vec<InterpreterResult> = Vec::new();
-    for _ in 0..num_test_cases {
-        let mut env: HashMap<&str, Vec<u64>> = HashMap::new();
-        let input_values: Vec<Vec<u64>> = inputs
-            .iter()
-            .map(|(name, bw)| {
-                // generate num_clock_cycles random values for each input
-                let vals: Vec<u64> = (0..num_clock_cycles)
-                    .map(|_| {
-                        let mut val = rng.next_u64();
-                        if *bw != 64 {
-                            val = val & ((1 << bw) - 1);
-                        }
-                        val
-                    })
-                    .collect();
-                env.insert(name, vals.clone());
-                vals
-            })
-            .collect();
-
-        for t in 0..num_clock_cycles {
-            for input in input_values.iter() {
+    for test_case in test_vectors.iter() {
+        for inputs in test_case.iter() {
+            for input in inputs.iter() {
                 sim_proc_stdin
-                    .write_all(format!("{:X}\n", input[t]).as_bytes())
+                    .write_all(format!("{:X}\n", input).as_bytes())
                     .unwrap();
             }
-            let result = interpret(&serialized, &root_node.eclass, t, &env).unwrap();
-            interpreter_results.push(result);
         }
     }
 
     let output = sim_proc.wait_with_output().unwrap();
-
     let output_str = String::from_utf8(output.stdout).unwrap();
     let verilator_output_values: Vec<u64> = output_str
         .lines()
@@ -301,20 +369,7 @@ fn verilator_intepreter_fuzz_test(
         .map(|line| line.trim_start_matches("output: ").parse().unwrap())
         .collect();
 
-    for (InterpreterResult::Bitvector(val, _), verilator_result) in interpreter_results
-        .iter()
-        .zip(verilator_output_values.iter())
-    {
-        assert_eq!(val, verilator_result);
-    }
-
-    let test_output_path = test_output_dir.join("test_output.txt");
-    let test_error_path = test_output_dir.join("test_error.txt");
-
-    std::fs::write(&test_output_path, output_str).unwrap();
-    std::fs::write(&test_error_path, output.stderr).unwrap();
-
-    println!("logged output to: {}", test_output_path.to_str().unwrap());
+    verilator_output_values
 }
 
 macro_rules! interpreter_test {
