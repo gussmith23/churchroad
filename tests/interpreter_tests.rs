@@ -1,6 +1,6 @@
 // This file contains tests for the interpreter module.
 
-use std::{collections::HashMap, io::Write, path::PathBuf};
+use std::{io::Write, path::PathBuf};
 
 use egraph_serialize::NodeId;
 use rand::{rngs::StdRng, RngCore, SeedableRng};
@@ -100,15 +100,15 @@ fn test_lut6_0() {
 
     let include_dirs = vec![churchroad_dir.join("tests/interpreter_tests/verilog/")];
 
-    run_verilator(
+    verilator_vs_interpreter(
+        100,
+        5,
         testbench_template_path,
         "LUT6",
         inputs,
         outputs,
         include_dirs,
         std::env::temp_dir(),
-        100,
-        5,
         churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
     );
 }
@@ -129,13 +129,15 @@ fn verilator_vs_interpreter(
     let mut interpreter_results: Vec<InterpreterResult> = Vec::new();
     let test_vectors: Vec<Vec<Vec<u64>>> = (0..num_test_cases)
         .map(|_| {
-            (0..num_clock_cycles)
+            (0..num_clock_cycles + 1)
                 .map(|_| {
                     inputs
                         .iter()
                         .map(|(_, bw)| {
                             assert!(*bw <= 64);
-                            rng.next_u64() & ((1 << bw) - 1)
+                            rng.next_u64()
+                                & ((1u64.checked_shl((*bw).try_into().unwrap()).unwrap_or(0))
+                                    .wrapping_sub(1))
                         })
                         .collect()
                 })
@@ -143,16 +145,20 @@ fn verilator_vs_interpreter(
         })
         .collect();
 
-    // Interpret all test vectors.
-    for (test_case_idx, test_case) in test_vectors.iter().enumerate() {
-        let mut env: HashMap<&str, Vec<u64>> = HashMap::new();
+    let (serialized, root_node) = prep_interpreter(
+        verilog_module_path.clone(),
+        test_output_dir.clone(),
+        top_module_name,
+    );
 
+    // Interpret all test vectors.
+    for test_case in test_vectors.iter() {
         let env = inputs
             .iter()
             .enumerate()
             .map(|(input_idx, (name, _))| {
                 (
-                    name.clone(),
+                    name.to_owned(),
                     test_case
                         .iter()
                         .map(|vals_at_timestep| vals_at_timestep[input_idx])
@@ -160,8 +166,14 @@ fn verilator_vs_interpreter(
                 )
             })
             .collect();
-        let result = interpret(&serialized, &root_node.eclass, t, &env).unwrap();
-        interpreter_results.push(result);
+
+        // TODO(@gussmith23): This is inefficient. Either the interpreter should
+        // return streams, or we should be able to memoize some way. This just
+        // redoes a bunch of work each call.
+        for timestep in 0..num_clock_cycles + 1 {
+            let result = interpret(&serialized, &root_node.eclass, timestep, &env).unwrap();
+            interpreter_results.push(result);
+        }
     }
 
     let verilator_output_values: Vec<u64> = run_verilator(
@@ -175,11 +187,13 @@ fn verilator_vs_interpreter(
         verilog_module_path,
     );
 
-    let test_output_path = test_output_dir.join("test_output.txt");
-    let test_error_path = test_output_dir.join("test_error.txt");
+    // let test_output_path = test_output_dir.join("test_output.txt");
+    // let test_error_path = test_output_dir.join("test_error.txt");
 
-    std::fs::write(&test_output_path, output_str).unwrap();
-    std::fs::write(&test_error_path, output.stderr).unwrap();
+    // std::fs::write(&test_output_path, output_str).unwrap();
+    // std::fs::write(&test_error_path, output.stderr).unwrap();
+
+    assert_eq!(interpreter_results.len(), verilator_output_values.len());
 
     for (InterpreterResult::Bitvector(val, _), verilator_result) in interpreter_results
         .iter()
@@ -188,7 +202,7 @@ fn verilator_vs_interpreter(
         assert_eq!(val, verilator_result);
     }
 
-    println!("logged output to: {}", test_output_path.to_str().unwrap());
+    // println!("logged output to: {}", test_output_path.to_str().unwrap());
 }
 
 // This test runs verilator against our interpreter, failing if the outputs of the two differ.
@@ -327,13 +341,6 @@ fn run_verilator(
     let sim_proc_stdin = sim_proc.stdin.as_mut().unwrap();
 
     let num_inputs = inputs.len();
-
-    // TODO(@ninehusky): this is going to assume we only want to interpret on one output found in the EGraph.
-    let (serialized, root_node) = prep_interpreter(
-        verilog_module_path.clone(),
-        test_output_dir.clone(),
-        top_module_name,
-    );
 
     let num_test_cases = test_vectors.len();
     let num_clock_cycles = if num_test_cases > 0 {
