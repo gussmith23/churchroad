@@ -116,7 +116,6 @@ fn test_lut6_0() {
 // This test runs verilator against our interpreter, failing if the outputs of the two differ.
 //
 // testbench_template_path: path to the testbench template file
-// makefile_template_path: path to the Makefile template file
 // top_module_name: name of the top module in the Verilog file
 // inputs: list of tuples of input names and their bitwidths
 // outputs: list of tuples of output names and their bitwidths
