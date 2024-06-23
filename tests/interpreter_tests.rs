@@ -86,7 +86,6 @@ fn test_lut6_0() {
     let churchroad_dir = std::path::Path::new(&churchroad_dir_str);
     let testbench_template_path =
         churchroad_dir.join("tests/interpreter_tests/verilog/testbench.sv.template");
-    let makefile_template_path = churchroad_dir.join("tests/interpreter_tests/Makefile.template");
 
     let inputs = vec![
         ("INIT", 64),
@@ -103,7 +102,6 @@ fn test_lut6_0() {
 
     verilator_intepreter_fuzz_test(
         testbench_template_path,
-        makefile_template_path,
         "LUT6",
         inputs,
         outputs,
@@ -130,7 +128,6 @@ fn test_lut6_0() {
 // filename: name of the file to run Verilator on. For example, if the file is `adder.v`, this should be `"adder.v"`
 fn verilator_intepreter_fuzz_test(
     testbench_template_path: PathBuf,
-    makefile_template_path: PathBuf,
     top_module_name: &str,
     inputs: Vec<(&str, i32)>,
     outputs: Vec<(&str, i32)>,
@@ -141,7 +138,6 @@ fn verilator_intepreter_fuzz_test(
     verilog_module_path: PathBuf,
 ) {
     let testbench_path = test_output_dir.join("testbench.sv");
-    let makefile_path = test_output_dir.join("Makefile");
 
     // just grab the filename without any leading directories
     let filename = verilog_module_path.file_name().unwrap().to_str().unwrap();
@@ -167,24 +163,18 @@ fn verilator_intepreter_fuzz_test(
             "{test_module_port_list}",
             format!(
                 "{}, {}",
-                format!(
-                    "{}",
-                    inputs
-                        .iter()
-                        .enumerate()
-                        .map(|(i, (name, _))| format!(".{}(inputs[{}])", name, i))
-                        .collect::<Vec<String>>()
-                        .join(",\n")
-                ),
-                format!(
-                    "{}",
-                    outputs
-                        .iter()
-                        .map(|(name, _)| format!(".{}({})", name, name))
-                        .collect::<Vec<String>>()
-                        .join(", ")
-                        .as_str()
-                )
+                inputs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (name, _))| format!(".{}(inputs[{}])", name, i))
+                    .collect::<Vec<String>>()
+                    .join(",\n"),
+                outputs
+                    .iter()
+                    .map(|(name, _)| format!(".{}({})", name, name))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+                    .as_str()
             )
             .as_str(),
         )
@@ -217,35 +207,26 @@ fn verilator_intepreter_fuzz_test(
     let verilator_output_dir = test_output_dir.join("obj_dir");
     let executable_path = verilator_output_dir.join(executable_name);
 
-    let default_extra_args = format!(
-        "-I{}",
-        include_dirs
-            .iter()
-            .map(|path| path.to_str().unwrap())
-            .collect::<Vec<&str>>()
-            .join(" -I")
-    );
-
-    let makefile_prog = std::fs::read_to_string(makefile_template_path)
-        .unwrap()
-        .replace("{testbench_file_path}", testbench_path.to_str().unwrap())
-        .replace(
-            "{verilator_output_dir}",
-            verilator_output_dir.to_str().unwrap(),
-        )
-        .replace("{simulation_executable_name}", executable_name)
-        .replace("{extra_verilator_args}", &default_extra_args);
-
     std::fs::write(&testbench_path, &testbench_prog).unwrap();
-    std::fs::write(&makefile_path, &makefile_prog).unwrap();
 
     // TODO(@ninehusky): We can get rid of the necessity for a Makefile after this PR is merged
     // into Verilator: https://github.com/verilator/verilator/pull/5031
-    let verilator_compile_output = std::process::Command::new("make")
-        .arg("--environment-overrides")
-        .arg("--always-make")
-        .arg("-f")
-        .arg(makefile_path)
+    let verilator_compile_output = std::process::Command::new("verilator")
+        .arg("-o")
+        .arg(executable_path.to_str().unwrap())
+        .arg("-Wno-WIDTHTRUNC")
+        .arg("--assert")
+        .arg("--timing")
+        .arg("--binary")
+        .arg("--build")
+        .arg("--Mdir")
+        .arg(verilator_output_dir)
+        .args(
+            include_dirs
+                .iter()
+                .map(|path| format!("-I{}", path.to_str().unwrap())),
+        )
+        .arg(testbench_path.to_str().unwrap())
         .output()
         .unwrap();
 
