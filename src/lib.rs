@@ -117,7 +117,7 @@ fn interpret_helper(
                 *env.get(name)
                     .unwrap_or_else(|| panic!("didn't find var {:?}", name))
                     .get(time)
-                    .unwrap(),
+                    .unwrap_or_else(|| panic!("no value at time {:?}", time)),
                 bw,
             ))
         }
