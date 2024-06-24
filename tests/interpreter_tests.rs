@@ -517,4 +517,50 @@ fn test_run_verilator() {
         ),
         vec![1]
     );
+
+    assert_eq!(
+        run_verilator(
+            testbench_template_path.clone(),
+            "LUT6",
+            inputs.clone(),
+            outputs.clone(),
+            vec![vec![vec![0b000001000000000000, 0, 0, 1, 1, 0, 0]]],
+            include_dirs.clone(),
+            std::env::temp_dir(),
+            churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
+        ),
+        vec![1]
+    );
+
+    assert_eq!(
+        run_verilator(
+            testbench_template_path.clone(),
+            "LUT6",
+            inputs.clone(),
+            outputs.clone(),
+            vec![vec![vec![0b1000000000000, 1, 0, 1, 1, 0, 0]]],
+            include_dirs.clone(),
+            std::env::temp_dir(),
+            churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
+        ),
+        vec![0]
+    );
+
+    assert_eq!(
+        run_verilator(
+            testbench_template_path.clone(),
+            "LUT6",
+            inputs.clone(),
+            outputs.clone(),
+            vec![vec![
+                vec![0b1000000000000, 1, 0, 1, 1, 0, 0],
+                vec![0b1000000000000, 0, 0, 1, 1, 0, 0],
+                vec![0b0100000000000, 0, 0, 1, 1, 0, 0],
+            ]],
+            include_dirs.clone(),
+            std::env::temp_dir(),
+            churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
+        ),
+        vec![0, 1, 0]
+    );
 }
