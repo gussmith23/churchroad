@@ -271,10 +271,16 @@
   ((Op1 (ReduceXor) expr))
   ((HasType (Op1 (ReduceXor) expr) (Bitvector 1)))
   :ruleset typing)
+; TODO(@gussmith23) We need to decide whether Reg is Op1 or Op2
 (rule
   ((Op2 (Reg init) clock-expr data-expr)
-   (HasType expr (Bitvector n)))
+   (HasType data-expr (Bitvector n)))
   ((HasType (Op2 (Reg init) clock-expr data-expr) (Bitvector n)))
+  :ruleset typing)
+(rule
+  ((Op1 (Reg init) data-expr)
+   (HasType data-expr (Bitvector n)))
+  ((HasType (Op1 (Reg init) data-expr) (Bitvector n)))
   :ruleset typing)
 (rule
   ((Op2 (LogicOr) a-expr b-expr))

@@ -11,4 +11,6 @@
 (run typing 10)
 (check (HasType a (Bitvector 8)))
 (check (HasType b (Bitvector 8)))
+(check (HasType (Op2 (And) a b) (Bitvector 8)))
+(check (HasType (Op1 (Reg 0) (Op2 (And) a b)) (Bitvector 8)))
 (check (HasType simple (Bitvector 8)))
