@@ -2014,11 +2014,11 @@ mod tests {
   
   output out,
 );
-  logic out = wire_6;
-  logic wire_6 = 0;
+  logic out = wire_10;
+  logic wire_10 = 0;
   
 always @(posedge clk) begin
-                            wire_6 <= wire_6;
+                            wire_10 <= wire_10;
                         end
 
 
@@ -2055,19 +2055,19 @@ endmodule",
   
   output out,
 );
-  logic out = wire_23;
-  logic wire_23;
-  logic [4-1:0] wire_15 = 4'd4;
-  logic [8-1:0] wire_9 = b;
-  logic [8-1:0] wire_6 = a;
+  logic out = wire_27;
+  logic wire_27;
+  logic [4-1:0] wire_19 = 4'd4;
+  logic [8-1:0] wire_13 = b;
+  logic [8-1:0] wire_10 = a;
   
 
   some_module #(
-    .p(wire_15)
-) module_22 (
-    .a(wire_6),
-    .b(wire_9),
-    .out(wire_23));
+    .p(wire_19)
+) module_26 (
+    .a(wire_10),
+    .b(wire_13),
+    .out(wire_27));
 endmodule",
             to_verilog_egraph_serialize(&serialized, &out, "")
         );
