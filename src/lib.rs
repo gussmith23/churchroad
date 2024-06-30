@@ -290,9 +290,10 @@ fn interpret_helper(
                                 "Or" => a | b,
                                 "Shr" => a >> b,
                                 "Xor" => a ^ b,
-                                "Add" => (a + b) & ((1 << a_bw) - 1),
-                                "Sub" => (a - b) & ((1 << a_bw) - 1),
-                                "Mul" => (a * b) & ((1 << a_bw) - 1),
+                                // TODO(@gussmith23): These might not work -- do we need to simulate lower bitwidths?
+                                "Add" => (a.overflowing_add(*b).0) & ((1 << a_bw) - 1),
+                                "Sub" => (a.overflowing_sub(*b).0) & ((1 << a_bw) - 1),
+                                "Mul" => (a.overflowing_mul(*b).0) & ((1 << a_bw) - 1),
                                 _ => unreachable!(),
                             };
                             Ok(InterpreterResult::Bitvector(result, *a_bw))
