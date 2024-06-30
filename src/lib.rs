@@ -116,9 +116,9 @@ fn interpret_helper(
     env: &HashMap<&str, Vec<u64>>,
     cache: &mut HashMap<ClassId, InterpreterResult>,
 ) -> Result<InterpreterResult, String> {
-    // if cache.contains_key(id) {
-    //     return Ok(cache[id].clone());
-    // }
+    if cache.contains_key(id) {
+        return Ok(cache[id].clone());
+    }
     let node_ids = &egraph.classes().get(id).unwrap().nodes;
     if node_ids.len() != 1 {
         return Err(format!(
