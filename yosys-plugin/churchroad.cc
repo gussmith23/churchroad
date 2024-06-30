@@ -1741,6 +1741,10 @@ struct LakeroadWorker
 			f << stringf("(IsPort \"%s\" \"%s\" (Output) %s)\n", /*module name*/ "", signal_name_pre_sigmap.c_str(), signal_name_pre_sigmap.c_str()).c_str();
 		}
 
+    // Run typing rules before deleting wires -- cyclic circuits can only be typed using Wire expresions to bootstrap the types.
+		f << "\n; run typing rules\n";
+		f << "(run-schedule (saturate typing))\n";
+
 		// Delete Wire expressions.
 		f << "\n; delete wire expressions\n";
 		for (auto wire_expr : wire_exprs)
