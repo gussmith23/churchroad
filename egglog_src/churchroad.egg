@@ -278,11 +278,6 @@
   ((HasType (Op2 (Reg init) clock-expr data-expr) (Bitvector n)))
   :ruleset typing)
 (rule
-  ((Op1 (Reg init) data-expr)
-   (HasType data-expr (Bitvector n)))
-  ((HasType (Op1 (Reg init) data-expr) (Bitvector n)))
-  :ruleset typing)
-(rule
   ((Op2 (LogicOr) a-expr b-expr))
   ((HasType (Op2 (LogicOr) a-expr b-expr) (Bitvector 1)))
   :ruleset typing)
