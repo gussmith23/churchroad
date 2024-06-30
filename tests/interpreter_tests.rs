@@ -861,7 +861,7 @@ interpreter_test_verilog!(
 
 interpreter_test_verilog!(
     dummy_dsp_test,
-    InterpreterResult::Bitvector(1, 48),
+    InterpreterResult::Bitvector(2, 48),
     "tests/interpreter_tests/verilog/xilinx_ultrascale_plus/DSP48E2.v",
     "DSP48E2",
     0,
