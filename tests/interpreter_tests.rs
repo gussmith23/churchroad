@@ -945,7 +945,7 @@ interpreter_test_verilog!(
         ("D", vec![0]),
         ("INMODE", vec![8]),
         ("MULTSIGNIN", vec![0]),
-        ("OPMODE", vec![0x135]),
+        ("OPMODE", vec![0b000100110101]),
         // ("P", vec![({ P_0[47:8], out })]),
         ("PCIN", vec![0]),
         ("RSTA", vec![0]),
