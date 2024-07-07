@@ -796,7 +796,7 @@ interpreter_test_churchroad!(
 
 interpreter_test_verilog!(
     simple_mux_0,
-    InterpreterResult::Bitvector(0, 1),
+    InterpreterResult::Bitvector(1, 1),
     "tests/interpreter_tests/verilog/toy_examples/simple_mux.sv",
     "simple_mux",
     0,

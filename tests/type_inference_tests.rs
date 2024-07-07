@@ -1,9 +1,8 @@
 use egraph_serialize::NodeId;
-use rand::{rngs::StdRng, RngCore, SeedableRng};
 
 use egglog::{EGraph, SerializeConfig};
 
-use churchroad::{get_bitwidth_for_node, import_churchroad, interpret, InterpreterResult};
+use churchroad::{get_bitwidth_for_node, import_churchroad};
 
 macro_rules! type_inference_test {
     ($test_name:ident, $churchroad_src:literal) => {
