@@ -492,9 +492,11 @@ macro_rules! interpreter_test_churchroad {
                 .find(|(node_id, _)| **node_id == *output_id)
                 .unwrap();
 
+            let interpreter_result =
+                interpret(&serialized, &output_node.eclass, $time, $env).unwrap();
             assert_eq!(
-                $expected,
-                interpret(&serialized, &output_node.eclass, $time, $env).unwrap()
+                $expected, interpreter_result,
+                "(left: expected, right: interpreter_result)"
             );
         }
     };
