@@ -114,10 +114,10 @@ fn interpret_helper(
     id: &ClassId,
     time: usize,
     env: &HashMap<&str, Vec<u64>>,
-    cache: &mut HashMap<ClassId, InterpreterResult>,
+    cache: &mut HashMap<(ClassId, usize), InterpreterResult>,
 ) -> Result<InterpreterResult, String> {
-    if cache.contains_key(id) {
-        return Ok(cache[id].clone());
+    if cache.contains_key(&(id.clone(), time)) {
+        return Ok(cache[&(id.clone(), time)].clone());
     }
     let node_ids = &egraph.classes().get(id).unwrap().nodes;
     if node_ids.len() != 1 {
@@ -412,7 +412,7 @@ fn interpret_helper(
         _ => todo!("unimplemented node type: {:?}", node.op),
     };
     if result.is_ok() {
-        cache.insert(id.clone(), result.clone().unwrap());
+        cache.insert((id.clone(), time), result.clone().unwrap());
     }
     result
 }
