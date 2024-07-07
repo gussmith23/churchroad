@@ -310,6 +310,7 @@ fn run_verilator(
         .arg("-Wno-WIDTHTRUNC")
         .arg("--assert")
         .arg("--timing")
+        .arg("--main")
         .arg("--binary")
         .arg("--build")
         .arg("--Mdir")
