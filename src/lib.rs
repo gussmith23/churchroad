@@ -109,6 +109,10 @@ pub fn get_bitwidth_for_node(
     }
 }
 
+fn truncate_value_to_bitwidth(val: u64, bw: u64) -> u64 {
+    val & ((1 << bw) - 1)
+}
+
 fn interpret_helper(
     egraph: &egraph_serialize::EGraph,
     id: &ClassId,
@@ -411,6 +415,16 @@ fn interpret_helper(
         }
         _ => todo!("unimplemented node type: {:?}", node.op),
     };
+
+    // Truncate. We do this in other places above, too, but this is a catch-all to ensure we don't forget.
+    let result = match result {
+        Ok(InterpreterResult::Bitvector(val, bw)) => Ok(InterpreterResult::Bitvector(
+            truncate_value_to_bitwidth(val, bw),
+            bw,
+        )),
+        _ => result,
+    };
+
     if result.is_ok() {
         cache.insert((id.clone(), time), result.clone().unwrap());
     }
