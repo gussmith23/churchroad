@@ -304,8 +304,6 @@ fn run_verilator(
 
     std::fs::write(&testbench_path, &testbench_prog).unwrap();
 
-    // TODO(@ninehusky): We can get rid of the necessity for a Makefile after this PR is merged
-    // into Verilator: https://github.com/verilator/verilator/pull/5031
     let verilator_compile_output = std::process::Command::new("verilator")
         .arg("-o")
         .arg(executable_name)
