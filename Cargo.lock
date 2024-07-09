@@ -150,6 +150,7 @@ dependencies = [
  "indexmap",
  "log",
  "rand",
+ "tempfile",
 ]
 
 [[package]]

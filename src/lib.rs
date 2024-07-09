@@ -2,8 +2,13 @@ use egraph_serialize::{ClassId, Node};
 use indexmap::IndexMap;
 use std::{
     collections::{HashMap, HashSet},
+    fs::read_to_string,
+    io::Write,
+    path::Path,
+    process::{Command, Stdio},
     sync::Arc,
 };
+use tempfile::NamedTempFile;
 
 use egglog::{
     ast::{Literal, Symbol},
@@ -11,6 +16,59 @@ use egglog::{
     sort::{FromSort, I64Sort, IntoSort, Sort, VecSort},
     ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
 };
+
+/// ```
+/// let mut egraph = churchroad::from_verilog("module identity(input i, output o); assign o = i; endmodule", "identity");
+/// egraph.parse_and_run_program(r#"(check (IsPort "" "i" (Input) i)
+///                                        (IsPort "" "o" (Output) o)
+///                                        (= i o))"#).unwrap();
+/// ```
+pub fn from_verilog(verilog: &str, top_module_name: &str) -> EGraph {
+    let mut f = NamedTempFile::new().unwrap();
+    f.write(verilog.as_bytes()).unwrap();
+    from_verilog_file(f.path(), top_module_name)
+}
+
+/// Version of [`from_verilog`] that takes a filepath argument.
+pub fn from_verilog_file(verilog_filepath: &Path, top_module_name: &str) -> EGraph {
+    let logfile = NamedTempFile::new().unwrap();
+    // TODO(@gussmith23): hardcoded .so will break on other systems.
+    let command_output = Command::new("yosys")
+        .arg("-m")
+        .arg(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("yosys-plugin")
+                .join("churchroad.so"),
+        )
+        // Quiet, so the only output is Churchroad egglog code.
+        .arg("-q")
+        // Log useful information to a file.
+        .arg("-l")
+        .arg(logfile.path())
+        .arg("-p")
+        .arg(format!(
+            "read_verilog {path}; hierarchy -simcheck -top {top_module_name}; write_lakeroad",
+            path = verilog_filepath.to_str().unwrap()
+        ))
+        .stdout(Stdio::piped())
+        .output()
+        .expect("Couldn't run Yosys.");
+
+    if !command_output.status.success() {
+        panic!(
+            "Yosys failed. Log:\n{}",
+            read_to_string(logfile.path()).unwrap()
+        );
+    }
+
+    let mut egraph = EGraph::default();
+    import_churchroad(&mut egraph);
+    egraph
+        .parse_and_run_program(&String::from_utf8_lossy(&command_output.stdout).into_owned())
+        .unwrap();
+
+    egraph
+}
 
 // The result of interpreting a Churchroad program.
 #[derive(Debug, PartialEq, Clone)]
