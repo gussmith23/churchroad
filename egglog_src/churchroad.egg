@@ -39,6 +39,9 @@
 
   ; (Op1 (ZeroExtend bitwidth) expr)
   (ZeroExtend i64)
+
+  ; (Op2 (Mul) a b)
+  (Mul)
   )
 
 (datatype Graph 
@@ -141,6 +144,7 @@
 (AllBitwidthsMatch (Or))
 (AllBitwidthsMatch (Xor))
 (AllBitwidthsMatch (Shr))
+(AllBitwidthsMatch (Mul))
 ; Have to write this one as a rule, unfortunately.
 (ruleset core)
 (rule ((Reg n)) ((AllBitwidthsMatch (Reg n))) :ruleset core)
@@ -258,3 +262,5 @@
      (Op1 (Extract (- n 1) 1) e1) (Op1 (Extract (- n 1) 1) e2))
     (Op2 op 
      (Op1 (Extract 0 0) e1) (Op1 (Extract 0 0) e2))))))
+
+(function DSP48E2 (Expr Expr) Expr)

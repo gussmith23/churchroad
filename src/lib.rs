@@ -18,10 +18,8 @@ use egglog::{
 };
 
 /// ```
-/// let mut egraph = churchroad::from_verilog("module identity(input i, output o); assign o = i; endmodule", "identity");
-/// egraph.parse_and_run_program(r#"(check (IsPort "" "i" (Input) i)
-///                                        (IsPort "" "o" (Output) o)
-///                                        (= i o))"#).unwrap();
+/// let egraph = churchroad::from_verilog("module identity(input i, output o); assign o = i; endmodule", "identity");
+/// egraph.parse_and_run_query(r#"(check (IsPort "" )
 /// ```
 pub fn from_verilog(verilog: &str, top_module_name: &str) -> EGraph {
     let mut f = NamedTempFile::new().unwrap();
@@ -1131,7 +1129,10 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
 pub fn import_churchroad(egraph: &mut EGraph) {
     // STEP 1: import primary language definitions.
     egraph
-        .parse_and_run_program(r#"(include "egglog_src/churchroad.egg")"#)
+        .parse_and_run_program(&format!(
+            r#"(include "{}/egglog_src/churchroad.egg")"#,
+            std::env::var("CARGO_MANIFEST_DIR").unwrap()
+        ))
         .unwrap();
 
     // STEP 2: add the `debruijnify` primitive to the egraph. This depends on
@@ -1142,7 +1143,10 @@ pub fn import_churchroad(egraph: &mut EGraph) {
     // STEP 3: import module enumeration rewrites. These depend on the
     // `debruijnify` primitive.
     egraph
-        .parse_and_run_program(r#"(include "egglog_src/module_enumeration_rewrites.egg")"#)
+        .parse_and_run_program(&format!(
+            r#"(include "{}/egglog_src/module_enumeration_rewrites.egg")"#,
+            std::env::var("CARGO_MANIFEST_DIR").unwrap()
+        ))
         .unwrap();
 }
 
