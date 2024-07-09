@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use churchroad::from_verilog_file;
 use clap::Parser;

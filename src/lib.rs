@@ -62,7 +62,7 @@ pub fn from_verilog_file(verilog_filepath: &Path, top_module_name: &str) -> EGra
     let mut egraph = EGraph::default();
     import_churchroad(&mut egraph);
     egraph
-        .parse_and_run_program(&String::from_utf8_lossy(&command_output.stdout).into_owned())
+        .parse_and_run_program(&String::from_utf8_lossy(&command_output.stdout))
         .unwrap();
 
     egraph

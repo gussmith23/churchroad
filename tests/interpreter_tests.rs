@@ -243,14 +243,11 @@ fn run_verilator(
         // TODO(@ninehusky): this'll eventually need to include parameters as well, right?
         .replace(
             "{input_output_declarations}",
-            format!(
-                "{}",
-                outputs
+            outputs
                     .iter()
                     .map(|(name, bw)| format!("logic [{}:0] {};\n", bw - 1, name))
                     .collect::<Vec<String>>()
-                    .join("\n")
-            )
+                    .join("\n").to_string()
             .as_str(),
         )
         .replace("{test_module_name}", top_module_name)
@@ -302,7 +299,7 @@ fn run_verilator(
     let verilator_output_dir = test_output_dir.join("obj_dir");
     let executable_path = verilator_output_dir.join(executable_name);
 
-    std::fs::write(&testbench_path, &testbench_prog).unwrap();
+    std::fs::write(&testbench_path, testbench_prog).unwrap();
 
     // TODO(@ninehusky): We can get rid of the necessity for a Makefile after this PR is merged
     // into Verilator: https://github.com/verilator/verilator/pull/5031
@@ -381,7 +378,7 @@ fn run_verilator(
     let verilator_output_values: Vec<u64> = output_str
         .lines()
         // filter all lines that don't start with "output: "
-        .filter(|line| line.len() > 0 && line.starts_with("output: "))
+        .filter(|line| !line.is_empty() && line.starts_with("output: "))
         .map(|line| line.trim_start_matches("output: ").parse().unwrap())
         .collect();
 
