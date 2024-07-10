@@ -263,4 +263,4 @@
     (Op2 op 
      (Op1 (Extract 0 0) e1) (Op1 (Extract 0 0) e2))))))
 
-(function DSP48E2 (Expr Expr) Expr)
+(function PrimitiveInterfaceDSP (Expr Expr) Expr)

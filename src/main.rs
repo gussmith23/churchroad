@@ -39,7 +39,7 @@ fn main() {
             ((= expr (Op2 (Mul) a b))
              (HasType expr (Bitvector n))
              (< n 18))
-            ((union expr (DSP48E2 a b)))
+            ((union expr (PrimitiveInterfaceDSP a b)))
             :ruleset mapping)
     "#,
         )
