@@ -17,9 +17,11 @@ use egglog::{
     ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
 };
 
+
+
 /// ```
-/// let egraph = churchroad::from_verilog("module identity(input i, output o); assign o = i; endmodule", "identity");
-/// egraph.parse_and_run_query(r#"(check (IsPort "" )
+/// let mut egraph = churchroad::from_verilog("module identity(input i, output o); assign o = i; endmodule", "identity");
+/// egraph.parse_and_run_program(r#"(check (IsPort "" "i" (Input) i) (IsPort "" "o" (Output) o) (= i o))"#);
 /// ```
 pub fn from_verilog(verilog: &str, top_module_name: &str) -> EGraph {
     let mut f = NamedTempFile::new().unwrap();
