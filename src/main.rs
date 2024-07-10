@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use churchroad::from_verilog_file;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use clap::ValueHint::FilePath;
 
 /// Simple program to greet a person
@@ -16,6 +16,14 @@ struct Args {
 
     #[arg(long)]
     svg_filepath: Option<PathBuf>,
+
+    #[arg(long)]
+    architecture: Architecture,
+}
+
+#[derive(ValueEnum, Clone, Debug)]
+enum Architecture {
+    XilinxUltrascalePlus
 }
 
 fn main() {
