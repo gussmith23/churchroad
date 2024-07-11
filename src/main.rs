@@ -53,7 +53,7 @@ fn main() {
         .unwrap();
 
     if let Some(svg_filepath) = args.svg_filepath {
-        let serialized = egraph.serialize_for_graphviz(true);
+        let serialized = egraph.serialize_for_graphviz(true, usize::MAX, usize::MAX);
         serialized.to_svg_file(svg_filepath).unwrap();
     }
 }

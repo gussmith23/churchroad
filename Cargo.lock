@@ -272,8 +272,8 @@ checksum = "675e35c02a51bb4d4618cb4885b3839ce6d1787c97b664474d9208d074742e20"
 
 [[package]]
 name = "egglog"
-version = "0.1.0"
-source = "git+https://github.com/egraphs-good/egglog?rev=325814fd90767b5e43c72bc2eb65e14ff0b8746c#325814fd90767b5e43c72bc2eb65e14ff0b8746c"
+version = "0.2.0"
+source = "git+https://github.com/egraphs-good/egglog?rev=799c1be7e239870306529486e7585d84961888c1#799c1be7e239870306529486e7585d84961888c1"
 dependencies = [
  "clap",
  "egraph-serialize",
@@ -380,8 +380,9 @@ dependencies = [
 
 [[package]]
 name = "generic_symbolic_expressions"
-version = "5.0.3"
-source = "git+https://github.com/oflatt/symbolic-expressions?rev=655b6a4c06b4b3d3b2300e17779860b4abe440f0#655b6a4c06b4b3d3b2300e17779860b4abe440f0"
+version = "5.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "597eb584fb7cfd1935294fc3608a453fc35a58dfa9da4299c8fd3bc75a4c0b4b"
 
 [[package]]
 name = "getrandom"
