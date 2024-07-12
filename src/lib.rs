@@ -520,7 +520,7 @@ pub fn to_verilog_egraph_serialize(
                         queue.push(d_id.clone());
                     }
                     },
-                    "Concat" | "Xor" |"And" | "Or" =>  {
+                    "Concat" | "Xor" |"And" | "Or" | "Mul" =>  {
                             assert_eq!(term.children.len(), 3);
                     let expr0_id = &egraph[&term.children[1]].eclass;
                     let  expr1_id = &egraph[&term.children[2]].eclass;
@@ -532,15 +532,19 @@ pub fn to_verilog_egraph_serialize(
                         expr0 = id_to_wire_name(expr0_id),
                         expr1 = id_to_wire_name(expr1_id),
                         ),
-                            "Xor" => format!("{expr0}^{expr1}",
+                            "Xor" => format!("({expr0}^{expr1})",
                         expr0 = id_to_wire_name(expr0_id),
                         expr1 = id_to_wire_name(expr1_id),
                         ),
-                            "And" => format!("{expr0}&{expr1}",
+                            "And" => format!("({expr0}&{expr1})",
                         expr0 = id_to_wire_name(expr0_id),
                         expr1 = id_to_wire_name(expr1_id),
                         ),
-                            "Or" => format!("{expr0}|{expr1}",
+                            "Or" => format!("({expr0}|{expr1})",
+                        expr0 = id_to_wire_name(expr0_id),
+                        expr1 = id_to_wire_name(expr1_id),
+                        ),
+                            "Mul" => format!("({expr0}*{expr1})",
                         expr0 = id_to_wire_name(expr0_id),
                         expr1 = id_to_wire_name(expr1_id),
                         ),
