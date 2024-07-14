@@ -1051,7 +1051,7 @@ fn test_run_verilator() {
     ];
     let outputs: Vec<(&str, i32)> = vec![("O", 1)];
 
-    let include_dirs = vec![churchroad_dir.join("tests/interpreter_tests/verilog/")];
+    let include_dirs = vec![churchroad_dir.join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus")];
 
     assert_eq!(
         run_verilator(
