@@ -479,8 +479,8 @@ fn run_verilator(
     let verilator_output_values: Vec<u64> = output_str
         .lines()
         // filter all lines that don't start with "output: "
-        .filter(|line| line.len() > 0 && line.starts_with("output:  "))
-        .map(|line| line.trim_start_matches("output:  ").parse().unwrap())
+        .filter(|line| line.len() > 0 && line.starts_with("output: "))
+        .map(|line| line.trim_start_matches("output: ").parse().unwrap())
         .collect();
 
     fs::write(test_output_dir.join("output.txt"), output_str).unwrap();
