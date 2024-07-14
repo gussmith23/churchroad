@@ -133,7 +133,6 @@ fn test_lut6_combinational_verilator() {
     let outputs: Vec<(&str, i32)> = vec![("O", 1)];
 
     let include_dirs = vec![
-        churchroad_dir.join("tests/interpreter_tests/verilog/"),
         churchroad_dir.join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus/"),
     ];
 
