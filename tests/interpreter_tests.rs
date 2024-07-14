@@ -199,7 +199,7 @@ fn verilator_vs_interpreter(
     let mut interpreter_results: Vec<InterpreterResult> = Vec::new();
     let test_vectors: Vec<Vec<Vec<u64>>> = (0..num_test_cases)
         .map(|_| {
-            (0..num_clock_cycles + 1)
+            (0..num_clock_cycles)
                 .map(|_| {
                     inputs
                         .iter()
@@ -241,7 +241,7 @@ fn verilator_vs_interpreter(
         // TODO(@gussmith23): This is inefficient. Either the interpreter should
         // return streams, or we should be able to memoize some way. This just
         // redoes a bunch of work each call.
-        for timestep in 0..num_clock_cycles + 1 {
+        for timestep in 0..num_clock_cycles {
             let result = interpret(&serialized, &root_node.eclass, timestep, &env).unwrap();
             interpreter_results.push(result);
         }
