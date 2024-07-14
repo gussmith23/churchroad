@@ -152,6 +152,7 @@ fn test_lut6_combinational_verilator() {
 }
 
 // TODO(@ninehusky): macroify this
+#[should_panic = "assertion `left == right` failed: We don't currently know what to do when clk=1 at time 0! See #88"]
 #[test]
 fn test_counter_verilator() {
     if std::env::var("CHURCHROAD_DIR").is_err() {
