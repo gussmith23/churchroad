@@ -811,7 +811,7 @@ interpreter_test_churchroad!(
     "#,
     0,
     "v1",
-    &[("a", vec![0b10101010]), ("clk", vec![1])].into(),
+    &[("a", vec![0b10101010]), ("clk", vec![0])].into(),
     InterpreterResult::Bitvector(8, 8)
 );
 
