@@ -1,6 +1,12 @@
 // This file contains tests for the interpreter module.
 
-use std::{fmt::Write, fs, io::Write as IOWrite, path::PathBuf, vec};
+use std::{
+    fmt::Write,
+    fs,
+    io::Write as IOWrite,
+    path::{Path, PathBuf},
+    vec,
+};
 
 use egraph_serialize::NodeId;
 use rand::{rngs::StdRng, RngCore, SeedableRng};
