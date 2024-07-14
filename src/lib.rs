@@ -167,6 +167,13 @@ fn interpret_helper(
 
             if op.op.as_str() == "Reg" {
                 if time == 0 {
+                    let clk = egraph.nodes.get(&node.children[1]).unwrap();
+                    let InterpreterResult::Bitvector(curr_clk_val, _) =
+                        interpret_helper(egraph, &clk.eclass, time, env, cache).unwrap();
+                    assert_eq!(
+                        curr_clk_val, 0,
+                        "We don't currently know what to do when clk=1 at time 0! See #88"
+                    );
                     let initial_value = egraph.nodes.get(&op.children[0]).unwrap();
                     return Ok(InterpreterResult::Bitvector(
                         initial_value.op.parse().unwrap(),
