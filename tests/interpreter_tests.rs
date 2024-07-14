@@ -1062,7 +1062,7 @@ fn test_run_verilator() {
             vec![vec![vec![0, 0, 0, 0, 0, 0, 0]]],
             include_dirs.clone(),
             std::env::temp_dir(),
-            churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
+            churchroad_dir.join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus/LUT6-modified.v"),
         ),
         vec![0]
     );
