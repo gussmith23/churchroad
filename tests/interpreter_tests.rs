@@ -1,12 +1,6 @@
 // This file contains tests for the interpreter module.
 
-use std::{
-    fmt::Write,
-    fs,
-    io::Write as IOWrite,
-    path::{Path, PathBuf},
-    vec,
-};
+use std::{fmt::Write, fs, io::Write as IOWrite, path::PathBuf, vec};
 
 use egraph_serialize::NodeId;
 use rand::{rngs::StdRng, RngCore, SeedableRng};
@@ -138,9 +132,8 @@ fn test_lut6_combinational_verilator() {
     ];
     let outputs: Vec<(&str, i32)> = vec![("O", 1)];
 
-    let include_dirs = vec![
-        churchroad_dir.join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus/"),
-    ];
+    let include_dirs =
+        vec![churchroad_dir.join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus/")];
 
     verilator_vs_interpreter(
         100,
@@ -1057,7 +1050,8 @@ fn test_run_verilator() {
     ];
     let outputs: Vec<(&str, i32)> = vec![("O", 1)];
 
-    let include_dirs = vec![churchroad_dir.join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus")];
+    let include_dirs =
+        vec![churchroad_dir.join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus")];
 
     assert_eq!(
         run_verilator(
@@ -1068,7 +1062,8 @@ fn test_run_verilator() {
             vec![vec![vec![0, 0, 0, 0, 0, 0, 0]]],
             include_dirs.clone(),
             std::env::temp_dir(),
-            churchroad_dir.join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus/LUT6-modified.v"),
+            churchroad_dir
+                .join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus/LUT6-modified.v"),
         ),
         vec![0]
     );
