@@ -110,7 +110,13 @@ pub fn get_bitwidth_for_node(
 }
 
 fn truncate_value_to_bitwidth(val: u64, bw: u64) -> u64 {
-    val & (((1_u64.overflowing_shl(bw.try_into().unwrap())).0).overflowing_sub(1).0)
+    assert!(bw <= 64);
+    assert!(bw > 0);
+    if bw == 64 {
+        val
+    } else {
+        val & ((1 << bw) - 1)
+    }
 }
 
 fn interpret_helper(
