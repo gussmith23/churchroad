@@ -110,7 +110,7 @@ pub fn get_bitwidth_for_node(
 }
 
 fn truncate_value_to_bitwidth(val: u64, bw: u64) -> u64 {
-    val & ((1 << bw) - 1)
+    val & (((1_u64.overflowing_shl(bw.try_into().unwrap())).0).overflowing_sub(1).0)
 }
 
 fn interpret_helper(
@@ -151,7 +151,7 @@ fn interpret_helper(
                 *env.get(name)
                     .unwrap_or_else(|| panic!("didn't find var {:?}", name))
                     .get(time)
-                    .unwrap(),
+                    .unwrap_or_else(|| panic!("no value at time {:?}", time)),
                 bw,
             ))
         }
