@@ -441,7 +441,8 @@ fn verilator_intepreter_fuzz_test(
 }
 
 macro_rules! interpreter_test_verilog {
-    ($test_name:ident, $expected:expr, $verilog_path:literal, $module_name:literal, $time:literal, $env:expr, $out: literal) => {
+    ($(#[$meta:meta])* $test_name:ident, $expected:expr, $verilog_path:literal, $module_name:literal, $time:literal, $env:expr, $out: literal) => {
+        $(#[$meta])*
         #[test]
         fn $test_name() {
             let (serialized, root_node) = prep_interpreter(
@@ -879,9 +880,8 @@ interpreter_test_verilog!(
     "count"
 );
 
-// Test just to see if the interpreter even loads in the DSP
-
 interpreter_test_verilog!(
+    #[should_panic]
     dummy_dsp_test,
     InterpreterResult::Bitvector(2, 48),
     "tests/interpreter_tests/verilog/xilinx_ultrascale_plus/DSP48E2.v",
