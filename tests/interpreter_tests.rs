@@ -244,11 +244,12 @@ fn run_verilator(
         .replace(
             "{input_output_declarations}",
             outputs
-                    .iter()
-                    .map(|(name, bw)| format!("logic [{}:0] {};\n", bw - 1, name))
-                    .collect::<Vec<String>>()
-                    .join("\n").to_string()
-            .as_str(),
+                .iter()
+                .map(|(name, bw)| format!("logic [{}:0] {};\n", bw - 1, name))
+                .collect::<Vec<String>>()
+                .join("\n")
+                .to_string()
+                .as_str(),
         )
         .replace("{test_module_name}", top_module_name)
         .replace(

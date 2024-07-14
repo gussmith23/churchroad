@@ -1,8 +1,9 @@
-use egraph_serialize::{ClassId, Node};
+use egraph_serialize::{ClassId, Node, NodeId};
 use indexmap::IndexMap;
 use std::{
     collections::{HashMap, HashSet},
-    fs::read_to_string,
+    env,
+    fs::{read_to_string},
     io::Write,
     path::Path,
     process::{Command, Stdio},
@@ -17,7 +18,174 @@ use egglog::{
     ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
 };
 
+pub fn call_lakeroad_on_primitive_interface_and_spec(
+    serialized_egraph: &egraph_serialize::EGraph,
+    spec_choices: &indexmap::IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
+    _spec_node_id: &NodeId,
+    sketch_template_node_id: &NodeId,
+    architecture: &str,
+) {
+    // Not supporting anything other than a simple DSP sketch at the moment.
+    assert_eq!(
+        serialized_egraph[sketch_template_node_id].op,
+        "PrimitiveInterfaceDSP"
+    );
+    assert_eq!(serialized_egraph[sketch_template_node_id].children.len(), 2);
+    assert_eq!(
+        {
+            let child_node_id = &serialized_egraph[sketch_template_node_id].children[0];
+            &serialized_egraph[child_node_id].op
+        },
+        "Var"
+    );
+    assert_eq!(
+        {
+            let child_node_id = &serialized_egraph[sketch_template_node_id].children[1];
+            &serialized_egraph[child_node_id].op
+        },
+        "Var"
+    );
 
+    // Put the spec in a tempfile.
+    let mut spec_file = NamedTempFile::new().unwrap();
+    println!(
+        "{}",
+        to_verilog_egraph_serialize(serialized_egraph, spec_choices, "clk")
+    );
+    spec_file
+        .write(to_verilog_egraph_serialize(serialized_egraph, spec_choices, "clk").as_bytes())
+        .unwrap();
+
+    let binding =
+        env::var("LAKEROAD_DIR").expect("LAKEROAD_DIR environment variable should be set.");
+    let lakeroad_dir = Path::new(&binding);
+    let _output = Command::new("racket")
+        .arg(lakeroad_dir.join("bin").join("main.rkt"))
+        .arg("--architecture")
+        .arg(architecture)
+        .arg("--verilog-module-filepath")
+        .arg(spec_file.path())
+        // TODO(@gussmith23): This should probably not be implicit in the generate-verilog function.
+        .arg("--top-module-name")
+        .arg("top")
+        // TODO(@gussmith23): Determine this automatically somehow.
+        .arg("--verilog-module-out-signal")
+        .arg("out:16")
+        .arg("--input-signal")
+        .arg("a:16")
+        .arg("--input-signal")
+        .arg("b:16")
+        .arg("--template")
+        .arg("dsp")
+        .arg("--pipeline-depth")
+        .arg("0")
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
+    todo!()
+}
+
+// TODO(@gussmith23): It would be nice to not have to use a mutable reference
+// here.
+pub fn find_primitive_interface_values(egraph: &mut EGraph) -> Vec<(ArcSort, Value)> {
+    const NUM_TO_GET: usize = 100;
+    let (results, termdag) = egraph
+        .function_to_dag("PrimitiveInterfaceDSP".into(), NUM_TO_GET)
+        .unwrap();
+    assert!(results.len() < NUM_TO_GET);
+
+    for (term, output) in &results {
+        // I don't know if this is actually always the case, but I don't know
+        // what it means when it's not the case.
+        assert_eq!(term, output);
+    }
+
+    let sorts_and_exprs: Vec<_> = results
+        .iter()
+        .map(|(term, output)| {
+            // I don't know if this is actually always the case, but I don't know
+            // what it means when it's not the case.
+            assert_eq!(term, output);
+
+            egraph.eval_expr(&termdag.term_to_expr(term)).unwrap()
+        })
+        .collect();
+
+    sorts_and_exprs
+}
+
+/// Same as [`find_primitive_interface_values`] but over a serialized egraph.
+pub fn find_primitive_interfaces_serialized(egraph: &egraph_serialize::EGraph) -> Vec<NodeId> {
+    egraph
+        .nodes
+        .iter()
+        .filter_map(|(node_id, node)| {
+            if node.op == "PrimitiveInterfaceDSP" {
+                Some(node_id.to_owned())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// I don't know if we should be making Extractors in such an ad-hoc way, but
+/// this actually seems to be the most convenient way to do this.
+///
+/// An extractor for extracting things we can use as specifications. This mostly
+/// means that it extract things that we can turn into legal Verilog.
+#[derive(Default)]
+pub struct SpecExtractor;
+impl SpecExtractor {
+    pub fn extract(
+        &self,
+        egraph: &egraph_serialize::EGraph,
+        _roots: &[egraph_serialize::ClassId],
+    ) -> IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId> {
+        egraph
+            .classes()
+            .iter()
+            .map(|(id, class)| {
+                let node_id = class
+                    .nodes
+                    .iter()
+                    .filter(|node_id| {
+                        let op = &egraph[*node_id].op;
+
+                        // Filter certain op types.
+                        !(vec!["PrimitiveInterfaceDSP"].contains(&op.as_str()))
+                    })
+                    .next()
+                    .unwrap()
+                    .clone();
+                (id.clone(), node_id)
+            })
+            .collect()
+    }
+}
+
+/// For a given primitive interface term `term`, find an equivalent "concrete"
+/// expression that we can use as our spec for synthesis via Lakeroad.
+///
+/// Returns the node choides for each node in the egraph, plus the specific node
+/// ID representing the spec.
+pub fn find_spec_for_primitive_interface(
+    eclass: &egraph_serialize::ClassId,
+    serialized_egraph: &egraph_serialize::EGraph,
+) -> (IndexMap<ClassId, NodeId>, NodeId) {
+    let choices = SpecExtractor::default().extract(&serialized_egraph, vec![].as_slice());
+    let node_id = choices.get(eclass).unwrap().to_owned();
+    (choices, node_id)
+}
+
+pub fn call_lakeroad_on_primitive_interface(term: &Term, term_dag: &TermDag) {
+    dbg!(term_dag.term_to_expr(term).to_string());
+
+    dbg!(to_verilog(term_dag, term_dag.lookup(term)));
+}
+
+pub fn call_lakeroad() {}
 
 /// ```
 /// let mut egraph = churchroad::from_verilog("module identity(input i, output o); assign o = i; endmodule", "identity");
@@ -399,7 +567,8 @@ pub fn to_verilog_egraph_serialize(
         }
 
         outputs.push_str(&format!(
-            "output {name},\n",
+            "output [{bw}-1:0] {name},\n",
+            bw = todo!("Have to set a bitwidth!"),
             name = egraph[&node.children[1]]
                 .op
                 .as_str()
@@ -1730,7 +1899,7 @@ mod tests {
             if std::env::var("DEMO_2024_02_06_WRITE_SVGS").is_err() {
                 return;
             }
-            let serialized = egraph.serialize_for_graphviz(true);
+            let serialized = egraph.serialize_for_graphviz(true, usize::MAX, usize::MAX);
             let svg_path = Path::new(path).with_extension("svg");
             serialized.to_svg_file(svg_path).unwrap();
         }
