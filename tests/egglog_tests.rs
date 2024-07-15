@@ -34,6 +34,7 @@ macro_rules! egglog_test {
 egglog_test!(test_1, "tests/egglog_tests/construct_sequential_cycle.egg");
 egglog_test!(permuter, "tests/egglog_tests/permuter.egg");
 egglog_test!(typing, "tests/egglog_tests/typing.egg");
+egglog_test!(counter_typing, "tests/egglog_tests/counter_typing.egg");
 
 fn create_rewrites(
     egraph: &egglog::EGraph,

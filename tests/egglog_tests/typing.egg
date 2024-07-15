@@ -5,7 +5,8 @@
 (let a (Var "a" 8))
 (let b (Var "b" 8))
 (let simple
- (Op1 (Reg 0)
+ (Op2 (Reg 0)
+  clk
   (Op2 (And) a b)))
 
 (run typing 10)
