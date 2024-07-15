@@ -1,0 +1,36 @@
+; wire declarations
+; $0\count[3:0]
+(let v0 (Wire "v0" 4))
+; clk
+(let v1 (Wire "v1" 1))
+; count
+(let v2 (Wire "v2" 4))
+
+; cells
+; 1'1
+(let v3 (Op0 (BV 1 1)))
+; TODO not handling signedness
+(let v4 (Op1 (ZeroExtend 4) v3))
+(union v0 (Op2 (Add) v2 v4))
+; TODO: assuming 0 default for Reg
+(union v2 (Op2 (Reg 0) v1 v0))
+
+; inputs
+(let clk (Var "clk" 1))
+(IsPort "" "clk" (Input) clk)
+(union v1 clk)
+
+; outputs
+(let count v2)
+(IsPort "" "count" (Output) count)
+
+(run-schedule (saturate typing))
+
+; delete wire expressions
+(delete (Wire "v0" 4))
+(delete (Wire "v1" 1))
+(delete (Wire "v2" 4))
+
+(check (HasType v3 (Bitvector 1)))
+(check (HasType v0 (Bitvector 4)))
+(check (HasType v2 (Bitvector 4)))

@@ -23,19 +23,20 @@ initial begin
   inputs = new[num_inputs];
 
   for (int i = 0; i < num_test_cases; i++) begin
-    $display("Test case %d\n", i);
-    for (int j = 0; j < num_clock_cycles; j++) begin
-      for (int k = 0; k < num_inputs; k++) begin
-        $fscanf(STDIN, "%X\n", inputs[k]);
-        $display("at time %d, inputs[%d] = %d\n", j, k, inputs[k]);
+    // For each requested clock cycle, finish the last half of the current clock
+    // cycle and then start the first half of the next clock cycle.
+    for (int clk_i = 0; clk_i < num_clock_cycles; clk_i++) begin
+      // Second half of cycle clk_i (inputs=random, clock=1)
+      // {randomize_inputs} 
+      for (int j = 0; j < num_inputs; j++) begin
+        $fscanf(STDIN, "%h\n", inputs[j]);
       end
-      // {display_inputs}
       #CLK_PERIOD;
+      {display_inputs}
       {display_outputs}
     end
   end
 
   $finish;
 end
-
 endmodule
