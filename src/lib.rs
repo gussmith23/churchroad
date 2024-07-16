@@ -320,11 +320,9 @@ pub fn get_bitwidth_for_node(
     egraph: &egraph_serialize::EGraph,
     id: &NodeId,
 ) -> Result<u64, String> {
-    match egraph
-        .nodes
-        .iter()
-        .find(|(_, node)| node.op.as_str() == "HasType" && node.children[0] == *id)
-    {
+    match egraph.nodes.iter().find(|(_, node)| {
+        node.op.as_str() == "HasType" && egraph[&node.children[0]].eclass == egraph[id].eclass
+    }) {
         Some((_, has_type_node)) => {
             let type_node = egraph.nodes.get(&has_type_node.children[1]).unwrap();
             assert!(type_node.op == "Bitvector");
