@@ -321,7 +321,7 @@ impl SpecExtractor {
                         let op = &egraph[*node_id].op;
 
                         // Filter certain op types.
-                        !(vec!["PrimitiveInterfaceDSP"].contains(&op.as_str()))
+                        !(["PrimitiveInterfaceDSP"].contains(&op.as_str()))
                     })
                     .next()
                     .unwrap()
@@ -341,7 +341,7 @@ pub fn find_spec_for_primitive_interface(
     eclass: &egraph_serialize::ClassId,
     serialized_egraph: &egraph_serialize::EGraph,
 ) -> (IndexMap<ClassId, NodeId>, NodeId) {
-    let choices = SpecExtractor::default().extract(&serialized_egraph, vec![].as_slice());
+    let choices = SpecExtractor.extract(serialized_egraph, vec![].as_slice());
     let node_id = choices.get(eclass).unwrap().to_owned();
     (choices, node_id)
 }
