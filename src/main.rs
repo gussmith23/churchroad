@@ -141,11 +141,11 @@ fn main() {
         );
 
         // STEP 5.2: Call Lakeroad.
-        call_lakeroad_on_primitive_interface_and_spec(
+        let commands = call_lakeroad_on_primitive_interface_and_spec(
             &serialized_egraph,
             &spec_choices,
             &spec_node_id,
-            &sketch_template_node_id,
+            sketch_template_node_id,
             &args.architecture.to_string(),
         );
 
@@ -153,8 +153,9 @@ fn main() {
         // If Lakeroad finds a mapping, insert the mapping into the egraph.
         // If Lakeroad proves UNSAT, put some kind of marker into the egraph
         // to indicate that this mapping shouldn't be attempted again.
+        egraph.parse_and_run_program(&commands).unwrap();
     }
-    
+
     // STEP 6: Extract a lowered design.
     //
     // Once we have attempted all mappings, we should ideally be able to extract
