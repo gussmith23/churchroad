@@ -93,7 +93,7 @@ fn prep_interpreter(
     // Each node should have a HasType node associated with it.
     for (node_id, node) in serialized.nodes.iter() {
         // if the node has op in the list, don't care
-        let list = vec!["Var", "Op1"];
+        let list = ["Var", "Op1"];
         if !list.contains(&node.op.as_str()) {
             continue;
         }
@@ -308,28 +308,24 @@ fn run_verilator(
     let filename = verilog_module_path.file_name().unwrap().to_str().unwrap();
 
     let test_module_input_list = {
-        let inputs_expr = format!(
-            "{}",
-            inputs
-                .iter()
-                .enumerate()
-                .map(|(i, (name, _))| format!(".{}(inputs[{}])", name, i))
-                .collect::<Vec<String>>()
-                .join(", ")
-        );
-        let outputs_expr = format!(
-            "{}",
-            outputs
-                .iter()
-                .map(|(name, _)| format!(".{}({})", name, name))
-                .collect::<Vec<String>>()
-                .join(", ")
-        );
+        let inputs_expr = inputs
+            .iter()
+            .enumerate()
+            .map(|(i, (name, _))| format!(".{}(inputs[{}])", name, i))
+            .collect::<Vec<String>>()
+            .join(", ")
+            .to_string();
+        let outputs_expr = outputs
+            .iter()
+            .map(|(name, _)| format!(".{}({})", name, name))
+            .collect::<Vec<String>>()
+            .join(", ")
+            .to_string();
         let mut final_expr = String::from("");
-        if inputs_expr.len() > 0 {
+        if !inputs_expr.is_empty() {
             final_expr.push_str(inputs_expr.as_str());
         }
-        if outputs_expr.len() > 0 {
+        if !outputs_expr.is_empty() {
             final_expr.push_str(", ");
             final_expr.push_str(outputs_expr.as_str());
         };
