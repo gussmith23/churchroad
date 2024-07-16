@@ -95,7 +95,6 @@ fn main() {
     }
 
     let serialized_egraph = egraph.serialize(SerializeConfig::default());
-    
 
     // STEP 3: Collect all proposed mappings.
     // In this step, we simply find all mapping proposals, i.e. all places where
