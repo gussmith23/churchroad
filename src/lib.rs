@@ -25,7 +25,7 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     _spec_node_id: &NodeId,
     sketch_template_node_id: &NodeId,
     architecture: &str,
-) {
+) -> String {
     // Not supporting anything other than a simple DSP sketch at the moment.
     assert_eq!(
         serialized_egraph[sketch_template_node_id].op,
@@ -91,10 +91,166 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     //     .join(" "));
     let output = command.output().unwrap();
 
-    dbg!(&output);
-    dbg!(String::from_utf8_lossy(&output.stdout));
+    println!("{}", String::from_utf8_lossy(&output.stdout));
 
-    todo!()
+    let mut verilog = String::from_utf8_lossy(&output.stdout).into_owned();
+
+    // TODO(@gussmith23): hardcoding the definition of DSP48E2 here. Should
+    // instead take it as input to the flow at some point.
+    verilog.push_str(
+        r#"
+// DSP48E2 definition from Xilinx. Note that we keep the module empty for now --
+// we only need the input/output port definitions.
+
+///////////////////////////////////////////////////////////////////////////////
+//  Copyright (c) 1995/2018 Xilinx, Inc.
+//  All Right Reserved.
+///////////////////////////////////////////////////////////////////////////////
+//   ____  ____
+//  /   /\/   /
+// /___/  \  /     Vendor      : Xilinx
+// \   \   \/      Version     : 2018.3
+//  \   \          Description : Xilinx Unified Simulation Library Component
+//  /   /                        48-bit Multi-Functional Arithmetic Block
+// /___/   /\      Filename    : DSP48E2.v
+// \   \  /  \
+//  \___\/\___\
+//
+///////////////////////////////////////////////////////////////////////////////
+//  Revision:
+//  07/15/12 - Migrate from E1.
+//  12/10/12 - Add dynamic registers
+//  01/10/13 - 694456 - DIN_in/D_in connectivity issue
+//  01/11/13 - DIN, D_DATA data width change (26/24) sync4 yml
+//  02/13/13 - PCIN_47A change from internal feedback to PCIN(47) pin
+//  03/06/13 - 701316 - A_B_reg no clk when REG=0
+//  04/03/13 - yaml update
+//  04/08/13 - 710304 - AREG, BREG, ACASCREG and BCASCREG dynamic registers mis sized.
+//  04/22/13 - 714213 - ACOUT, BCOUT wrong logic
+//  04/22/13 - 713695 - Zero mult result on USE_SIMD
+//  04/22/13 - 713617 - CARRYCASCOUT behaviour
+//  04/23/13 - 714772 - remove sensitivity to negedge GSR
+//  04/23/13 - 713706 - change P_PDBK connection
+//  05/07/13 - 716896 - AREG, BREG, ACASCREG and BCASCREG localparams mis sized.
+//  05/07/13 - 716896 - ALUMODE/OPMODE_INV_REG mis sized
+//  05/07/13 - 716896 - INMODE_INV_REG mis sized
+//  05/07/13 - x_mac_cascd missing for sensitivity list.
+//  10/22/14 - 808642 - Added #1 to $finish
+//  End Revision:
+///////////////////////////////////////////////////////////////////////////////
+
+module DSP48E2 #(
+    parameter integer ACASCREG = 1,
+    parameter integer ADREG = 1,
+    parameter integer ALUMODEREG = 1,
+    parameter AMULTSEL = "A",
+    parameter integer AREG = 1,
+    parameter AUTORESET_PATDET = "NO_RESET",
+    parameter AUTORESET_PRIORITY = "RESET",
+    parameter A_INPUT = "DIRECT",
+    parameter integer BCASCREG = 1,
+    parameter BMULTSEL = "B",
+    parameter integer BREG = 1,
+    parameter B_INPUT = "DIRECT",
+    parameter integer CARRYINREG = 1,
+    parameter integer CARRYINSELREG = 1,
+    parameter integer CREG = 1,
+    parameter integer DREG = 1,
+    parameter integer INMODEREG = 1,
+    parameter [3:0] IS_ALUMODE_INVERTED = 4'b0000,
+    parameter [0:0] IS_CARRYIN_INVERTED = 1'b0,
+    parameter [0:0] IS_CLK_INVERTED = 1'b0,
+    parameter [4:0] IS_INMODE_INVERTED = 5'b00000,
+    parameter [8:0] IS_OPMODE_INVERTED = 9'b000000000,
+    parameter [0:0] IS_RSTALLCARRYIN_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTALUMODE_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTA_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTB_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTCTRL_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTC_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTD_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTINMODE_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTM_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTP_INVERTED = 1'b0,
+    parameter [47:0] MASK = 48'h3FFFFFFFFFFF,
+    parameter integer MREG = 1,
+    parameter integer OPMODEREG = 1,
+    parameter [47:0] PATTERN = 48'h000000000000,
+    parameter PREADDINSEL = "A",
+    parameter integer PREG = 1,
+    parameter [47:0] RND = 48'h000000000000,
+    parameter SEL_MASK = "MASK",
+    parameter SEL_PATTERN = "PATTERN",
+    parameter USE_MULT = "MULTIPLY",
+    parameter USE_PATTERN_DETECT = "NO_PATDET",
+    parameter USE_SIMD = "ONE48",
+    parameter USE_WIDEXOR = "FALSE",
+    parameter XORSIMD = "XOR24_48_96"
+) (
+    output [29:0] ACOUT,
+    output [17:0] BCOUT,
+    output CARRYCASCOUT,
+    output [3:0] CARRYOUT,
+    output MULTSIGNOUT,
+    output OVERFLOW,
+    output [47:0] P,
+    output PATTERNBDETECT,
+    output PATTERNDETECT,
+    output [47:0] PCOUT,
+    output UNDERFLOW,
+    output [7:0] XOROUT,
+
+    input [29:0] A,
+    input [29:0] ACIN,
+    input [3:0] ALUMODE,
+    input [17:0] B,
+    input [17:0] BCIN,
+    input [47:0] C,
+    input CARRYCASCIN,
+    input CARRYIN,
+    input [2:0] CARRYINSEL,
+    input CEA1,
+    input CEA2,
+    input CEAD,
+    input CEALUMODE,
+    input CEB1,
+    input CEB2,
+    input CEC,
+    input CECARRYIN,
+    input CECTRL,
+    input CED,
+    input CEINMODE,
+    input CEM,
+    input CEP,
+    input CLK,
+    input [26:0] D,
+    input [4:0] INMODE,
+    input MULTSIGNIN,
+    input [8:0] OPMODE,
+    input [47:0] PCIN,
+    input RSTA,
+    input RSTALLCARRYIN,
+    input RSTALUMODE,
+    input RSTB,
+    input RSTC,
+    input RSTCTRL,
+    input RSTD,
+    input RSTINMODE,
+    input RSTM,
+    input RSTP
+);
+
+endmodule
+"#,
+    );
+
+    // TODO(@gussmith23): hardcoded module name
+    // Don't simcheck, because there'll be undefined modules. That's expected.
+    let commands = commands_from_verilog(&verilog, "top", false);
+
+    println!("{}", commands);
+
+    commands
 }
 
 // TODO(@gussmith23): It would be nice to not have to use a mutable reference
