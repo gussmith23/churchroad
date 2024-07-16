@@ -503,7 +503,7 @@ pub fn get_bitwidth_for_node(
                 .unwrap();
             Ok(bw)
         }
-        None => return Err("No HasType node found for the given ID.".to_string()),
+        None => Err("No HasType node found for the given ID.".to_string()),
     }
 }
 
