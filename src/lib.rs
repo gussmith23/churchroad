@@ -199,6 +199,19 @@ pub fn from_verilog(verilog: &str, top_module_name: &str) -> EGraph {
 
 /// Version of [`from_verilog`] that takes a filepath argument.
 pub fn from_verilog_file(verilog_filepath: &Path, top_module_name: &str) -> EGraph {
+    let mut egraph = EGraph::default();
+    import_churchroad(&mut egraph);
+    egraph
+        .parse_and_run_program(&commands_from_verilog_file(
+            verilog_filepath,
+            top_module_name,
+        ))
+        .unwrap();
+
+    egraph
+}
+
+pub fn commands_from_verilog_file(verilog_filepath: &Path, top_module_name: &str) -> String {
     let logfile = NamedTempFile::new().unwrap();
     // TODO(@gussmith23): hardcoded .so will break on other systems.
     let command_output = Command::new("yosys")
@@ -229,13 +242,7 @@ pub fn from_verilog_file(verilog_filepath: &Path, top_module_name: &str) -> EGra
         );
     }
 
-    let mut egraph = EGraph::default();
-    import_churchroad(&mut egraph);
-    egraph
-        .parse_and_run_program(&String::from_utf8_lossy(&command_output.stdout))
-        .unwrap();
-
-    egraph
+    String::from_utf8_lossy(&command_output.stdout).into_owned()
 }
 
 // The result of interpreting a Churchroad program.
