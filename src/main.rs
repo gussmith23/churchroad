@@ -104,8 +104,8 @@ fn main() {
     // In the future, this step might also involve ranking potential mapping
     // proposals, because in a large design, there will likely be many of them!
     // There are many potential ways to rank: heuristics, cost models, etc.
-    // 
-    // 
+    //
+    //
     // TODO(@gussmith23): Make this return Vec<(choices, nodeid)>.
     // Basically it can have the same API as the spec finding function. They're
     // both doing very similar things: basically, an extraction. They're just
