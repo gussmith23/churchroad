@@ -757,7 +757,7 @@ pub fn to_verilog_egraph_serialize(
 
         outputs.push_str(&format!(
             "output [{bw}-1:0] {name},\n",
-            bw = todo!("Have to set a bitwidth!"),
+            bw = get_bitwidth_for_node(egraph, &node.children[3]).unwrap(),
             name = egraph[&node.children[1]]
                 .op
                 .as_str()
@@ -794,7 +794,8 @@ pub fn to_verilog_egraph_serialize(
 
     while let Some(id) = queue.pop() {
         done.insert(id.clone());
-        let term = &egraph[&choices[&id]];
+        let node_id = &choices[&id];
+        let term = &egraph[node_id];
 
         let op = &term.op;
         match op.as_str() {
@@ -883,7 +884,8 @@ pub fn to_verilog_egraph_serialize(
                     let expr0_id = &egraph[&term.children[1]].eclass;
                     let  expr1_id = &egraph[&term.children[2]].eclass;
                     logic_declarations.push_str(&format!(
-                        "logic {this_wire} = {op};\n",
+                        "logic [{bw}-1:0] {this_wire} = {op};\n",
+                        bw = get_bitwidth_for_node(egraph, node_id).unwrap(),
                         op = match op_node.op.as_str() {
 
                             "Concat" => format!("{{ {expr0}, {expr1} }}",
