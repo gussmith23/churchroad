@@ -358,27 +358,39 @@ pub fn call_lakeroad() {}
 /// let mut egraph = churchroad::from_verilog("module identity(input i, output o); assign o = i; endmodule", "identity");
 /// egraph.parse_and_run_program(r#"(check (IsPort "" "i" (Input) i) (IsPort "" "o" (Output) o) (= i o))"#);
 /// ```
-pub fn from_verilog(verilog: &str, top_module_name: &str) -> EGraph {
+pub fn from_verilog(verilog: &str, top_module_name: &str, simcheck: bool) -> EGraph {
     let mut f = NamedTempFile::new().unwrap();
     f.write(verilog.as_bytes()).unwrap();
-    from_verilog_file(f.path(), top_module_name)
+    from_verilog_file(f.path(), top_module_name, simcheck)
 }
 
 /// Version of [`from_verilog`] that takes a filepath argument.
-pub fn from_verilog_file(verilog_filepath: &Path, top_module_name: &str) -> EGraph {
+pub fn from_verilog_file(verilog_filepath: &Path, top_module_name: &str, simcheck: bool) -> EGraph {
     let mut egraph = EGraph::default();
     import_churchroad(&mut egraph);
     egraph
         .parse_and_run_program(&commands_from_verilog_file(
             verilog_filepath,
             top_module_name,
+            simcheck,
         ))
         .unwrap();
 
     egraph
 }
 
-pub fn commands_from_verilog_file(verilog_filepath: &Path, top_module_name: &str) -> String {
+pub fn commands_from_verilog(verilog: &str, top_module_name: &str, simcheck: bool) -> String {
+    let mut f = NamedTempFile::new().unwrap();
+    f.write(verilog.as_bytes()).unwrap();
+    commands_from_verilog_file(f.path(), top_module_name, simcheck)
+}
+
+/// simcheck: whether to run `hierarchy` with `-simcheck`.
+pub fn commands_from_verilog_file(
+    verilog_filepath: &Path,
+    top_module_name: &str,
+    simcheck: bool,
+) -> String {
     let logfile = NamedTempFile::new().unwrap();
     // TODO(@gussmith23): hardcoded .so will break on other systems.
     let command_output = Command::new("yosys")

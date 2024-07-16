@@ -44,7 +44,8 @@ fn main() {
     let args = Args::parse();
 
     // STEP 1: Read in design, put it in an egraph.
-    let mut egraph = from_verilog_file(&args.filepath, &args.top_module_name);
+    // simcheck=true just runs some basic checks.
+    let mut egraph = from_verilog_file(&args.filepath, &args.top_module_name, true);
 
     // STEP 2: Run mapping rewrites, proposing potential mappings which Lakeroad
     // will later confirm or prove not possible via program synthesis.
