@@ -1,13 +1,12 @@
 use std::path::PathBuf;
 
 use churchroad::{
-    call_lakeroad_on_primitive_interface_and_spec, find_primitive_interface_values,
-    find_primitive_interfaces_serialized, find_spec_for_primitive_interface, from_verilog_file,
+    call_lakeroad_on_primitive_interface_and_spec, find_primitive_interfaces_serialized,
+    find_spec_for_primitive_interface, from_verilog_file,
 };
 use clap::ValueHint::FilePath;
 use clap::{Parser, ValueEnum};
 use egglog::SerializeConfig;
-use egraph_serialize::NodeId;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
