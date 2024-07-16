@@ -768,7 +768,7 @@ pub fn to_verilog_egraph_serialize(
         ));
 
         logic_declarations.push_str(&format!(
-            "logic {name} = {wire};\n",
+            "assign {name} = {wire};\n",
             name = egraph[&node.children[1]]
                 .op
                 .as_str()
