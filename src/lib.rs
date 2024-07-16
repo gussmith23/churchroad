@@ -3,7 +3,8 @@ use indexmap::IndexMap;
 use std::{
     collections::{HashMap, HashSet},
     env,
-    fs::{read_to_string},
+    fmt::Debug,
+    fs::read_to_string,
     io::Write,
     path::Path,
     process::{Command, Stdio},
@@ -48,23 +49,23 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
 
     // Put the spec in a tempfile.
     let mut spec_file = NamedTempFile::new().unwrap();
-    println!(
-        "{}",
-        to_verilog_egraph_serialize(serialized_egraph, spec_choices, "clk")
-    );
+    let spec_filepath = spec_file.path().to_owned();
     spec_file
         .write(to_verilog_egraph_serialize(serialized_egraph, spec_choices, "clk").as_bytes())
         .unwrap();
+    spec_file.flush().unwrap();
+    // spec_file.persist("tmp.v").unwrap();
 
     let binding =
         env::var("LAKEROAD_DIR").expect("LAKEROAD_DIR environment variable should be set.");
     let lakeroad_dir = Path::new(&binding);
-    let _output = Command::new("racket")
+    let mut command = Command::new("racket");
+    command
         .arg(lakeroad_dir.join("bin").join("main.rkt"))
         .arg("--architecture")
         .arg(architecture)
         .arg("--verilog-module-filepath")
-        .arg(spec_file.path())
+        .arg(spec_filepath)
         // TODO(@gussmith23): This should probably not be implicit in the generate-verilog function.
         .arg("--top-module-name")
         .arg("top")
@@ -79,10 +80,20 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
         .arg("dsp")
         .arg("--pipeline-depth")
         .arg("0")
-        .spawn()
-        .unwrap()
-        .wait_with_output()
-        .unwrap();
+        .arg("--out-format")
+        .arg("verilog")
+        .arg("--timeout")
+        .arg("120");
+    // dbg!(&command
+    //     .get_args()
+    //     .map(|s| s.to_str().unwrap().to_owned())
+    //     .collect::<Vec<_>>()
+    //     .join(" "));
+    let output = command.output().unwrap();
+
+    dbg!(&output);
+    dbg!(String::from_utf8_lossy(&output.stdout));
+
     todo!()
 }
 
