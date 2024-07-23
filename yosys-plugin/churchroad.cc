@@ -33,6 +33,7 @@ PRIVATE_NAMESPACE_BEGIN
 
 struct LakeroadWorker
 {
+	std::string salt;
 	std::ostream &f;
 	SigMap sigmap;
 	RTLIL::Module *module;
@@ -266,7 +267,7 @@ struct LakeroadWorker
 		// IDs used to generate let expressions.
 		int id = 0;
 		auto get_new_id_str = [&]()
-		{ return stringf("v%d", id++); };
+		{ return stringf("v%d%s%s", id++, salt.empty() ? "" : "-", salt.c_str()); };
 
 		// Get signal name.
 		auto get_signal_name = [&](const SigSpec &sig)
@@ -1074,7 +1075,7 @@ struct BtorBackend : public Backend
 		if (topmod == nullptr)
 			log_cmd_error("No top module found.\n");
 
-		LakeroadWorker(*f, topmod).run();
+		LakeroadWorker(*f, topmod, salt).run();
 
 		// *f << stringf("; end of yosys output\n");
 	}
