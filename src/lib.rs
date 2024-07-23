@@ -9,6 +9,7 @@ use std::{
     path::Path,
     process::{Command, Stdio},
     sync::Arc,
+    time::SystemTime,
 };
 use tempfile::NamedTempFile;
 
@@ -419,9 +420,10 @@ pub fn commands_from_verilog_file(
         .arg(logfile.path())
         .arg("-p")
         .arg(format!(
-            "read_verilog {path}; hierarchy {simcheck} -top {top_module_name}; write_lakeroad",
+            "read_verilog {path}; hierarchy {simcheck} -top {top_module_name}; write_churchroad -salt {salt}",
             path = verilog_filepath.to_str().unwrap(),
-            simcheck = if simcheck { "-simcheck" } else { "" }
+            simcheck = if simcheck { "-simcheck" } else { "" },
+            salt = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos()
         ))
         .stdout(Stdio::piped())
         .output()
