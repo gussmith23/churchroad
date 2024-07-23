@@ -1001,19 +1001,19 @@ struct LakeroadWorker
 	}
 };
 
-struct BtorBackend : public Backend
+struct ChurchroadBackend : public Backend
 {
-	BtorBackend() : Backend("lakeroad", "write design to egglog Lakeroad IR") {}
+	ChurchroadBackend() : Backend("churchroad", "write design to egglog Churchroad IR") {}
 	void help() override
 	{
 		//   |---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|
-		// log("\n");
-		// log("    write_btor [options] [filename]\n");
-		// log("\n");
-		// log("Write a BTOR description of the current design.\n");
-		// log("\n");
-		// log("  -v\n");
-		// log("    Add comments and indentation to BTOR output file\n");
+		log("\n");
+		log("    write_churchroad [options] [filename]\n");
+		log("\n");
+		log("Write a Churchroad description of the current design.\n");
+		log("\n");
+		log("  -salt\n");
+		log("    Salt string to add to all egglog commands.\n");
 		// log("\n");
 		// log("  -s\n");
 		// log("    Output only a single bad property for all asserts\n");
@@ -1057,20 +1057,34 @@ struct BtorBackend : public Backend
 
 		RTLIL::Module *topmod = design->top_module();
 
-		size_t argidx = args.size();
-
-		if (filename == "")
+		std::string salt = "";
+		for (size_t arg_i = 1; arg_i < args.size();)
 		{
-			// The command itself is given as an arg
-			if (argidx > 1 && args[argidx - 1][0] != '-')
+			// Look for -salt option
+			if (args[arg_i] == "-salt")
 			{
-				// extra_args and friends need to see this argument.
-				argidx -= 1;
-				filename = args[argidx];
+				log_assert(args.size() > arg_i + 1);
+				salt = args[arg_i + 1];
+				arg_i += 2;
+				continue;
 			}
+
+			// Look for filename as last argument.
+			if (arg_i == args.size() - 1)
+			{
+				log_assert(args[arg_i][0] != '-');
+				// Confusingly, this is failing when filename is ""
+				// log_assert(filename.empty());
+				filename = args[arg_i];
+				arg_i++;
+				continue;
+			}
+
+			log_error("Unrecognized option: %s", args[arg_i].c_str());
 		}
+
 		// Has to come after other arg parsing.
-		extra_args(f, filename, args, argidx);
+		extra_args(f, filename, args, args.size());
 
 		if (topmod == nullptr)
 			log_cmd_error("No top module found.\n");
@@ -1079,6 +1093,6 @@ struct BtorBackend : public Backend
 
 		// *f << stringf("; end of yosys output\n");
 	}
-} BtorBackend;
+} ChurchroadBackend;
 
 PRIVATE_NAMESPACE_END
