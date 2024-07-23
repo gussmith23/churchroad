@@ -91,7 +91,19 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     //     .join(" "));
     let output = command.output().unwrap();
 
-    println!("{}", String::from_utf8_lossy(&output.stdout));
+    if !output.status.success() {
+        panic!(
+            "Lakeroad failed with code {}. stdout:\n{}\n\nstderr:\n{}",
+            output.status.code().unwrap(),
+            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+
+    println!(
+        "lakeroad output:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
 
     let mut verilog = String::from_utf8_lossy(&output.stdout).into_owned();
 
