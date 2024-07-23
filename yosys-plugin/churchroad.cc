@@ -632,7 +632,7 @@ struct LakeroadWorker
 			else if (cell->type == ID($pmux))
 			{
 				// Don't support $pmux: require them to run pmuxtree instead.
-				log_error("Unsupported cell type %s for cell %s.%s -- please run `pmuxtree` before `write_lakeroad`.\n",
+				log_error("Unsupported cell type %s for cell %s.%s -- please run `pmuxtree` before `write_churchroad`.\n",
 									log_id(cell->type), log_id(module), log_id(cell));
 			}
 			else if (cell->has_attribute("\\src"))
