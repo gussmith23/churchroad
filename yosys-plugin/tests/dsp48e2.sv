@@ -1,5 +1,5 @@
 // RUN: $YOSYS -m $CHURCHROAD_DIR/yosys-plugin/churchroad.so \
-// RUN:   -p 'read_verilog -sv %s; hierarchy -top top; write_lakeroad' \
+// RUN:   -p 'read_verilog -sv %s; hierarchy -top top; write_churchroad' \
 // RUN: | FileCheck %s
 
 module top(a, b, out);
