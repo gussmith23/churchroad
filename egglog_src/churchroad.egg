@@ -46,6 +46,9 @@
   ; (Op0 (BV value bitwidth))
   (BV i64 i64)
 
+  ; (Op0 (CRString val))
+  (CRString String)
+
   ; (Op1 (ZeroExtend bitwidth) expr)
   (ZeroExtend i64)
   
