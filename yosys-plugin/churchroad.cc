@@ -536,7 +536,8 @@ struct LakeroadWorker
 				// This is an assumption we're currently making. Doesn't have to be the
 				// case. We may also need to extend the result in the future, when this
 				// assertion fails.
-				if (cell->getPort(ID::Y).size() < max_width) {
+				if (cell->getPort(ID::Y).size() < max_width)
+				{
 					op_str = stringf("(Op1 (Extract %d %d) %s)", cell->getPort(ID::Y).size() - 1, 0, op_str.c_str());
 				}
 
