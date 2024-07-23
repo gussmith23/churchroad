@@ -645,6 +645,7 @@ struct LakeroadWorker
 
 				std::vector<std::pair<std::string, std::string>> input_port_names_and_exprs;
 				std::vector<std::pair<std::string, std::string>> output_port_names_and_exprs;
+				std::vector<std::pair<std::string, std::string>> input_parameter_names_and_exprs;
 
 				for (auto connection : cell->connections())
 				{
@@ -665,23 +666,61 @@ struct LakeroadWorker
 					}
 				}
 
+				auto compile_const = [](RTLIL::Const c)
+				{
+					if ((c.flags & RTLIL::ConstFlags::CONST_FLAG_STRING) == RTLIL::ConstFlags::CONST_FLAG_STRING)
+					{
+						return stringf("(Op0 (CRString \"%s\"))", c.decode_string().c_str());
+					}
+					else
+					{
+						return stringf("(Op0 (BV %d %zu))", c.as_int(false), c.bits.size());
+					}
+				};
+				for (auto parameter : cell->parameters)
+				{
+
+					input_parameter_names_and_exprs.push_back({parameter.first.c_str(),
+																										 compile_const(parameter.second)});
+				}
+
 				// Generate the instance.
 				// Cut the "\" off the front.
 				// Check that it starts with "\" first, though.
 				assert(cell->type[0] == '\\');
 				assert(cell->name[0] == '\\');
-				f << stringf("(let %s (ModuleInstance \"%s\" (vec-of", cell->name.substr(1).c_str(), cell->type.substr(1).c_str()).c_str();
+				f << stringf("(let %s (ModuleInstance \"%s\" ", cell->name.substr(1).c_str(), cell->type.substr(1).c_str()).c_str();
+				std::string closer = "(StringNil)";
 				for (auto [port_name, _] : input_port_names_and_exprs)
 				{
 					assert(port_name[0] == '\\');
-					f << stringf(" \"%s\"", port_name.substr(1).c_str()).c_str();
+					f << stringf("(StringCons \"%s\"", port_name.substr(1).c_str()).c_str();
+					closer.append(")");
 				}
-				f << ") (vec-of";
+				f << closer;
+				closer = "(ExprNil)";
 				for (auto [_, expr] : input_port_names_and_exprs)
 				{
-					f << stringf(" %s", expr.c_str()).c_str();
+					f << stringf("(ExprCons %s", expr.c_str()).c_str();
+					closer.append(")");
 				}
-				f << ")))\n";
+				f << closer;
+				closer = "(StringNil)";
+				for (auto [parameter_name, _] : input_parameter_names_and_exprs)
+				{
+					assert(parameter_name[0] == '\\');
+					f << stringf("(StringCons \"%s\"", parameter_name.substr(1).c_str()).c_str();
+					closer.append(")");
+				}
+				f << closer;
+				closer = "(ExprNil)";
+				for (auto [_, expr] : input_parameter_names_and_exprs)
+				{
+					f << stringf("(ExprCons %s", expr.c_str()).c_str();
+					closer.append(")");
+				}
+				f << closer;
+				f << "))\n";
 
 				// Hook up the outputs.
 				for (auto [port_name, expr] : output_port_names_and_exprs)
