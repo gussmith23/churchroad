@@ -28,7 +28,7 @@ fn prep_interpreter(
     let churchroad_src_path = test_output_dir.join(format!("{}.egg", top_module_name));
 
     let yosys_commands = format!(
-        "read_verilog -sv {}; prep -top {}; pmuxtree; write_lakeroad",
+        "read_verilog -sv {}; prep -top {}; pmuxtree; write_churchroad",
         module_verilog_path.to_str().unwrap(),
         top_module_name,
     );
