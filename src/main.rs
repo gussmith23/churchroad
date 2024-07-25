@@ -40,11 +40,12 @@ impl ToString for Architecture {
 }
 
 fn main() {
+    env_logger::init();
     let args = Args::parse();
 
     // STEP 1: Read in design, put it in an egraph.
     // simcheck=true just runs some basic checks.
-    let mut egraph = from_verilog_file(&args.filepath, &args.top_module_name, true);
+    let mut egraph = from_verilog_file(&args.filepath, &args.top_module_name, true, true);
 
     // STEP 2: Run mapping rewrites, proposing potential mappings which Lakeroad
     // will later confirm or prove not possible via program synthesis.
@@ -139,6 +140,8 @@ fn main() {
             &serialized_egraph,
         );
 
+        log::info!("Calling Lakeroad.");
+
         // STEP 5.2: Call Lakeroad.
         let commands = call_lakeroad_on_primitive_interface_and_spec(
             &serialized_egraph,
@@ -147,6 +150,8 @@ fn main() {
             sketch_template_node_id,
             &args.architecture.to_string(),
         );
+
+        log::debug!("Got back commands:\n{}", commands);
 
         // STEP 5.3: Insert Lakeroad's results back into the egraph.
         // If Lakeroad finds a mapping, insert the mapping into the egraph.
