@@ -259,7 +259,8 @@ endmodule
 
     // TODO(@gussmith23): hardcoded module name
     // Don't simcheck, because there'll be undefined modules. That's expected.
-    let commands = commands_from_verilog(&verilog, "top", false);
+    // Don't generate let bindings.
+    let commands = commands_from_verilog(&verilog, "top", false, false);
 
     println!("{}", commands);
 
@@ -371,14 +372,24 @@ pub fn call_lakeroad() {}
 /// let mut egraph = churchroad::from_verilog("module identity(input i, output o); assign o = i; endmodule", "identity");
 /// egraph.parse_and_run_program(r#"(check (IsPort "" "i" (Input) i) (IsPort "" "o" (Output) o) (= i o))"#);
 /// ```
-pub fn from_verilog(verilog: &str, top_module_name: &str, simcheck: bool) -> EGraph {
+pub fn from_verilog(
+    verilog: &str,
+    top_module_name: &str,
+    simcheck: bool,
+    let_bindings: bool,
+) -> EGraph {
     let mut f = NamedTempFile::new().unwrap();
     f.write(verilog.as_bytes()).unwrap();
-    from_verilog_file(f.path(), top_module_name, simcheck)
+    from_verilog_file(f.path(), top_module_name, simcheck, let_bindings)
 }
 
 /// Version of [`from_verilog`] that takes a filepath argument.
-pub fn from_verilog_file(verilog_filepath: &Path, top_module_name: &str, simcheck: bool) -> EGraph {
+pub fn from_verilog_file(
+    verilog_filepath: &Path,
+    top_module_name: &str,
+    simcheck: bool,
+    let_bindings: bool,
+) -> EGraph {
     let mut egraph = EGraph::default();
     import_churchroad(&mut egraph);
     egraph
@@ -386,16 +397,22 @@ pub fn from_verilog_file(verilog_filepath: &Path, top_module_name: &str, simchec
             verilog_filepath,
             top_module_name,
             simcheck,
+            let_bindings,
         ))
         .unwrap();
 
     egraph
 }
 
-pub fn commands_from_verilog(verilog: &str, top_module_name: &str, simcheck: bool) -> String {
+pub fn commands_from_verilog(
+    verilog: &str,
+    top_module_name: &str,
+    simcheck: bool,
+    let_bindings: bool,
+) -> String {
     let mut f = NamedTempFile::new().unwrap();
     f.write(verilog.as_bytes()).unwrap();
-    commands_from_verilog_file(f.path(), top_module_name, simcheck)
+    commands_from_verilog_file(f.path(), top_module_name, simcheck, let_bindings)
 }
 
 /// simcheck: whether to run `hierarchy` with `-simcheck`.
@@ -403,6 +420,7 @@ pub fn commands_from_verilog_file(
     verilog_filepath: &Path,
     top_module_name: &str,
     simcheck: bool,
+    let_bindings: bool,
 ) -> String {
     let logfile = NamedTempFile::new().unwrap();
     // TODO(@gussmith23): hardcoded .so will break on other systems.
@@ -420,10 +438,11 @@ pub fn commands_from_verilog_file(
         .arg(logfile.path())
         .arg("-p")
         .arg(format!(
-            "read_verilog {path}; hierarchy {simcheck} -top {top_module_name}; write_churchroad -salt {salt}",
+            "read_verilog {path}; hierarchy {simcheck} -top {top_module_name}; write_churchroad -salt {salt} {let_bindings_flag}",
             path = verilog_filepath.to_str().unwrap(),
             simcheck = if simcheck { "-simcheck" } else { "" },
-            salt = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos()
+            salt = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos(),
+            let_bindings_flag = if let_bindings { "-letbindings" } else { "" },
         ))
         .stdout(Stdio::piped())
         .output()
