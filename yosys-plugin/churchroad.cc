@@ -758,9 +758,8 @@ struct ChurchroadBackend : public Backend
 			}
 
 			// Look for filename as last argument.
-			if (arg_i == args.size() - 1)
+			if (arg_i == args.size() - 1 && args[arg_i][0] != '-')
 			{
-				log_assert(args[arg_i][0] != '-');
 				// Confusingly, this is failing when filename is ""
 				// log_assert(filename.empty());
 				filename = args[arg_i];
