@@ -34,6 +34,8 @@ PRIVATE_NAMESPACE_BEGIN
 struct LakeroadWorker
 {
 	std::string salt;
+	// Whether or not to generate let bindings for ports.
+	bool let_bindings;
 	std::ostream &f;
 	SigMap sigmap;
 	RTLIL::Module *module;
@@ -257,7 +259,7 @@ struct LakeroadWorker
 		nid_width[nid] = GetSize(sig);
 	}
 
-	LakeroadWorker(std::ostream &f, RTLIL::Module *module, std::string &salt) : salt(salt), f(f), sigmap(module), module(module) {}
+	LakeroadWorker(std::ostream &f, RTLIL::Module *module, std::string &salt, bool let_bindings) : salt(salt), let_bindings(let_bindings), f(f), sigmap(module), module(module) {}
 
 	void run()
 	{
@@ -750,9 +752,12 @@ struct LakeroadWorker
 			assert(signal_let_bound_name.count(sigspec));
 			auto let_bound_id = signal_let_bound_name.at(sigspec);
 
-			f << stringf("(let %s (Var \"%s\" %d))\n", signal_name.c_str(), signal_name.c_str(), GetSize(sigspec)).c_str();
-			f << stringf("(IsPort \"%s\" \"%s\" (Input) %s)\n", /*module name*/ "", signal_name.c_str(), signal_name.c_str()).c_str();
-			f << stringf("(union %s %s)\n", let_bound_id.c_str(), signal_name.c_str()).c_str();
+			f << stringf("(IsPort \"%s\" \"%s\" (Input) %s)\n", /*module name*/ "", signal_name.c_str(), let_bound_id.c_str()).c_str();
+			if (let_bindings)
+			{
+				f << stringf("(let %s (Var \"%s\" %d))\n", signal_name.c_str(), signal_name.c_str(), GetSize(sigspec)).c_str();
+				f << stringf("(union %s %s)\n", let_bound_id.c_str(), signal_name.c_str()).c_str();
+			}
 		}
 
 		// For each output, mark it as an output port using the IsPort relation.
@@ -771,8 +776,11 @@ struct LakeroadWorker
 			assert(signal_let_bound_name.count(sigspec));
 			auto let_bound_id = signal_let_bound_name.at(sigspec);
 
-			f << stringf("(let %s %s)\n", signal_name_pre_sigmap.c_str(), let_bound_id.c_str()).c_str();
-			f << stringf("(IsPort \"%s\" \"%s\" (Output) %s)\n", /*module name*/ "", signal_name_pre_sigmap.c_str(), signal_name_pre_sigmap.c_str()).c_str();
+			f << stringf("(IsPort \"%s\" \"%s\" (Output) %s)\n", /*module name*/ "", signal_name_pre_sigmap.c_str(), let_bound_id.c_str()).c_str();
+			if (let_bindings)
+			{
+				f << stringf("(let %s %s)\n", signal_name_pre_sigmap.c_str(), let_bound_id.c_str()).c_str();
+			}
 		}
 
 		// Run typing rules before deleting wires -- cyclic circuits can only be typed using Wire expresions to bootstrap the types.
@@ -1098,6 +1106,7 @@ struct ChurchroadBackend : public Backend
 		RTLIL::Module *topmod = design->top_module();
 
 		std::string salt = "";
+		bool let_bindings = false;
 		for (size_t arg_i = 1; arg_i < args.size();)
 		{
 			// Look for -salt option
@@ -1120,6 +1129,14 @@ struct ChurchroadBackend : public Backend
 				continue;
 			}
 
+			// Look for -letbindings option
+			if (args[arg_i] == "-letbindings")
+			{
+				let_bindings = true;
+				arg_i += 1;
+				continue;
+			}
+
 			log_error("Unrecognized option: %s", args[arg_i].c_str());
 		}
 
@@ -1129,7 +1146,7 @@ struct ChurchroadBackend : public Backend
 		if (topmod == nullptr)
 			log_cmd_error("No top module found.\n");
 
-		LakeroadWorker(*f, topmod, salt).run();
+		LakeroadWorker(*f, topmod, salt, let_bindings).run();
 
 		// *f << stringf("; end of yosys output\n");
 	}
