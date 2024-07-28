@@ -257,14 +257,73 @@ endmodule
 "#,
     );
 
+    let choices = AnythingExtractor::default().extract(serialized_egraph, &[]);
+
+    // Generate port bindings.
+    let mut port_to_expr_map = HashMap::new();
+    port_to_expr_map.insert(
+        "a".to_string(),
+        node_to_string(
+            serialized_egraph,
+            &serialized_egraph[sketch_template_node_id].children[0],
+            &choices,
+        ),
+    );
+    port_to_expr_map.insert(
+        "b".to_string(),
+        node_to_string(
+            serialized_egraph,
+            &serialized_egraph[sketch_template_node_id].children[1],
+            &choices,
+        ),
+    );
+    port_to_expr_map.insert(
+        "out".to_string(),
+        node_to_string(
+            serialized_egraph,
+            &sketch_template_node_id,
+            &choices,
+        ),
+    );
+    log::debug!("port_to_expr_map:\n{:?}", port_to_expr_map);
+
     // TODO(@gussmith23): hardcoded module name
     // Don't simcheck, because there'll be undefined modules. That's expected.
     // Don't generate let bindings.
-    let commands = commands_from_verilog(&verilog, "top", false, false);
+    let commands = commands_from_verilog(&verilog, "top", false, false, port_to_expr_map);
 
     println!("{}", commands);
 
     commands
+}
+
+/// Converts serialized egraph with map of choices and root node to an S-expr.
+/// TODO(@gussmith23): this will probably run infinitely when there are cycles.
+pub fn node_to_string(
+    egraph: &egraph_serialize::EGraph,
+    node_id: &NodeId,
+    choices: &indexmap::IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
+) -> String {
+    let node = &egraph.nodes[node_id];
+    let mut out = String::new();
+    // Don't wrap in parens when op begins with a quote or a number.
+    // TODO(@gussmith23): this is very rough.
+    let wrap_in_parens = node.op.chars().next().unwrap().is_ascii_alphabetic();
+
+    if wrap_in_parens {
+        out += "(";
+    }
+    out += node.op.as_str();
+    for child_id in &node.children {
+        out += " ";
+        out += &node_to_string(egraph, child_id, choices);
+    }
+
+    if wrap_in_parens {
+        out += ")";
+    }
+
+    out
 }
 
 // TODO(@gussmith23): It would be nice to not have to use a mutable reference
@@ -377,10 +436,17 @@ pub fn from_verilog(
     top_module_name: &str,
     simcheck: bool,
     let_bindings: bool,
+    port_to_expr_map: HashMap<String, String>,
 ) -> EGraph {
     let mut f = NamedTempFile::new().unwrap();
     f.write(verilog.as_bytes()).unwrap();
-    from_verilog_file(f.path(), top_module_name, simcheck, let_bindings)
+    from_verilog_file(
+        f.path(),
+        top_module_name,
+        simcheck,
+        let_bindings,
+        port_to_expr_map,
+    )
 }
 
 /// Version of [`from_verilog`] that takes a filepath argument.
@@ -389,6 +455,7 @@ pub fn from_verilog_file(
     top_module_name: &str,
     simcheck: bool,
     let_bindings: bool,
+    port_to_expr_map: HashMap<String, String>,
 ) -> EGraph {
     let mut egraph = EGraph::default();
     import_churchroad(&mut egraph);
@@ -398,6 +465,7 @@ pub fn from_verilog_file(
             top_module_name,
             simcheck,
             let_bindings,
+            port_to_expr_map,
         ))
         .unwrap();
 
@@ -409,10 +477,17 @@ pub fn commands_from_verilog(
     top_module_name: &str,
     simcheck: bool,
     let_bindings: bool,
+    port_to_expr_map: HashMap<String, String>,
 ) -> String {
     let mut f = NamedTempFile::new().unwrap();
     f.write(verilog.as_bytes()).unwrap();
-    commands_from_verilog_file(f.path(), top_module_name, simcheck, let_bindings)
+    commands_from_verilog_file(
+        f.path(),
+        top_module_name,
+        simcheck,
+        let_bindings,
+        port_to_expr_map,
+    )
 }
 
 /// simcheck: whether to run `hierarchy` with `-simcheck`.
@@ -421,7 +496,22 @@ pub fn commands_from_verilog_file(
     top_module_name: &str,
     simcheck: bool,
     let_bindings: bool,
+    port_to_expr_map: HashMap<String, String>,
 ) -> String {
+    fn spaces_to_underscores(s: &str) -> String {
+        assert!(!s.contains('_'));
+        s.replace(" ", "_")
+    }
+    // Convert the port_to_expr_map into "-portunion key value".
+    let port_union_flags: String = port_to_expr_map
+        .iter()
+        // TODO(@gussmith23): qouting here is a problem...
+        .map(|(port_name, expr)| {
+            format!("-portunion {} {}", port_name, spaces_to_underscores(expr))
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
     let logfile = NamedTempFile::new().unwrap();
     // TODO(@gussmith23): hardcoded .so will break on other systems.
     let command_output = Command::new("yosys")
@@ -438,11 +528,12 @@ pub fn commands_from_verilog_file(
         .arg(logfile.path())
         .arg("-p")
         .arg(format!(
-            "read_verilog {path}; hierarchy {simcheck} -top {top_module_name}; write_churchroad -salt {salt} {let_bindings_flag}",
+            "read_verilog {path}; hierarchy {simcheck} -top {top_module_name}; write_churchroad -salt {salt} {let_bindings_flag} {port_union_flags}",
             path = verilog_filepath.to_str().unwrap(),
             simcheck = if simcheck { "-simcheck" } else { "" },
             salt = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos(),
             let_bindings_flag = if let_bindings { "-letbindings" } else { "" },
+            port_union_flags = port_union_flags,
         ))
         .stdout(Stdio::piped())
         .output()
