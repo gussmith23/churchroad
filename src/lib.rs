@@ -279,11 +279,7 @@ endmodule
     );
     port_to_expr_map.insert(
         "out".to_string(),
-        node_to_string(
-            serialized_egraph,
-            &sketch_template_node_id,
-            &choices,
-        ),
+        node_to_string(serialized_egraph, &sketch_template_node_id, &choices),
     );
     log::debug!("port_to_expr_map:\n{:?}", port_to_expr_map);
 
