@@ -1108,6 +1108,7 @@ pub fn to_verilog_egraph_serialize(
             "Input" |
             "Output" |
             // Ignore the nodes for the ops themselves.
+            "CRString" |
             "ZeroExtend" |
             "Concat" |
             "Extract" |
@@ -1138,6 +1139,20 @@ pub fn to_verilog_egraph_serialize(
                         .as_str(),
                     );
 
+                    }
+                    "CRString" => {
+                        assert_eq!(op_node.children.len(), 1);
+                        let value = &egraph[&op_node.children[0]].op;
+                        logic_declarations.push_str(
+                            // The string already has quotes in it. This may not
+                            // always be the case. Should be careful here in the
+                            // future.
+                            format!(
+                                "string {this_wire} = {value};\n",
+                                this_wire = id_to_wire_name(&id),
+                            )
+                            .as_str(),
+                    );
                     }
                     "BV" => {
                         assert_eq!(op_node.children.len(), 2);
