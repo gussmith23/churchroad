@@ -36,6 +36,7 @@ struct LakeroadWorker
 	std::string salt;
 	// Whether or not to generate let bindings for ports.
 	bool let_bindings;
+	std::map<std::string, std::string> port_to_expr_map;
 	std::ostream &f;
 	SigMap sigmap;
 	RTLIL::Module *module;
@@ -151,7 +152,7 @@ struct LakeroadWorker
 		return " " + infostr;
 	}
 
-	LakeroadWorker(std::ostream &f, RTLIL::Module *module, std::string &salt, bool let_bindings) : salt(salt), let_bindings(let_bindings), f(f), sigmap(module), module(module) {}
+	LakeroadWorker(std::ostream &f, RTLIL::Module *module, std::string &salt, bool let_bindings, std::map<std::string, std::string> port_to_expr_map) : salt(salt), let_bindings(let_bindings), port_to_expr_map(port_to_expr_map), f(f), sigmap(module), module(module) {}
 
 	void run()
 	{
@@ -650,6 +651,11 @@ struct LakeroadWorker
 				f << stringf("(let %s (Var \"%s\" %d))\n", signal_name.c_str(), signal_name.c_str(), GetSize(sigspec)).c_str();
 				f << stringf("(union %s %s)\n", let_bound_id.c_str(), signal_name.c_str()).c_str();
 			}
+			// If port name is in port_to_expr_map, union it with the expression.
+			if (port_to_expr_map.count(signal_name))
+			{
+				f << stringf("(union %s %s)\n", let_bound_id.c_str(), port_to_expr_map.at(signal_name).c_str()).c_str();
+			}
 		}
 
 		// For each output, mark it as an output port using the IsPort relation.
@@ -672,6 +678,11 @@ struct LakeroadWorker
 			if (let_bindings)
 			{
 				f << stringf("(let %s %s)\n", signal_name_pre_sigmap.c_str(), let_bound_id.c_str()).c_str();
+			}
+			// If port name is in port_to_expr_map, union it with the expression.
+			if (port_to_expr_map.count(signal_name_pre_sigmap))
+			{
+				f << stringf("(union %s %s)\n", let_bound_id.c_str(), port_to_expr_map.at(signal_name_pre_sigmap).c_str()).c_str();
 			}
 		}
 
@@ -744,10 +755,24 @@ struct ChurchroadBackend : public Backend
 
 		RTLIL::Module *topmod = design->top_module();
 
+		// Maps port names to egglog expression strings that they should be `union`ed with.
+		std::map<std::string, std::string> port_to_expr_map;
 		std::string salt = "";
 		bool let_bindings = false;
 		for (size_t arg_i = 1; arg_i < args.size();)
 		{
+			// Look for -portunion option
+			if (args[arg_i] == "-portunion")
+			{
+				log_assert(args.size() > arg_i + 2);
+				// Replace underscores with spaces.
+				// TODO(@gussmith23): Shouldn't be needed after we figure out quoting in Yosys commands.
+				port_to_expr_map[args[arg_i + 1]] =
+						std::regex_replace(args[arg_i + 2], std::regex("_"), " ");
+				arg_i += 3;
+				continue;
+			}
+
 			// Look for -salt option
 			if (args[arg_i] == "-salt")
 			{
@@ -784,7 +809,7 @@ struct ChurchroadBackend : public Backend
 		if (topmod == nullptr)
 			log_cmd_error("No top module found.\n");
 
-		LakeroadWorker(*f, topmod, salt, let_bindings).run();
+		LakeroadWorker(*f, topmod, salt, let_bindings, port_to_expr_map).run();
 
 		// *f << stringf("; end of yosys output\n");
 	}
