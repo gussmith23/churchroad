@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::fs::create_dir_all;
 use std::path::PathBuf;
 
 use churchroad::{
@@ -19,7 +21,7 @@ struct Args {
     top_module_name: String,
 
     #[arg(long)]
-    svg_filepath: Option<PathBuf>,
+    svg_dirpath: Option<PathBuf>,
 
     #[arg(long)]
     architecture: Architecture,
@@ -45,7 +47,13 @@ fn main() {
 
     // STEP 1: Read in design, put it in an egraph.
     // simcheck=true just runs some basic checks.
-    let mut egraph = from_verilog_file(&args.filepath, &args.top_module_name, true, true);
+    let mut egraph = from_verilog_file(
+        &args.filepath,
+        &args.top_module_name,
+        true,
+        true,
+        HashMap::default(),
+    );
 
     // STEP 2: Run mapping rewrites, proposing potential mappings which Lakeroad
     // will later confirm or prove not possible via program synthesis.
@@ -88,11 +96,14 @@ fn main() {
     // https://github.com/egraphs-good/egglog/pull/391
     // egraph.rebuild();
 
-    // Write out image if the user requested it.
-    if let Some(svg_filepath) = args.svg_filepath {
+    if let Some(svg_dirpath) = &args.svg_dirpath {
+        create_dir_all(svg_dirpath).unwrap();
         let serialized = egraph.serialize_for_graphviz(true, usize::MAX, usize::MAX);
-        serialized.to_svg_file(svg_filepath).unwrap();
+        serialized
+            .to_svg_file(svg_dirpath.join("after_rewrites.svg"))
+            .unwrap();
     }
+
 
     let serialized_egraph = egraph.serialize(SerializeConfig::default());
 
@@ -158,6 +169,14 @@ fn main() {
         // If Lakeroad proves UNSAT, put some kind of marker into the egraph
         // to indicate that this mapping shouldn't be attempted again.
         egraph.parse_and_run_program(&commands).unwrap();
+    }
+
+    // Write out image if the user requested it.
+    if let Some(svg_dirpath) = args.svg_dirpath {
+        let serialized = egraph.serialize_for_graphviz(true, usize::MAX, usize::MAX);
+        serialized
+            .to_svg_file(svg_dirpath.join("after_lakeroad.svg"))
+            .unwrap();
     }
 
     // STEP 6: Extract a lowered design.
