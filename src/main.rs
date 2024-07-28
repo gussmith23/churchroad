@@ -106,7 +106,6 @@ fn main() {
             .unwrap();
     }
 
-
     let serialized_egraph = egraph.serialize(SerializeConfig::default());
 
     // STEP 3: Collect all proposed mappings.
