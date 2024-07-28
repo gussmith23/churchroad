@@ -692,10 +692,11 @@ struct LakeroadWorker
 
 		// Delete Wire expressions.
 		f << "\n; delete wire expressions\n";
-		for (auto wire_expr : wire_exprs)
-		{
-			f << stringf("(delete %s)\n", wire_expr.c_str()).c_str();
-		}
+		f << "\n; TODO(@gussmith23): I'm not actually sure we want to delete wires. Sometimes there's nothing attached to a wire, e.g. when it's used to store the unused output of a module. We don't want to delete it in that case!\n";
+		// for (auto wire_expr : wire_exprs)
+		// {
+		// 	f << stringf("(delete %s)\n", wire_expr.c_str()).c_str();
+		// }
 	}
 };
 
