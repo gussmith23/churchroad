@@ -366,6 +366,67 @@ pub fn find_primitive_interfaces_serialized(egraph: &egraph_serialize::EGraph) -
         .collect()
 }
 
+/// Extracts only expressions legal in structural Verilog.
+#[derive(Default)]
+pub struct StructuralVerilogExtractor;
+impl StructuralVerilogExtractor {
+    pub fn extract(
+        &self,
+        egraph: &egraph_serialize::EGraph,
+        _roots: &[egraph_serialize::ClassId],
+    ) -> IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId> {
+        egraph
+            .classes()
+            .iter()
+            .map(|(id, class)| {
+                let mut potential_nodes = class
+                    .nodes
+                    .iter()
+                    .filter(|node_id| {
+                        let op = &egraph[*node_id].op;
+                        // Filter certain op types.
+                        !(["PrimitiveInterfaceDSP"].contains(&op.as_str()))
+                    })
+                    .filter(|node_id| {
+                        let op = egraph[*node_id].op.as_str();
+                        match op {
+                            "Op0" | "Op1" | "Op2" | "Op3" => {
+                                let op_name = &egraph[*node_id].children[0];
+                                match egraph[op_name].op.as_str() {
+                                    "Extract" | "Concat" | "BV" | "CRString" | "ZeroExtend"
+                                    | "SignExtend" => true,
+                                    _ => false,
+                                }
+                            }
+                            _ => true,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                potential_nodes.sort_by(|a, b| {
+                    // If either is a wire, it should come last.
+                    let are_wires = (egraph[*a].op == "Wire", egraph[*b].op == "Wire");
+                    match are_wires {
+                        (true, true) => std::cmp::Ordering::Equal,
+                        (true, false) => std::cmp::Ordering::Greater,
+                        (false, true) => std::cmp::Ordering::Less,
+                        (false, false) => {
+                            // Otherwise, sort by the node ID.
+                            a.cmp(b)
+                        }
+                    }
+                });
+                assert!(potential_nodes.len() >= 1, "Found unextractable class.");
+                let node_id = potential_nodes[0].clone();
+                // Warn if we're still extracting a Wire.
+                if egraph[&node_id].op == "Wire" {
+                    log::warn!("Extracting a Wire.");
+                }
+                (id.clone(), node_id)
+            })
+            .collect()
+    }
+}
+
 /// I don't know if we should be making Extractors in such an ad-hoc way, but
 /// this actually seems to be the most convenient way to do this.
 ///

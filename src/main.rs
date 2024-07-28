@@ -4,11 +4,13 @@ use std::path::PathBuf;
 
 use churchroad::{
     call_lakeroad_on_primitive_interface_and_spec, find_primitive_interfaces_serialized,
-    find_spec_for_primitive_interface, from_verilog_file,
+    find_spec_for_primitive_interface, from_verilog_file, to_verilog_egraph_serialize,
+    StructuralVerilogExtractor,
 };
 use clap::ValueHint::FilePath;
 use clap::{Parser, ValueEnum};
 use egglog::SerializeConfig;
+use log::debug;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -187,4 +189,12 @@ fn main() {
     // Future work at this stage will involve building an extractor which
     // which actually attempts to find an *optimal* design, not just *any*
     // design.
+
+    let serialized = egraph.serialize(SerializeConfig::default());
+    let choices = StructuralVerilogExtractor::default().extract(&serialized, &[]);
+    let verilog = to_verilog_egraph_serialize(&serialized, &choices, "clk");
+
+    debug!("Got back verilog:\n{}", verilog);
+
+    // STEP 7: Simulate.
 }
