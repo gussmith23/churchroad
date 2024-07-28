@@ -390,7 +390,7 @@ impl SpecExtractor {
                         let op = &egraph[*node_id].op;
 
                         // Filter certain op types.
-                        !(["PrimitiveInterfaceDSP"].contains(&op.as_str()))
+                        !(["PrimitiveInterfaceDSP", "Wire"].contains(&op.as_str()))
                     })
                     .next()
                     .unwrap()
