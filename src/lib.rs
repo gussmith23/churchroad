@@ -1195,7 +1195,7 @@ pub fn to_verilog_egraph_serialize(
                     }
                     },
                     "Concat" | "Xor" |"And" | "Or" | "Mul" =>  {
-                            assert_eq!(term.children.len(), 3);
+                            assert_eq!(term.children.len(), 3, "Found {} op with #children = {}", op_node.op, term.children.len());
                     let expr0_id = &egraph[&term.children[1]].eclass;
                     let  expr1_id = &egraph[&term.children[2]].eclass;
                     logic_declarations.push_str(&format!(
