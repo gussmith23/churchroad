@@ -52,7 +52,7 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     let mut spec_file = NamedTempFile::new().unwrap();
     let spec_filepath = spec_file.path().to_owned();
     spec_file
-        .write(to_verilog_egraph_serialize(serialized_egraph, spec_choices, "clk").as_bytes())
+        .write_all(to_verilog_egraph_serialize(serialized_egraph, spec_choices, "clk").as_bytes())
         .unwrap();
     spec_file.flush().unwrap();
     // spec_file.persist("tmp.v").unwrap();
@@ -252,7 +252,7 @@ endmodule
 "#,
     );
 
-    let choices = AnythingExtractor::default().extract(serialized_egraph, &[]);
+    let choices = AnythingExtractor.extract(serialized_egraph, &[]);
 
     // Generate port bindings.
     let mut port_to_expr_map = HashMap::new();
@@ -274,15 +274,15 @@ endmodule
     );
     port_to_expr_map.insert(
         "out".to_string(),
-        node_to_string(serialized_egraph, &sketch_template_node_id, &choices),
+        node_to_string(serialized_egraph, sketch_template_node_id, &choices),
     );
     log::debug!("port_to_expr_map:\n{:?}", port_to_expr_map);
 
     // TODO(@gussmith23): hardcoded module name
     // Don't simcheck, because there'll be undefined modules. That's expected.
     // Don't generate let bindings.
-    let commands = commands_from_verilog(&verilog, "top", false, false, port_to_expr_map);
-    commands
+
+    commands_from_verilog(&verilog, "top", false, false, port_to_expr_map)
 }
 
 /// Converts serialized egraph with map of choices and root node to an S-expr.
@@ -384,11 +384,15 @@ impl StructuralVerilogExtractor {
                         match op {
                             "Op0" | "Op1" | "Op2" | "Op3" => {
                                 let op_name = &egraph[*node_id].children[0];
-                                match egraph[op_name].op.as_str() {
-                                    "Extract" | "Concat" | "BV" | "CRString" | "ZeroExtend"
-                                    | "SignExtend" => true,
-                                    _ => false,
-                                }
+                                matches!(
+                                    egraph[op_name].op.as_str(),
+                                    "Extract"
+                                        | "Concat"
+                                        | "BV"
+                                        | "CRString"
+                                        | "ZeroExtend"
+                                        | "SignExtend"
+                                )
                             }
                             _ => true,
                         }
@@ -407,7 +411,7 @@ impl StructuralVerilogExtractor {
                         }
                     }
                 });
-                assert!(potential_nodes.len() >= 1, "Found unextractable class.");
+                assert!(!potential_nodes.is_empty(), "Found unextractable class.");
                 let node_id = potential_nodes[0].clone();
                 // Warn if we're still extracting a Wire.
                 if egraph[&node_id].op == "Wire" {
@@ -439,13 +443,12 @@ impl SpecExtractor {
                 let node_id = class
                     .nodes
                     .iter()
-                    .filter(|node_id| {
+                    .find(|node_id| {
                         let op = &egraph[*node_id].op;
 
                         // Filter certain op types.
                         !(["PrimitiveInterfaceDSP", "Wire"].contains(&op.as_str()))
                     })
-                    .next()
                     .unwrap()
                     .clone();
                 (id.clone(), node_id)
@@ -488,7 +491,7 @@ pub fn from_verilog(
     port_to_expr_map: HashMap<String, String>,
 ) -> EGraph {
     let mut f = NamedTempFile::new().unwrap();
-    f.write(verilog.as_bytes()).unwrap();
+    f.write_all(verilog.as_bytes()).unwrap();
     from_verilog_file(
         f.path(),
         top_module_name,
@@ -529,7 +532,7 @@ pub fn commands_from_verilog(
     port_to_expr_map: HashMap<String, String>,
 ) -> String {
     let mut f = NamedTempFile::new().unwrap();
-    f.write(verilog.as_bytes()).unwrap();
+    f.write_all(verilog.as_bytes()).unwrap();
     commands_from_verilog_file(
         f.path(),
         top_module_name,
@@ -549,7 +552,7 @@ pub fn commands_from_verilog_file(
 ) -> String {
     fn spaces_to_underscores(s: &str) -> String {
         assert!(!s.contains('_'));
-        s.replace(" ", "_")
+        s.replace(' ', "_")
     }
     // Convert the port_to_expr_map into "-portunion key value".
     let port_union_flags: String = port_to_expr_map
@@ -1231,7 +1234,7 @@ pub fn to_verilog_egraph_serialize(
                     logic_declarations.push_str(
                         format!(
                             "logic [{bw}-1:0] {this_wire} = {default};\n",
-                            bw = get_bitwidth_for_node(egraph, &node_id).unwrap(),
+                            bw = get_bitwidth_for_node(egraph, node_id).unwrap(),
                             this_wire = id_to_wire_name(&id),
                             default = default_val
                         )
