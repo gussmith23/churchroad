@@ -1201,7 +1201,9 @@ pub fn to_verilog_egraph_serialize(
                             // always be the case. Should be careful here in the
                             // future.
                             format!(
-                                "string {this_wire} = {value};\n",
+                                // Localparam so that it's a constant.
+                                "localparam [{}*8:0] {this_wire} = {value};\n",
+                                value.len()-2,
                                 this_wire = id_to_wire_name(&id),
                             )
                             .as_str(),
@@ -1214,7 +1216,8 @@ pub fn to_verilog_egraph_serialize(
 
                     logic_declarations.push_str(
                         format!(
-                            "logic [{bw}-1:0] {this_wire} = {bw}'d{value};\n",
+                            // Localparam so that it's a constant.
+                            "localparam [{bw}-1:0] {this_wire} = {bw}'d{value};\n",
                             this_wire = id_to_wire_name(&id),
                         )
                         .as_str(),
@@ -1227,7 +1230,8 @@ pub fn to_verilog_egraph_serialize(
 
                     logic_declarations.push_str(
                         format!(
-                            "logic {this_wire} = {default};\n",
+                            "logic [{bw}-1:0] {this_wire} = {default};\n",
+                            bw = get_bitwidth_for_node(egraph, &node_id).unwrap(),
                             this_wire = id_to_wire_name(&id),
                             default = default_val
                         )
@@ -1292,7 +1296,8 @@ pub fn to_verilog_egraph_serialize(
                     let id = &term.eclass;
                     let expr_id = &egraph[&term.children[1]].eclass;
                     logic_declarations.push_str(&format!(
-                        "logic {this_wire} = {expr}[{hi}:{lo}];\n",
+                        "logic [{bw}-1:0] {this_wire} = {expr}[{hi}:{lo}];\n",
+                        bw = get_bitwidth_for_node(egraph, node_id).unwrap(),
                         hi = hi,
                         lo = lo,
                         this_wire = id_to_wire_name(id),
@@ -1400,7 +1405,8 @@ pub fn to_verilog_egraph_serialize(
 
                 logic_declarations.push_str(
                     format!(
-                        "logic {this_wire};\n",
+                        "logic [{bw}-1:0] {this_wire};\n",
+                        bw = get_bitwidth_for_node(egraph, node_id).unwrap(),
                         this_wire = id_to_wire_name(&term.eclass),
                     )
                     .as_str(),
