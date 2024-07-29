@@ -8,9 +8,10 @@ use churchroad::{
     StructuralVerilogExtractor,
 };
 use clap::ValueHint::FilePath;
-use clap::{Parser, ValueEnum};
+use clap::{ArgAction, Parser, ValueEnum};
 use egglog::SerializeConfig;
-use log::debug;
+use log::{debug, warn};
+use tempfile::NamedTempFile;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -27,6 +28,15 @@ struct Args {
 
     #[arg(long)]
     architecture: Architecture,
+
+    #[arg(long)]
+    simulate: bool,
+
+    #[arg(long)]
+    out_filepath: Option<PathBuf>,
+
+    #[arg(long, action=ArgAction::Append)]
+    simulate_with_verilator_arg: Vec<String>,
 }
 
 #[derive(ValueEnum, Clone, Debug)]
@@ -190,10 +200,98 @@ fn main() {
     // design.
 
     let serialized = egraph.serialize(SerializeConfig::default());
-    let choices = StructuralVerilogExtractor::default().extract(&serialized, &[]);
+    let choices = StructuralVerilogExtractor.extract(&serialized, &[]);
     let verilog = to_verilog_egraph_serialize(&serialized, &choices, "clk");
 
-    debug!("Got back verilog:\n{}", verilog);
+    debug!("Got back verilog:\n{}", &verilog);
+
+    if let Some(out_filepath) = &args.out_filepath {
+        std::fs::write(out_filepath, &verilog).unwrap();
+    } else {
+        println!("{}", verilog);
+    }
 
     // STEP 7: Simulate.
+    if args.simulate {
+        // If we didn't write to file, we need to write to a temp file.
+        let old_verilog_filepath = if let Some(out_filepath) = &args.out_filepath {
+            out_filepath.to_owned()
+        } else {
+            let (_, path) = NamedTempFile::new().unwrap().keep().unwrap();
+            std::fs::write(&path, &verilog).unwrap();
+            path
+        };
+
+        // First, we have to rename the output module, because our
+        // simulate_with_verilator.py script can't simulate two modules with the
+        // same name against each other.
+        let verilog_file = NamedTempFile::new().unwrap();
+        // Use Yosys to rename the module.
+        let new_module_name = format!("{}_simulate_with_verilator", args.top_module_name);
+        let yosys_output = std::process::Command::new("yosys")
+            .arg("-p")
+            .arg(format!(
+                "read_verilog -sv {}; rename {} {}; write_verilog {}",
+                old_verilog_filepath.to_string_lossy(),
+                //args.top_module_name,
+                {
+                    warn!("TODO(@gussmith23): hardcoded.");
+                    "top"
+                },
+                new_module_name,
+                verilog_file.path().to_string_lossy()
+            ))
+            .output()
+            .unwrap();
+        if !yosys_output.status.success() {
+            panic!(
+                "Yosys failed to rename the module. stdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&yosys_output.stdout),
+                String::from_utf8_lossy(&yosys_output.stderr)
+            );
+        }
+
+        let lakeroad_dir = PathBuf::from(
+            std::env::var("LAKEROAD_DIR")
+                .expect("LAKEROAD_DIR environment variable should be set."),
+        );
+
+        let mut cmd = std::process::Command::new("python");
+        cmd.arg(lakeroad_dir.join("bin").join("simulate_with_verilator.py"))
+            .arg("--verilog_filepath")
+            .arg(verilog_file.path())
+            .arg("--test_module_name")
+            .arg(new_module_name)
+            .arg("--ground_truth_module_name")
+            .arg(args.top_module_name)
+            // TODO(@gussmith23): hardcoded.
+            .arg("--output_signal")
+            .arg({
+                warn!("hardcoded");
+                "out:16"
+            })
+            .arg("--input_signal")
+            .arg({
+                warn!("hardcoded");
+                "a:16"
+            })
+            .arg("--input_signal")
+            .arg({
+                warn!("hardcoded");
+                "b:16"
+            })
+            .arg("--verilator_extra_arg")
+            .arg(args.filepath)
+            .args(args.simulate_with_verilator_arg);
+
+        let output = cmd.output().unwrap();
+
+        if !output.status.success() {
+            panic!(
+                "Simulation with Verilator failed. stdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
 }
