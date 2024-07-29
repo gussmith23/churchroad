@@ -101,11 +101,6 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
         );
     }
 
-    println!(
-        "lakeroad output:\n{}",
-        String::from_utf8_lossy(&output.stdout)
-    );
-
     let mut verilog = String::from_utf8_lossy(&output.stdout).into_owned();
 
     // TODO(@gussmith23): hardcoding the definition of DSP48E2 here. Should
@@ -287,9 +282,6 @@ endmodule
     // Don't simcheck, because there'll be undefined modules. That's expected.
     // Don't generate let bindings.
     let commands = commands_from_verilog(&verilog, "top", false, false, port_to_expr_map);
-
-    println!("{}", commands);
-
     commands
 }
 
