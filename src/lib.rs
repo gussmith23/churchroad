@@ -304,7 +304,7 @@ pub fn node_to_string(
     out += node.op.as_str();
     for child_id in &node.children {
         out += " ";
-        out += &node_to_string(egraph, child_id, choices);
+        out += &node_to_string(egraph, &choices[&egraph[child_id].eclass], choices);
     }
 
     if wrap_in_parens {
