@@ -14,7 +14,6 @@
 // RUN:   --simulate-with-verilator-arg="--verilator_extra_arg=-Wno-CASEX" \
 // RUN:   --simulate-with-verilator-arg="--verilator_extra_arg=-Wno-TIMESCALEMOD" \
 // RUN:   --simulate-with-verilator-arg="--verilator_extra_arg=-Wno-PINMISSING" \
-// RUN:   --simulate-with-verilator-arg="--testbench_stdout_log_filepath=tmp.txt" \
 // RUN: | FileCheck %s
 
 module mul(input [15:0] a, b, output [15:0] out);
