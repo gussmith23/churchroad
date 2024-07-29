@@ -586,21 +586,6 @@ struct LakeroadWorker
 				assert(cell->name[0] == '\\');
 				f << stringf("(let %s (ModuleInstance \"%s\" ", cell->name.substr(1).c_str(), cell->type.substr(1).c_str()).c_str();
 				std::string closer = "(StringNil)";
-				for (auto [port_name, _] : input_port_names_and_exprs)
-				{
-					assert(port_name[0] == '\\');
-					f << stringf("(StringCons \"%s\"", port_name.substr(1).c_str()).c_str();
-					closer.append(")");
-				}
-				f << closer;
-				closer = "(ExprNil)";
-				for (auto [_, expr] : input_port_names_and_exprs)
-				{
-					f << stringf("(ExprCons %s", expr.c_str()).c_str();
-					closer.append(")");
-				}
-				f << closer;
-				closer = "(StringNil)";
 				for (auto [parameter_name, _] : input_parameter_names_and_exprs)
 				{
 					assert(parameter_name[0] == '\\');
@@ -610,6 +595,21 @@ struct LakeroadWorker
 				f << closer;
 				closer = "(ExprNil)";
 				for (auto [_, expr] : input_parameter_names_and_exprs)
+				{
+					f << stringf("(ExprCons %s", expr.c_str()).c_str();
+					closer.append(")");
+				}
+				f << closer;
+				closer = "(StringNil)";
+				for (auto [port_name, _] : input_port_names_and_exprs)
+				{
+					assert(port_name[0] == '\\');
+					f << stringf("(StringCons \"%s\"", port_name.substr(1).c_str()).c_str();
+					closer.append(")");
+				}
+				f << closer;
+				closer = "(ExprNil)";
+				for (auto [_, expr] : input_port_names_and_exprs)
 				{
 					f << stringf("(ExprCons %s", expr.c_str()).c_str();
 					closer.append(")");
