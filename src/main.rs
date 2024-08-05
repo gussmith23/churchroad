@@ -109,11 +109,38 @@ fn main() {
              (< n 18))
             ((union expr (PrimitiveInterfaceDSP a b)))
             :ruleset mapping)
+        ;; TODO need to write a rewrite that deals with multiplying zero extended bvs
+        (rule 
+            ((= expr (Op2 (Mul) a b))
+             (HasType expr (Bitvector n))
+             (< n 18))
+            ((union expr (PrimitiveInterfaceDSP a b)))
+            :ruleset mapping)
+        
+        (ruleset transform)
+        (rule
+            ((= expr (Op2 (Mul) (Op1 (ZeroExtend b-bw) a) b))
+             (HasType expr (Bitvector expr-bw))
+             (HasType a (Bitvector a-bw))
+             (HasType b (Bitvector b-bw))
+             (<= expr-bw 48)
+             (<= a-bw 16)
+             (<= b-bw 32)
+             (= 0 (% expr-bw 2)))
+            ((union 
+               expr 
+               (Op2 (Add)
+                (Op2 (Mul) (Op1 (ZeroExtend expr-bw) a) (Op1 (ZeroExtend expr-bw) (Op1 (Extract (- (/ expr-bw 2) 1) 0) b)))
+                (Op2 (Shl) (Op2 (Mul) (Op1 (ZeroExtend expr-bw) a) (Op1 (ZeroExtend expr-bw) (Op1 (Extract (- expr-bw 1) (/ expr-bw 2)) b))) (Op0 (BV (/ expr-bw 2) expr-bw))))))
+            :ruleset transform)
     "#,
         )
         .unwrap();
     egraph
         .parse_and_run_program("(run-schedule (saturate typing))")
+        .unwrap();
+    egraph
+        .parse_and_run_program("(run-schedule (saturate transform))")
         .unwrap();
     egraph
         .parse_and_run_program("(run-schedule (saturate mapping))")
