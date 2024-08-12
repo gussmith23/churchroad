@@ -38,26 +38,65 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
         "PrimitiveInterfaceDSP"
     );
     assert_eq!(serialized_egraph[sketch_template_node_id].children.len(), 2);
-    assert_eq!(
-        {
-            let child_node_id = &serialized_egraph[sketch_template_node_id].children[0];
-            &serialized_egraph[child_node_id].op
-        },
-        "Var"
+
+    let out_bw = get_bitwidth_for_node(serialized_egraph, sketch_template_node_id).unwrap();
+
+    log::debug!(
+        "a expr: {}",
+        node_to_string(
+            serialized_egraph,
+            &serialized_egraph[sketch_template_node_id].children[0],
+            &spec_choices
+        )
     );
-    assert_eq!(
-        {
-            let child_node_id = &serialized_egraph[sketch_template_node_id].children[1];
-            &serialized_egraph[child_node_id].op
-        },
-        "Var"
+    log::debug!(
+        "b expr: {}",
+        node_to_string(
+            serialized_egraph,
+            &serialized_egraph[sketch_template_node_id].children[1],
+            &spec_choices
+        )
     );
+
+    let a_bw = get_bitwidth_for_node(
+        serialized_egraph,
+        &serialized_egraph[sketch_template_node_id].children[0],
+    )
+    .unwrap();
+    let b_bw = get_bitwidth_for_node(
+        serialized_egraph,
+        &serialized_egraph[sketch_template_node_id].children[1],
+    )
+    .unwrap();
 
     // Put the spec in a tempfile.
     let mut spec_file = NamedTempFile::new().unwrap();
     let spec_filepath = spec_file.path().to_owned();
     spec_file
-        .write_all(to_verilog_egraph_serialize(serialized_egraph, spec_choices, "clk").as_bytes())
+        .write_all(
+            to_verilog_egraph_serialize(
+                serialized_egraph,
+                spec_choices,
+                "clk",
+                [
+                    (
+                        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[0]]
+                            .eclass
+                            .clone(),
+                        "a".to_string(),
+                    ),
+                    (
+                        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[1]]
+                            .eclass
+                            .clone(),
+                        "b".to_string(),
+                    ),
+                ]
+                .into(),
+                Some([(eclass.clone(), "out".to_string())].into()),
+            )
+            .as_bytes(),
+        )
         .unwrap();
     spec_file.flush().unwrap();
     // spec_file.persist("tmp.v").unwrap();
@@ -77,11 +116,11 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
         .arg("top")
         // TODO(@gussmith23): Determine this automatically somehow.
         .arg("--verilog-module-out-signal")
-        .arg("out:16")
+        .arg(format!("out:{out_bw}"))
         .arg("--input-signal")
-        .arg("a:16")
+        .arg(format!("a:{a_bw}"))
         .arg("--input-signal")
-        .arg("b:16")
+        .arg(format!("b:{b_bw}"))
         .arg("--template")
         .arg("dsp")
         .arg("--pipeline-depth")
@@ -1059,10 +1098,17 @@ impl AnythingExtractor {
     }
 }
 
+/// - bottom_out_at: maps ClassIds to variable names. Any time we reach a node
+///   with a class ID in this map, we simply output a variable with the given
+///   name.
+/// - outputs: maps ClassIds to variable names. These classes will be taken as
+///   the outputs of the module. If not specified, we output all output ports.
 pub fn to_verilog_egraph_serialize(
     egraph: &egraph_serialize::EGraph,
     choices: &IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
     clk_name: &str,
+    bottom_out_at: HashMap<ClassId, String>,
+    outputs: Option<HashMap<ClassId, String>>,
 ) -> String {
     // let mut wires = HashMap::default();
 
@@ -1080,69 +1126,93 @@ pub fn to_verilog_egraph_serialize(
     // Maps EClass ID to the module instance at that class.
     let mut module_instantiations: HashMap<ClassId, ModuleInstance> = HashMap::new();
 
-    let mut inputs = String::new();
-    let mut outputs = String::new();
+    let mut inputs_str = String::new();
+    let mut outputs_str = String::new();
     let mut logic_declarations = String::new();
     let mut registers = String::new();
 
     // Collect all the outputs.
-    let mut queue: Vec<ClassId> = egraph
-        .nodes
-        .iter()
-        .filter_map(|(_id, node)| {
+    let mut queue: Vec<ClassId> = if let Some(outputs) = &outputs {
+        outputs.keys().cloned().collect()
+    } else {
+        egraph
+            .nodes
+            .iter()
+            .filter_map(|(_id, node)| {
+                // op should be IsPort
+                let op = &node.op;
+                if op != "IsPort" {
+                    return None;
+                }
+
+                assert_eq!(node.children.len(), 4);
+
+                if egraph[&node.children[2]].op != "Output" {
+                    return None;
+                }
+
+                Some(egraph[&node.children[3]].eclass.clone())
+            })
+            .collect()
+    };
+
+    // Generate outputs.
+    if let Some(outputs) = &outputs {
+        for (class_id, name) in outputs {
+            let node_id = &choices[class_id];
+            let term = &egraph[node_id];
+            let bw = get_bitwidth_for_node(egraph, node_id).unwrap();
+
+            outputs_str.push_str(&format!(
+                "output [{bw}-1:0] {name},\n",
+                bw = bw,
+                name = name
+            ));
+
+            logic_declarations.push_str(&format!(
+                "assign {name} = {wire};\n",
+                name = name,
+                wire = id_to_wire_name(&term.eclass)
+            ));
+        }
+    } else {
+        for (_, node) in egraph.nodes.iter() {
             // op should be IsPort
             let op = &node.op;
             if op != "IsPort" {
-                return None;
+                continue;
             }
 
             assert_eq!(node.children.len(), 4);
 
             if egraph[&node.children[2]].op != "Output" {
-                return None;
+                continue;
             }
 
-            Some(egraph[&node.children[3]].eclass.clone())
-        })
-        .collect();
+            outputs_str.push_str(&format!(
+                "output [{bw}-1:0] {name},\n",
+                bw = get_bitwidth_for_node(egraph, &node.children[3]).unwrap(),
+                name = egraph[&node.children[1]]
+                    .op
+                    .as_str()
+                    .strip_prefix('\"')
+                    .unwrap()
+                    .strip_suffix('\"')
+                    .unwrap()
+            ));
 
-    // Generate outputs.
-    for (_, node) in egraph.nodes.iter() {
-        // op should be IsPort
-        let op = &node.op;
-        if op != "IsPort" {
-            continue;
+            logic_declarations.push_str(&format!(
+                "assign {name} = {wire};\n",
+                name = egraph[&node.children[1]]
+                    .op
+                    .as_str()
+                    .strip_prefix('\"')
+                    .unwrap()
+                    .strip_suffix('\"')
+                    .unwrap(),
+                wire = id_to_wire_name(&egraph[&node.children[3]].eclass)
+            ))
         }
-
-        assert_eq!(node.children.len(), 4);
-
-        if egraph[&node.children[2]].op != "Output" {
-            continue;
-        }
-
-        outputs.push_str(&format!(
-            "output [{bw}-1:0] {name},\n",
-            bw = get_bitwidth_for_node(egraph, &node.children[3]).unwrap(),
-            name = egraph[&node.children[1]]
-                .op
-                .as_str()
-                .strip_prefix('\"')
-                .unwrap()
-                .strip_suffix('\"')
-                .unwrap()
-        ));
-
-        logic_declarations.push_str(&format!(
-            "assign {name} = {wire};\n",
-            name = egraph[&node.children[1]]
-                .op
-                .as_str()
-                .strip_prefix('\"')
-                .unwrap()
-                .strip_suffix('\"')
-                .unwrap(),
-            wire = id_to_wire_name(&egraph[&node.children[3]].eclass)
-        ))
     }
 
     let mut done = HashSet::new();
@@ -1160,7 +1230,35 @@ pub fn to_verilog_egraph_serialize(
     while let Some(id) = queue.pop() {
         done.insert(id.clone());
         let node_id = &choices[&id];
+        log::debug!(
+            "just popped {:?}, expr {}, queue is {:?}",
+            id,
+            node_to_string(egraph, node_id, choices),
+            queue
+        );
         let term = &egraph[node_id];
+
+        // First, handle the case where we're supposed to "bottom out" at this
+        // node, i.e. output a variable name instead of the rest of the
+        // expression.
+        if let Some(name) = bottom_out_at.get(&id) {
+            log::debug!("Bottoming out at node with name {}", name);
+            let bw = get_bitwidth_for_node(egraph, node_id).unwrap();
+
+            inputs_str
+                .push_str(format!("input [{bw}-1:0] {name},\n", bw = bw, name = name).as_str());
+
+            logic_declarations.push_str(
+                format!(
+                    "logic [{bw}-1:0] {this_wire} = {name};\n",
+                    bw = bw,
+                    this_wire = id_to_wire_name(&term.eclass),
+                    name = name
+                )
+                .as_str(),
+            );
+            continue;
+        }
 
         let op = &term.op;
         match op.as_str() {
@@ -1196,13 +1294,14 @@ pub fn to_verilog_egraph_serialize(
                         let bw = egraph[&op_node.children[0]].op.parse::<i64>().unwrap();
                     logic_declarations.push_str(
                         format!(
-                            "logic [{bw}-1:0] {this_wire} = {bw}'d{value};\n",
+                            "logic [{bw}-1:0] {this_wire} = {bw}'({value});\n",
                             this_wire = id_to_wire_name(&id),
                             value = id_to_wire_name(&egraph[&term.children[1]].eclass)
 
                         )
                         .as_str(),
                     );
+                    maybe_push_expr_on_queue(&mut queue, &done, &egraph[&term.children[1]].eclass);
 
                     }
                     "CRString" => {
@@ -1331,7 +1430,7 @@ pub fn to_verilog_egraph_serialize(
                         let name = egraph[&term.children[0]].op.as_str().strip_prefix('\"').unwrap().strip_suffix('\"').unwrap();
                         let bw: i64 = egraph[&term.children[1]].op.parse().unwrap();
 
-                    inputs.push_str(
+                    inputs_str.push_str(
                         format!("input [{bw}-1:0] {name},\n", bw = bw, name = name).as_str(),
                     );
 
@@ -1596,7 +1695,7 @@ pub fn to_verilog_egraph_serialize(
     // For display purposes, we can clean this up later.
     // We sort to make the output stable.
     let inputs = {
-        let mut out = inputs
+        let mut out = inputs_str
             .split('\n')
             .map(|line| format!("  {}", line))
             .collect::<Vec<_>>();
@@ -1605,7 +1704,7 @@ pub fn to_verilog_egraph_serialize(
         out.join("\n")
     };
     let outputs = {
-        let mut out = outputs
+        let mut out = outputs_str
             .split('\n')
             .map(|line| format!("  {}", line))
             .collect::<Vec<_>>();

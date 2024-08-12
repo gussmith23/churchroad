@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs::create_dir_all;
+use std::io::{stdin, stdout, Write};
 use std::path::PathBuf;
 
 use churchroad::{
@@ -9,7 +10,7 @@ use churchroad::{
 };
 use clap::ValueHint::FilePath;
 use clap::{ArgAction, Parser, ValueEnum};
-use egglog::SerializeConfig;
+use egglog::{EGraph, SerializeConfig};
 use log::{debug, info, warn};
 use tempfile::NamedTempFile;
 
@@ -42,6 +43,22 @@ struct Args {
 #[derive(ValueEnum, Clone, Debug)]
 enum Architecture {
     XilinxUltrascalePlus,
+}
+
+/// Run commands to interact with the egraph.
+fn egraph_interact(egraph: &mut EGraph) {
+    loop {
+        print!("> ");
+        stdout().flush().unwrap();
+        let mut buf = String::new();
+        stdin().read_line(&mut buf).unwrap();
+        let out = egraph.parse_and_run_program(&buf);
+        if let Ok(out) = out {
+            println!("{}", out.join("\n"));
+        } else {
+            println!("Error: {:?}", out);
+        }
+    }
 }
 
 // TODO(@gussmith23): Seems redundant to do this; I think clap already does something like this under the hood.
@@ -103,18 +120,24 @@ fn main() {
         .parse_and_run_program(
             r#"
         (ruleset mapping)
-        (rule 
-            ((= expr (Op2 (Mul) a b))
-             (HasType expr (Bitvector n))
-             (< n 18))
-            ((union expr (PrimitiveInterfaceDSP a b)))
-            :ruleset mapping)
         ;; TODO need to write a rewrite that deals with multiplying zero extended bvs
         (rule 
             ((= expr (Op2 (Mul) a b))
              (HasType expr (Bitvector n))
              (< n 18))
             ((union expr (PrimitiveInterfaceDSP a b)))
+            :ruleset mapping)
+        ;; TODO bitwidths are hardcoded here
+        (rule 
+            ((= expr (Op2 (Mul) (Op1 (ZeroExtend ?n) ?a) (Op1 (ZeroExtend ?n) ?b)))
+             (HasType expr (Bitvector ?n))
+             (HasType ?a (Bitvector ?a-bw))
+             (HasType ?b (Bitvector ?b-bw))
+             (<= ?a-bw 16)
+             (<= ?b-bw 16)
+             (< ?n 36)
+             )
+            ((union expr (PrimitiveInterfaceDSP ?a ?b)))
             :ruleset mapping)
         
         (ruleset transform)
@@ -143,8 +166,13 @@ fn main() {
         .parse_and_run_program("(run-schedule (saturate transform))")
         .unwrap();
     egraph
+        .parse_and_run_program("(run-schedule (saturate typing))")
+        .unwrap();
+    egraph
         .parse_and_run_program("(run-schedule (saturate mapping))")
         .unwrap();
+
+    // egraph_interact(&mut egraph);
 
     // May need this rebuild. See
     // https://github.com/egraphs-good/egglog/pull/391
@@ -230,7 +258,7 @@ fn main() {
 
         log::debug!(
             "First few lines of commands generated from Lakeroad output:\n{}",
-            commands.lines().take(10).collect::<String>()
+            commands.lines().take(10).collect::<Vec<_>>().join("\n")
         );
 
         // STEP 5.3: Insert Lakeroad's results back into the egraph.
@@ -265,7 +293,7 @@ fn main() {
 
     let serialized = egraph.serialize(SerializeConfig::default());
     let choices = StructuralVerilogExtractor.extract(&serialized, &[]);
-    let verilog = to_verilog_egraph_serialize(&serialized, &choices, "clk");
+    let verilog = to_verilog_egraph_serialize(&serialized, &choices, "clk", [].into(), None);
 
     debug!("Final extracted Verilog:\n{}", &verilog);
 
