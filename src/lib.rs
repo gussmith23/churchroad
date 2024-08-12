@@ -28,6 +28,10 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     sketch_template_node_id: &NodeId,
     architecture: &str,
 ) -> String {
+    let eclass = &serialized_egraph[sketch_template_node_id].eclass;
+    // Assert the two nodes are the same class.
+    assert_eq!(eclass, &serialized_egraph[_spec_node_id].eclass);
+
     // Not supporting anything other than a simple DSP sketch at the moment.
     assert_eq!(
         serialized_egraph[sketch_template_node_id].op,
