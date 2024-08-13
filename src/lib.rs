@@ -6,6 +6,7 @@ use std::{
     env,
     fmt::Debug,
     fs::read_to_string,
+    hash::Hash,
     io::Write,
     path::Path,
     process::{Command, Stdio},
@@ -33,11 +34,10 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     assert_eq!(eclass, &serialized_egraph[_spec_node_id].eclass);
 
     // Not supporting anything other than a simple DSP sketch at the moment.
-    assert_eq!(
-        serialized_egraph[sketch_template_node_id].op,
-        "PrimitiveInterfaceDSP"
+    assert!(
+        serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP"
+            || serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3"
     );
-    assert_eq!(serialized_egraph[sketch_template_node_id].children.len(), 2);
 
     let out_bw = get_bitwidth_for_node(serialized_egraph, sketch_template_node_id).unwrap();
 
@@ -58,6 +58,17 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
         )
     );
 
+    if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
+        log::debug!(
+            "c expr: {}",
+            node_to_string(
+                serialized_egraph,
+                &serialized_egraph[sketch_template_node_id].children[2],
+                &spec_choices
+            )
+        );
+    }
+
     let a_bw = get_bitwidth_for_node(
         serialized_egraph,
         &serialized_egraph[sketch_template_node_id].children[0],
@@ -69,6 +80,28 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     )
     .unwrap();
 
+    let mut bottom_out_at = HashMap::new();
+    bottom_out_at.insert(
+        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[0]]
+            .eclass
+            .clone(),
+        "a".to_string(),
+    );
+    bottom_out_at.insert(
+        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[1]]
+            .eclass
+            .clone(),
+        "b".to_string(),
+    );
+    if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
+        bottom_out_at.insert(
+            serialized_egraph[&serialized_egraph[sketch_template_node_id].children[2]]
+                .eclass
+                .clone(),
+            "c".to_string(),
+        );
+    }
+
     // Put the spec in a tempfile.
     let mut spec_file = NamedTempFile::new().unwrap();
     let spec_filepath = spec_file.path().to_owned();
@@ -78,21 +111,7 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
                 serialized_egraph,
                 spec_choices,
                 "clk",
-                [
-                    (
-                        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[0]]
-                            .eclass
-                            .clone(),
-                        "a".to_string(),
-                    ),
-                    (
-                        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[1]]
-                            .eclass
-                            .clone(),
-                        "b".to_string(),
-                    ),
-                ]
-                .into(),
+                bottom_out_at,
                 Some([(eclass.clone(), "out".to_string())].into()),
             )
             .as_bytes(),
@@ -129,6 +148,14 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
         .arg("verilog")
         .arg("--timeout")
         .arg("120");
+    if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
+        let c_bw = get_bitwidth_for_node(
+            serialized_egraph,
+            &serialized_egraph[sketch_template_node_id].children[2],
+        )
+        .unwrap();
+        command.arg("--input-signal").arg(format!("c:{c_bw}"));
+    }
     // dbg!(&command
     //     .get_args()
     //     .map(|s| s.to_str().unwrap().to_owned())
@@ -321,6 +348,16 @@ endmodule
             &choices,
         ),
     );
+    if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
+        port_to_expr_map.insert(
+            "c".to_string(),
+            node_to_string(
+                serialized_egraph,
+                &serialized_egraph[sketch_template_node_id].children[2],
+                &choices,
+            ),
+        );
+    }
     port_to_expr_map.insert(
         "out".to_string(),
         node_to_string(serialized_egraph, sketch_template_node_id, &choices),
@@ -397,7 +434,7 @@ pub fn find_primitive_interfaces_serialized(egraph: &egraph_serialize::EGraph) -
         .nodes
         .iter()
         .filter_map(|(node_id, node)| {
-            if node.op == "PrimitiveInterfaceDSP" {
+            if node.op == "PrimitiveInterfaceDSP" || node.op == "PrimitiveInterfaceDSP3" {
                 Some(node_id.to_owned())
             } else {
                 None

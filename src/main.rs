@@ -139,6 +139,19 @@ fn main() {
              )
             ((union expr (PrimitiveInterfaceDSP ?a ?b)))
             :ruleset mapping)
+        (rule 
+            ((= expr (Op2 (Add) (Op2 (Mul) (Op1 (ZeroExtend ?n) ?a) (Op1 (ZeroExtend ?n) ?b)) ?c))
+             (HasType expr (Bitvector ?n))
+             (HasType ?a (Bitvector ?a-bw))
+             (HasType ?b (Bitvector ?b-bw))
+             (HasType ?c (Bitvector ?c-bw))
+             (<= ?a-bw 16)
+             (<= ?b-bw 16)
+             (<= ?c-bw 48)
+             (< ?n 36)
+             )
+            ((union expr (PrimitiveInterfaceDSP3 ?a ?b ?c)))
+            :ruleset mapping)
         
         (ruleset transform)
         (rule
@@ -268,6 +281,18 @@ fn main() {
         egraph.parse_and_run_program(&commands).unwrap();
 
         info!("Inserted Lakeroad's results back into egraph.");
+
+        // Write out image if the user requested it.
+        if let Some(svg_dirpath) = &args.svg_dirpath {
+            let serialized = egraph.serialize_for_graphviz(true, usize::MAX, usize::MAX);
+            serialized
+                .to_svg_file(svg_dirpath.join("during_lakeroad.svg"))
+                .unwrap();
+            info!(
+                "Egraph after nth call to Lakeroad: {}",
+                svg_dirpath.join("during_lakeroad.svg").to_string_lossy()
+            );
+        }
     }
 
     // Write out image if the user requested it.
