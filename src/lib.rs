@@ -1432,12 +1432,13 @@ pub fn to_verilog_egraph_serialize(
     while let Some(id) = queue.pop() {
         done.insert(id.clone());
         let node_id = &choices[&id];
-        log::debug!(
-            "just popped {:?}, expr {}, queue is {:?}",
-            id,
-            node_to_string(egraph, node_id, choices),
-            queue
-        );
+        // This can cause an infinite loop!
+        // log::debug!(
+        //     "just popped {:?}, expr {}, queue is {:?}",
+        //     id,
+        //     node_to_string(egraph, node_id, choices),
+        //     queue
+        // );
         let term = &egraph[node_id];
 
         // First, handle the case where we're supposed to "bottom out" at this
