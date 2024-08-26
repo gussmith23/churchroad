@@ -3044,7 +3044,7 @@ always @(posedge clk) begin
 
 
 endmodule",
-            to_verilog_egraph_serialize(&serialized, &out, "clk")
+            to_verilog_egraph_serialize(&serialized, &out, "clk", [].into(), None)
         );
     }
 
@@ -3091,7 +3091,7 @@ endmodule",
     .b(wire_13),
     .out(wire_27));
 endmodule",
-            to_verilog_egraph_serialize(&serialized, &out, "")
+            to_verilog_egraph_serialize(&serialized, &out, "", [].into(), None)
         );
     }
 
