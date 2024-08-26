@@ -689,8 +689,8 @@ struct LakeroadWorker
 		}
 
 		// Run typing rules before deleting wires -- cyclic circuits can only be typed using Wire expresions to bootstrap the types.
-		f << "\n; run typing rules\n";
-		f << "(run-schedule (saturate typing))\n";
+		f << "\n; run typing and misc rules\n";
+		f << "(run-schedule (saturate (seq typing misc)))\n";
 
 		// Delete Wire expressions.
 		f << "\n; delete wire expressions\n";
