@@ -156,11 +156,14 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
         .unwrap();
         command.arg("--input-signal").arg(format!("c:{c_bw}"));
     }
-    // dbg!(&command
-    //     .get_args()
-    //     .map(|s| s.to_str().unwrap().to_owned())
-    //     .collect::<Vec<_>>()
-    //     .join(" "));
+    log::debug!(
+        "Lakeroad command: {}",
+        &command
+            .get_args()
+            .map(|s| s.to_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
     let output = command.output().unwrap();
 
     if !output.status.success() {
