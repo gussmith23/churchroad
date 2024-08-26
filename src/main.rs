@@ -324,8 +324,23 @@ fn main() {
     // design.
 
     let serialized = egraph.serialize(SerializeConfig::default());
-    let choices = StructuralVerilogExtractor.extract(&serialized, &[]);
-    let verilog = to_verilog_egraph_serialize(&serialized, &choices, "clk", [].into(), None);
+    let choices = GlobalGreedyDagExtractor.extract(&serialized, &[]);
+    let verilog = to_verilog_egraph_serialize(
+        &serialized,
+        &choices,
+        "clk",
+        [].into(),
+        // Use the original outputs as the outputs of the final design.
+        Some(
+            outputs
+                .iter()
+                .cloned()
+                .map(|(value, output_name)| {
+                    (egraph.value_to_class_id(&egraph.find(value)), output_name)
+                })
+                .collect(),
+        ),
+    );
 
     debug!("Final extracted Verilog:\n{}", &verilog);
 
