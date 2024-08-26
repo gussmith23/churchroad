@@ -1,3 +1,5 @@
+pub mod global_greedy_dag;
+
 use egraph_serialize::{ClassId, Node, NodeId};
 use indexmap::IndexMap;
 use log::info;
@@ -6,7 +8,6 @@ use std::{
     env,
     fmt::Debug,
     fs::read_to_string,
-    hash::Hash,
     io::Write,
     path::Path,
     process::{Command, Stdio},
@@ -16,7 +17,7 @@ use std::{
 use tempfile::NamedTempFile;
 
 use egglog::{
-    ast::{Literal, Symbol},
+    ast::{Literal, Span, SrcFile, Symbol},
     constraint::{SimpleTypeConstraint, TypeConstraint},
     sort::{FromSort, I64Sort, IntoSort, Sort, VecSort},
     ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
