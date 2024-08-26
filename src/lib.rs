@@ -503,7 +503,16 @@ impl StructuralVerilogExtractor {
                 let node_id = potential_nodes[0].clone();
                 // Warn if we're still extracting a Wire.
                 if egraph[&node_id].op == "Wire" {
-                    log::warn!("Extracting a Wire.");
+                    log::warn!(
+                        "Extracting wire {}. All nodes in this eclass:\n{}",
+                        egraph[&egraph[&node_id].children[0]].op,
+                        class
+                            .nodes
+                            .iter()
+                            .map(|node_id| egraph[node_id].op.clone())
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    );
                 }
                 (id.clone(), node_id)
             })
