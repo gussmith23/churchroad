@@ -86,6 +86,16 @@ fn main() {
 
     info!("Loaded design into egraph.");
 
+    // Get initial input and output ports.
+    let outputs: Vec<_> = {
+        let serialized = egraph.serialize(SerializeConfig::default());
+        get_inputs_and_outputs_serialized(&serialized)
+            .1
+            .drain(..)
+            .map(|(output_name, class_id)| (egraph.class_id_to_value(&class_id), output_name))
+            .collect()
+    };
+
     if let Some(svg_dirpath) = &args.svg_dirpath {
         create_dir_all(svg_dirpath).unwrap();
         let serialized = egraph.serialize_for_graphviz(true, usize::MAX, usize::MAX);
