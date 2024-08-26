@@ -520,6 +520,141 @@ impl StructuralVerilogExtractor {
     }
 }
 
+/// Extract specs, ensuring specific nodes are chosen.
+#[derive(Default)]
+pub struct EnsureExtractSpecExtractor {
+    pub ensure_extract: HashSet<egraph_serialize::NodeId>,
+}
+impl EnsureExtractSpecExtractor {
+    pub fn extract(
+        &self,
+        egraph: &egraph_serialize::EGraph,
+        _roots: &[egraph_serialize::ClassId],
+    ) -> IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId> {
+        let _work_to_be_done = true;
+
+        // Maps node ID to the number of desired-to-be-extracted nodes that can
+        // be extracted via this node.
+        let mut ensure_extract_tracker: HashMap<_, _> = egraph
+            .nodes
+            .iter()
+            .map(|(node_id, _)| {
+                if self.ensure_extract.contains(node_id) {
+                    (node_id.clone(), 1)
+                } else {
+                    (node_id.clone(), 0)
+                }
+            })
+            .collect();
+
+        let mut choices: IndexMap<_, _> = egraph
+            .classes()
+            .iter()
+            .map(|(id, class)| {
+                let node_id = class
+                    .nodes
+                    .iter()
+                    .find(|node_id| {
+                        let op = &egraph[*node_id].op;
+
+                        // Filter certain op types.
+                        !(["PrimitiveInterfaceDSP", "PrimitiveInterfaceDSP3", "Wire"]
+                            .contains(&op.as_str()))
+                    })
+                    .unwrap()
+                    .clone();
+                (id.clone(), node_id)
+            })
+            .collect();
+
+        // For every eclass, choose the node with the highest number of
+        // desired-to-be-extracted nodes under it.
+        fn update_choices(
+            egraph: &egraph_serialize::EGraph,
+            ensure_extract_tracker: &HashMap<NodeId, i32>,
+            choices: &mut IndexMap<ClassId, NodeId>,
+        ) {
+            for (id, class) in egraph.classes() {
+                let mut sorted_nodes: Vec<_> = class
+                    .nodes
+                    .iter()
+                    .filter(|&node_id| {
+                        let op = &egraph[node_id].op;
+                        // Filter out banned nodes.
+                        !(["PrimitiveInterfaceDSP", "PrimitiveInterfaceDSP3", "Wire"]
+                            .contains(&op.as_str()))
+                    })
+                    .cloned()
+                    .collect();
+                sorted_nodes.sort_by_key(|node_id| ensure_extract_tracker[node_id]);
+                sorted_nodes.reverse();
+                let new_choice = sorted_nodes[0].clone();
+                let old_choice = choices
+                    .insert(id.clone(), new_choice.clone())
+                    .expect("Class should have already been in choices.");
+                if new_choice != old_choice {
+                    log::debug!(
+                        "Changed choice for class {} from {} to {}",
+                        id,
+                        egraph[&old_choice].op,
+                        egraph[&new_choice].op
+                    );
+                }
+            }
+        }
+
+        // Returns whether any updates were made.
+        fn update_node_tracker(
+            egraph: &egraph_serialize::EGraph,
+            ensure_extract_tracker: &mut HashMap<NodeId, i32>,
+            choices: &IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
+        ) -> bool {
+            let mut update_occurred = false;
+            for (node_id, node) in egraph.nodes.iter() {
+                // Leaves already have their final value and don't need to be
+                // updated.
+                if node.children.is_empty() {
+                    continue;
+                }
+
+                let new_value = node
+                    .children
+                    .iter()
+                    .map(|child_id| {
+                        // We have to make sure to use choices to get the
+                        // *actual* node ID. Indexing an egraph at a nodeid
+                        // gives you another node, but we need to consider
+                        // that that node might not actually be the current
+                        // choice for the eclass.
+                        let node_choice = &choices[&egraph[child_id].eclass];
+                        ensure_extract_tracker[node_choice]
+                    })
+                    .sum();
+                let old_value = ensure_extract_tracker.insert(node_id.clone(), new_value);
+                assert!(
+                    old_value.is_some(),
+                    "Node should have already been in ensure_extract_tracker."
+                );
+
+                if old_value.unwrap() != new_value {
+                    update_occurred = true;
+                }
+            }
+
+            update_occurred
+        }
+
+        // Set to true so we do at least one iteration.
+        let mut updates_occurred = true;
+        // Keep updating until no more updates are made.
+        while updates_occurred {
+            update_choices(egraph, &ensure_extract_tracker, &mut choices);
+            updates_occurred = update_node_tracker(egraph, &mut ensure_extract_tracker, &choices);
+        }
+
+        choices
+    }
+}
 /// I don't know if we should be making Extractors in such an ad-hoc way, but
 /// this actually seems to be the most convenient way to do this.
 ///
@@ -564,6 +699,20 @@ pub fn find_spec_for_primitive_interface(
     serialized_egraph: &egraph_serialize::EGraph,
 ) -> (IndexMap<ClassId, NodeId>, NodeId) {
     let choices = SpecExtractor.extract(serialized_egraph, vec![].as_slice());
+    let node_id = choices.get(eclass).unwrap().to_owned();
+    (choices, node_id)
+}
+
+/// For a given primitive interface term `term`, find an equivalent "concrete"
+/// expression that we can use as our spec for synthesis via Lakeroad. This
+/// version allows the caller to specify a set of nodes that must be extracted.
+pub fn find_spec_for_primitive_interface_including_nodes(
+    eclass: &egraph_serialize::ClassId,
+    serialized_egraph: &egraph_serialize::EGraph,
+    ensure_extract: HashSet<NodeId>,
+) -> (IndexMap<ClassId, NodeId>, NodeId) {
+    let extractor = EnsureExtractSpecExtractor { ensure_extract };
+    let choices = extractor.extract(serialized_egraph, vec![].as_slice());
     let node_id = choices.get(eclass).unwrap().to_owned();
     (choices, node_id)
 }
