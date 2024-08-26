@@ -25,7 +25,8 @@ endmodule
 // TODO wrong module name
 // CHECK: module top(
 // CHECK:   input [16-1:0] a,
-// CHECK:   input [16-1:0] b,
-// CHECK:   output [16-1:0] out,
+// CHECK:   input [32-1:0] b,
+// CHECK:   output [32-1:0] out,
 // CHECK: );
+// CHECK:   DSP48E2 #(
 // CHECK:   DSP48E2 #(
