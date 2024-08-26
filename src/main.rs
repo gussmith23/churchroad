@@ -52,7 +52,7 @@ fn egraph_interact(egraph: &mut EGraph) {
         stdout().flush().unwrap();
         let mut buf = String::new();
         stdin().read_line(&mut buf).unwrap();
-        let out = egraph.parse_and_run_program(&buf);
+        let out = egraph.parse_and_run_program(None, &buf);
         if let Ok(out) = out {
             println!("{}", out.join("\n"));
         } else {
@@ -118,6 +118,7 @@ fn main() {
     info!("Running rewrites.");
     egraph
         .parse_and_run_program(
+            None,
             r#"
         (ruleset mapping)
         ;; TODO need to write a rewrite that deals with multiplying zero extended bvs
@@ -173,16 +174,16 @@ fn main() {
         )
         .unwrap();
     egraph
-        .parse_and_run_program("(run-schedule (saturate typing))")
+        .parse_and_run_program(None, "(run-schedule (saturate typing))")
         .unwrap();
     egraph
-        .parse_and_run_program("(run-schedule (saturate transform))")
+        .parse_and_run_program(None, "(run-schedule (saturate transform))")
         .unwrap();
     egraph
-        .parse_and_run_program("(run-schedule (saturate typing))")
+        .parse_and_run_program(None, "(run-schedule (saturate typing))")
         .unwrap();
     egraph
-        .parse_and_run_program("(run-schedule (saturate mapping))")
+        .parse_and_run_program(None, "(run-schedule (saturate mapping))")
         .unwrap();
 
     // egraph_interact(&mut egraph);
@@ -278,7 +279,7 @@ fn main() {
         // If Lakeroad finds a mapping, insert the mapping into the egraph.
         // If Lakeroad proves UNSAT, put some kind of marker into the egraph
         // to indicate that this mapping shouldn't be attempted again.
-        egraph.parse_and_run_program(&commands).unwrap();
+        egraph.parse_and_run_program(None, &commands).unwrap();
 
         info!("Inserted Lakeroad's results back into egraph.");
 
