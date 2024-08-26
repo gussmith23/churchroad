@@ -46,7 +46,7 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
         node_to_string(
             serialized_egraph,
             &serialized_egraph[sketch_template_node_id].children[0],
-            &spec_choices
+            spec_choices
         )
     );
     log::debug!(
@@ -54,7 +54,7 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
         node_to_string(
             serialized_egraph,
             &serialized_egraph[sketch_template_node_id].children[1],
-            &spec_choices
+            spec_choices
         )
     );
 
@@ -64,7 +64,7 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
             node_to_string(
                 serialized_egraph,
                 &serialized_egraph[sketch_template_node_id].children[2],
-                &spec_choices
+                spec_choices
             )
         );
     }
