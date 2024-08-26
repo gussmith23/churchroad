@@ -1360,6 +1360,7 @@ pub fn to_verilog_egraph_serialize(
     // Generate outputs.
     if let Some(outputs) = &outputs {
         for (class_id, name) in outputs {
+            log::debug!("Outputting class {} as {}", class_id, name);
             let node_id = &choices[class_id];
             let term = &egraph[node_id];
             let bw = get_bitwidth_for_node(egraph, node_id).unwrap();
