@@ -181,6 +181,19 @@
 (Bitwise (Xor))
 ;;; (Bitwise (Not)) TODO(@ninehusky): don't we need this here?
 
+;;; Misc
+(ruleset misc)
+;;; Rule to union concatted wires with 
+(rule 
+  ((= expr (Op2 (Concat) (Wire name bw) e))
+   (HasType e (Bitvector n)))
+  ((union (Wire name bw) (Op1 (Extract (- (+ bw n) 1) n) expr)))
+  :ruleset misc)
+(rule 
+  ((= expr (Op2 (Concat) e (Wire name bw))))
+  ((union (Wire name bw) (Op1 (Extract (- bw 1) 0) expr)))
+  :ruleset misc)
+
 
 ;;; Typing judgements.
 (ruleset typing)
