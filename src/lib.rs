@@ -609,13 +609,16 @@ pub fn from_verilog_file(
     let mut egraph = EGraph::default();
     import_churchroad(&mut egraph);
     egraph
-        .parse_and_run_program(&commands_from_verilog_file(
-            verilog_filepath,
-            top_module_name,
-            simcheck,
-            let_bindings,
-            port_to_expr_map,
-        ))
+        .parse_and_run_program(
+            None,
+            &commands_from_verilog_file(
+                verilog_filepath,
+                top_module_name,
+                simcheck,
+                let_bindings,
+                port_to_expr_map,
+            ),
+        )
         .unwrap();
 
     egraph
@@ -1162,7 +1165,7 @@ pub fn to_verilog_egraph_serialize(
     // let mut wires = HashMap::default();
 
     fn id_to_wire_name(id: &ClassId) -> String {
-        format!("wire_{}", id)
+        format!("wire_{}", id.to_string().replace("-", "_"))
     }
 
     struct ModuleInstance {
@@ -1552,7 +1555,7 @@ pub fn to_verilog_egraph_serialize(
                 if !module_instantiations.contains_key(module_class) {
                     module_instantiations.insert(module_class.clone(), ModuleInstance {
                         module_class_name: module_class_name.to_owned(),
-                        instance_name: format!("module_{}", module_class),
+                        instance_name: format!("module_{}", module_class.to_string().replace("-", "_")),
                         parameters: parameter_names.into_iter().zip(parameter_exprs.into_iter()).collect(),
                         inputs: input_port_names.into_iter().zip(input_port_exprs.into_iter()).collect(),
                         outputs: [(output_name.to_owned(), term.eclass.clone())].into(),
@@ -2029,10 +2032,13 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
 pub fn import_churchroad(egraph: &mut EGraph) {
     // STEP 1: import primary language definitions.
     egraph
-        .parse_and_run_program(&format!(
-            r#"(include "{}/egglog_src/churchroad.egg")"#,
-            std::env::var("CARGO_MANIFEST_DIR").unwrap()
-        ))
+        .parse_and_run_program(
+            None,
+            &format!(
+                r#"(include "{}/egglog_src/churchroad.egg")"#,
+                std::env::var("CARGO_MANIFEST_DIR").unwrap()
+            ),
+        )
         .unwrap();
 
     // STEP 2: add the `debruijnify` primitive to the egraph. This depends on
@@ -2043,10 +2049,13 @@ pub fn import_churchroad(egraph: &mut EGraph) {
     // STEP 3: import module enumeration rewrites. These depend on the
     // `debruijnify` primitive.
     egraph
-        .parse_and_run_program(&format!(
-            r#"(include "{}/egglog_src/module_enumeration_rewrites.egg")"#,
-            std::env::var("CARGO_MANIFEST_DIR").unwrap()
-        ))
+        .parse_and_run_program(
+            None,
+            &format!(
+                r#"(include "{}/egglog_src/module_enumeration_rewrites.egg")"#,
+                std::env::var("CARGO_MANIFEST_DIR").unwrap()
+            ),
+        )
         .unwrap();
 }
 
@@ -2063,10 +2072,11 @@ fn add_debruijnify(egraph: &mut EGraph) {
             "debruijnify".into()
         }
 
-        fn get_type_constraints(&self) -> Box<dyn TypeConstraint> {
+        fn get_type_constraints(&self, span: &Span) -> Box<dyn TypeConstraint> {
             Box::new(SimpleTypeConstraint::new(
                 self.name(),
                 vec![self.in_sort.clone(), self.out_sort.clone()],
+                span.clone(),
             ))
         }
 
@@ -2285,6 +2295,7 @@ pub fn generate_module_enumeration_rewrite(
 pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
     for s in egraph
         .parse_and_run_program(
+            None,
             format!("(query-extract :variants {num_variants} (MakeModule mod args))").as_str(),
         )
         .unwrap()
@@ -2405,10 +2416,17 @@ pub fn get_inputs_and_outputs(egraph: &mut EGraph) -> (Ports, Ports) {
 
         let churchroad_term = children[3];
 
+        let term_str = termdag.to_string(&termdag.get(churchroad_term));
         let (sort, value) = egraph
             .eval_expr(
                 &egglog::ast::parse::ExprParser::new()
-                    .parse(&termdag.to_string(&termdag.get(churchroad_term)))
+                    .parse(
+                        &Arc::new(SrcFile {
+                            name: "unused".to_owned(),
+                            contents: Some(term_str.clone()),
+                        }),
+                        &term_str,
+                    )
                     .unwrap(),
             )
             .unwrap();
@@ -2568,6 +2586,7 @@ mod tests {
 
         egraph
             .parse_and_run_program(
+                None,
                 r#"
                 (let placeholder (Wire "placeholder" 8))
                 (let reg (Op1 (Reg 0) placeholder))
@@ -2585,7 +2604,17 @@ mod tests {
         // Extract reg from Egraph.
         let mut _termdag = TermDag::default();
         let (_sort, _value) = egraph
-            .eval_expr(&egglog::ast::Expr::Var((), "reg".into()))
+            .eval_expr(&egglog::ast::Expr::Var(
+                Span(
+                    Arc::new(SrcFile {
+                        name: "unused".to_owned(),
+                        contents: None,
+                    }),
+                    0,
+                    0,
+                ),
+                "reg".into(),
+            ))
             .unwrap();
         // This will panic, which is what we were trying to get to.
         // It panics with `No cost for Value { tag: "Expr", bits: 6 }`
@@ -2639,6 +2668,7 @@ mod tests {
         // Churchroad programs can be very simple circuits, e.g. this one-bit and:
         egraph
             .parse_and_run_program(
+                None,
                 r#"
 
                 (let one-bit-and (Op2 (And) (Var "a" 1) (Var "b" 1)))
@@ -2666,6 +2696,7 @@ mod tests {
         // commands:
         egraph
             .parse_and_run_program(
+                None,
                 r#"
 
                 ; Instantiate a placeholder wire, which will be connected later.
@@ -2701,6 +2732,7 @@ mod tests {
         // applications of abstract modules to concrete inputs:
         egraph
             .parse_and_run_program(
+                None,
                 r#"
 
                 ; An abstract `and` module.
@@ -2723,6 +2755,7 @@ mod tests {
         // achieved simply with rewrites!
         egraph
             .parse_and_run_program(
+                None,
                 r#"
 
                 ; First, "direct" form.
@@ -2746,6 +2779,7 @@ mod tests {
         // discover that the two `and` gates are the same:
         egraph
             .parse_and_run_program(
+                None,
                 r#"
 
                 ; First, "direct" form.
@@ -2764,7 +2798,7 @@ mod tests {
     fn test_module_instance() {
         let mut egraph = EGraph::default();
         import_churchroad(&mut egraph);
-        egraph.parse_and_run_program(r#"
+        egraph.parse_and_run_program(None,r#"
             ; wire declarations
             ; a
             (let v0 (Wire "v0" 1))
@@ -2800,6 +2834,7 @@ mod tests {
 
         egraph
             .parse_and_run_program(
+                None,
                 r#"
                 (let placeholder (Wire "placeholder" 8))
                 (let reg (Op1 (Reg 0) placeholder))
@@ -2840,6 +2875,7 @@ endmodule",
 
         egraph
             .parse_and_run_program(
+                None,
                 r#"
                 (let a (Var "a" 8))
                 (IsPort "" "a" (Input) a)
@@ -2886,6 +2922,7 @@ endmodule",
 
         egraph
             .parse_and_run_program(
+                None,
                 r#"
                 (let placeholder (Wire "placeholder" 8))
                 (let reg (Op1 (Reg 0) placeholder))
