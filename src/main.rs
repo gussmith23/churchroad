@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use churchroad::global_greedy_dag::GlobalGreedyDagExtractor;
 use churchroad::{
     call_lakeroad_on_primitive_interface_and_spec, find_primitive_interfaces_serialized,
-    find_spec_for_primitive_interface_including_nodes, from_verilog_file,
+    find_spec_for_primitive_interface_including_nodes, from_verilog_file, get_bitwidth_for_node,
     get_inputs_and_outputs_serialized, node_to_string, to_verilog_egraph_serialize,
     StructuralVerilogExtractor,
 };
@@ -95,6 +95,33 @@ fn main() {
             .1
             .drain(..)
             .map(|(output_name, class_id)| (egraph.class_id_to_value(&class_id), output_name))
+            .collect()
+    };
+
+    let output_names_and_bws: Vec<_> = {
+        let serialized = egraph.serialize(SerializeConfig::default());
+        get_inputs_and_outputs_serialized(&serialized)
+            .1
+            .drain(..)
+            .map(|(output_name, class_id)| {
+                (
+                    output_name,
+                    get_bitwidth_for_node(&serialized, &serialized[&class_id].nodes[0]).unwrap(),
+                )
+            })
+            .collect()
+    };
+    let input_names_and_bws: Vec<_> = {
+        let serialized = egraph.serialize(SerializeConfig::default());
+        get_inputs_and_outputs_serialized(&serialized)
+            .0
+            .drain(..)
+            .map(|(input_name, class_id)| {
+                (
+                    input_name,
+                    get_bitwidth_for_node(&serialized, &serialized[&class_id].nodes[0]).unwrap(),
+                )
+            })
             .collect()
     };
 
@@ -415,25 +442,18 @@ fn main() {
             .arg(new_module_name)
             .arg("--ground_truth_module_name")
             .arg(args.top_module_name)
-            // TODO(@gussmith23): hardcoded.
-            .arg("--output_signal")
-            .arg({
-                warn!("hardcoded");
-                "out:16"
-            })
-            .arg("--input_signal")
-            .arg({
-                warn!("hardcoded");
-                "a:16"
-            })
-            .arg("--input_signal")
-            .arg({
-                warn!("hardcoded");
-                "b:16"
-            })
             .arg("--verilator_extra_arg")
             .arg(args.filepath)
             .args(args.simulate_with_verilator_arg);
+
+        for input in &input_names_and_bws {
+            cmd.arg("--input_signal")
+                .arg(format!("{}:{}", input.0, input.1));
+        }
+        for output in &output_names_and_bws {
+            cmd.arg("--output_signal")
+                .arg(format!("{}:{}", output.0, output.1));
+        }
 
         let output = cmd.output().unwrap();
 
