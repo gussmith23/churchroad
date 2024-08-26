@@ -250,9 +250,15 @@ fn main() {
         // synthesis against. Given that solvers are strange and often benefit
         // from running in a portfolio, having many equivalent specs might
         // increase chances at synthesis termination.
-        let (spec_choices, spec_node_id) = find_spec_for_primitive_interface(
+        let (spec_choices, spec_node_id) = find_spec_for_primitive_interface_including_nodes(
             &serialized_egraph[sketch_template_node_id].eclass,
             &serialized_egraph,
+            // Use the children of the sketch template node as the required-to-be-extracted nodes.
+            serialized_egraph[sketch_template_node_id]
+                .children
+                .iter()
+                .cloned()
+                .collect(),
         );
 
         log::info!(
