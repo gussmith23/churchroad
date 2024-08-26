@@ -3,10 +3,12 @@ use std::fs::create_dir_all;
 use std::io::{stdin, stdout, Write};
 use std::path::PathBuf;
 
+use churchroad::global_greedy_dag::GlobalGreedyDagExtractor;
 use churchroad::{
     call_lakeroad_on_primitive_interface_and_spec, find_primitive_interfaces_serialized,
-    find_spec_for_primitive_interface, from_verilog_file, node_to_string,
-    to_verilog_egraph_serialize, StructuralVerilogExtractor,
+    find_spec_for_primitive_interface_including_nodes, from_verilog_file,
+    get_inputs_and_outputs_serialized, node_to_string, to_verilog_egraph_serialize,
+    StructuralVerilogExtractor,
 };
 use clap::ValueHint::FilePath;
 use clap::{ArgAction, Parser, ValueEnum};
