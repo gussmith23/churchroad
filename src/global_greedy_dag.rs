@@ -174,7 +174,6 @@ impl GlobalGreedyDagExtractor {
         let mut i = 0;
         while keep_going {
             i += 1;
-            println!("iteration {}", i);
             keep_going = false;
 
             'node_loop: for (node_id, node) in &nodes {
