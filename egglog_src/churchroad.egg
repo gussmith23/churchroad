@@ -17,7 +17,6 @@
   (Or)
   (Xor)
   (Shr)
-  (Shl)
   ; Returns a bitvector of width 1.
   (Eq)
   (Ne)
@@ -159,7 +158,6 @@
 (AllBitwidthsMatch (Or))
 (AllBitwidthsMatch (Xor))
 (AllBitwidthsMatch (Shr))
-(AllBitwidthsMatch (Shl))
 (AllBitwidthsMatch (Mul))
 ;;; TODO(@ninehusky): don't we need this here?
 (AllBitwidthsMatch (Not))
@@ -180,19 +178,6 @@
 (Bitwise (Or))
 (Bitwise (Xor))
 ;;; (Bitwise (Not)) TODO(@ninehusky): don't we need this here?
-
-;;; Misc
-(ruleset misc)
-;;; Rule to union concatted wires with 
-(rule 
-  ((= expr (Op2 (Concat) (Wire name bw) e))
-   (HasType e (Bitvector n)))
-  ((union (Wire name bw) (Op1 (Extract (- (+ bw n) 1) n) expr)))
-  :ruleset misc)
-(rule 
-  ((= expr (Op2 (Concat) e (Wire name bw))))
-  ((union (Wire name bw) (Op1 (Extract (- bw 1) 0) expr)))
-  :ruleset misc)
 
 
 ;;; Typing judgements.
@@ -321,7 +306,4 @@
     (Op2 op 
      (Op1 (Extract 0 0) e1) (Op1 (Extract 0 0) e2))))))
 
-; TODO(@gussmith23): Figure out a better interface for these, currently just
-; adding them as needed.
 (function PrimitiveInterfaceDSP (Expr Expr) Expr)
-(function PrimitiveInterfaceDSP3 (Expr Expr Expr) Expr)

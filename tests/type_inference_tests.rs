@@ -10,9 +10,9 @@ macro_rules! type_inference_test {
         fn $test_name() {
             let mut egraph = EGraph::default();
             import_churchroad(&mut egraph);
-            egraph.parse_and_run_program(None, $churchroad_src).unwrap();
+            egraph.parse_and_run_program($churchroad_src).unwrap();
             egraph
-                .parse_and_run_program(None, "(run-schedule (saturate typing))")
+                .parse_and_run_program("(run-schedule (saturate typing))")
                 .unwrap();
 
             // assert that everything has a type

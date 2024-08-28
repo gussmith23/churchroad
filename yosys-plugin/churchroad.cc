@@ -584,9 +584,7 @@ struct LakeroadWorker
 				// Check that it starts with "\" first, though.
 				assert(cell->type[0] == '\\');
 				assert(cell->name[0] == '\\');
-				// Create name with salt.
-				auto let_bound_name = stringf("%s-%s", cell->name.substr(1).c_str(), salt.c_str());
-				f << stringf("(let %s (ModuleInstance \"%s\" ", let_bound_name.c_str(), cell->type.substr(1).c_str()).c_str();
+				f << stringf("(let %s (ModuleInstance \"%s\" ", cell->name.substr(1).c_str(), cell->type.substr(1).c_str()).c_str();
 				std::string closer = "(StringNil)";
 				for (auto [parameter_name, _] : input_parameter_names_and_exprs)
 				{
@@ -624,7 +622,7 @@ struct LakeroadWorker
 				{
 					assert(port_name[0] == '\\');
 					assert(cell->name[0] == '\\');
-					f << stringf("(union (GetOutput %s \"%s\") %s)\n", let_bound_name.c_str(), port_name.substr(1).c_str(), expr.c_str()).c_str();
+					f << stringf("(union (GetOutput %s \"%s\") %s)\n", cell->name.substr(1).c_str(), port_name.substr(1).c_str(), expr.c_str()).c_str();
 				}
 			}
 			else
@@ -689,8 +687,8 @@ struct LakeroadWorker
 		}
 
 		// Run typing rules before deleting wires -- cyclic circuits can only be typed using Wire expresions to bootstrap the types.
-		f << "\n; run typing and misc rules\n";
-		f << "(run-schedule (saturate (seq typing misc)))\n";
+		f << "\n; run typing rules\n";
+		f << "(run-schedule (saturate typing))\n";
 
 		// Delete Wire expressions.
 		f << "\n; delete wire expressions\n";

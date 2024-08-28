@@ -1,9 +1,9 @@
 use egglog::{
-    ast::{parse::ExprParser, Expr, Span, SrcFile},
+    ast::{parse::ExprParser, Expr},
     ArcSort, EGraph, TermDag, Value,
 };
 use log::warn;
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{collections::HashMap, path::Path};
 
 macro_rules! egglog_test {
     ($name:ident, $path:literal) => {
@@ -16,7 +16,6 @@ macro_rules! egglog_test {
             churchroad::import_churchroad(&mut egraph);
             egraph
                 .parse_and_run_program(
-                    None,
                     &std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join($path))
                         .unwrap(),
                 )
@@ -66,7 +65,7 @@ fn create_rewrites(
     let mut exprs: Vec<_> = (0..num_rewrites)
         .map(|seed| extract_random(egraph, value, sort, seed))
         .collect();
-    exprs.sort_by_key(|expr| expr.to_string());
+    exprs.sort();
     exprs.dedup();
 
     if exprs.len() < num_rewrites.try_into().unwrap() {
@@ -116,17 +115,7 @@ egglog_test!(
     "tests/egglog_tests/agilex_alm.egg",
     |egraph: &mut EGraph| {
         let (sort, value) = egraph
-            .eval_expr(&egglog::ast::Expr::Var(
-                Span(
-                    Arc::new(SrcFile {
-                        name: "unused".to_owned(),
-                        contents: None,
-                    }),
-                    0,
-                    0,
-                ),
-                "lut6out".into(),
-            ))
+            .eval_expr(&egglog::ast::Expr::Var((), "lut6out".into()))
             .unwrap();
         create_rewrites(
             egraph,
@@ -135,259 +124,59 @@ egglog_test!(
             1,
             &vec![
                 (
-                    ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Var \"a\" 1)",
-                        )
-                        .unwrap(),
-                    Expr::Var(
-                        Span(
-                            Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            0,
-                            0,
-                        ),
-                        "a".into(),
-                    ),
+                    ExprParser::new().parse("(Var \"a\" 1)").unwrap(),
+                    Expr::Var((), "a".into()),
                 ),
                 (
-                    ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Var \"b\" 1)",
-                        )
-                        .unwrap(),
-                    Expr::Var(
-                        Span(
-                            Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            0,
-                            0,
-                        ),
-                        "b".into(),
-                    ),
+                    ExprParser::new().parse("(Var \"b\" 1)").unwrap(),
+                    Expr::Var((), "b".into()),
                 ),
                 (
-                    ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Var \"c0\" 1)",
-                        )
-                        .unwrap(),
-                    Expr::Var(
-                        Span(
-                            Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            0,
-                            0,
-                        ),
-                        "c0".into(),
-                    ),
+                    ExprParser::new().parse("(Var \"c0\" 1)").unwrap(),
+                    Expr::Var((), "c0".into()),
                 ),
                 (
-                    ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Var \"c1\" 1)",
-                        )
-                        .unwrap(),
-                    Expr::Var(
-                        Span(
-                            Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            0,
-                            0,
-                        ),
-                        "c1".into(),
-                    ),
+                    ExprParser::new().parse("(Var \"c1\" 1)").unwrap(),
+                    Expr::Var((), "c1".into()),
                 ),
                 (
-                    ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Var \"d0\" 1)",
-                        )
-                        .unwrap(),
-                    Expr::Var(
-                        Span(
-                            Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            0,
-                            0,
-                        ),
-                        "d0".into(),
-                    ),
+                    ExprParser::new().parse("(Var \"d0\" 1)").unwrap(),
+                    Expr::Var((), "d0".into()),
                 ),
                 (
-                    ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Var \"d1\" 1)",
-                        )
-                        .unwrap(),
-                    Expr::Var(
-                        Span(
-                            Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            0,
-                            0,
-                        ),
-                        "d1".into(),
-                    ),
+                    ExprParser::new().parse("(Var \"d1\" 1)").unwrap(),
+                    Expr::Var((), "d1".into()),
                 ),
                 (
-                    ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Var \"e\" 1)",
-                        )
-                        .unwrap(),
-                    Expr::Var(
-                        Span(
-                            Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            0,
-                            0,
-                        ),
-                        "e".into(),
-                    ),
+                    ExprParser::new().parse("(Var \"e\" 1)").unwrap(),
+                    Expr::Var((), "e".into()),
                 ),
                 (
-                    ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Var \"f\" 1)",
-                        )
-                        .unwrap(),
-                    Expr::Var(
-                        Span(
-                            Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            0,
-                            0,
-                        ),
-                        "f".into(),
-                    ),
+                    ExprParser::new().parse("(Var \"f\" 1)").unwrap(),
+                    Expr::Var((), "f".into()),
                 ),
                 (
+                    ExprParser::new().parse("(Var \"lut4_g0_mem\" 16)").unwrap(),
                     ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Var \"lut4_g0_mem\" 16)",
-                        )
-                        .unwrap(),
-                    ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Symbolic \"lut4_g0_mem\" 16)",
-                        )
+                        .parse("(Symbolic \"lut4_g0_mem\" 16)")
                         .unwrap(),
                 ),
                 (
+                    ExprParser::new().parse("(Var \"lut4_p0_mem\" 16)").unwrap(),
                     ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Var \"lut4_p0_mem\" 16)",
-                        )
-                        .unwrap(),
-                    ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Symbolic \"lut4_p0_mem\" 16)",
-                        )
+                        .parse("(Symbolic \"lut4_p0_mem\" 16)")
                         .unwrap(),
                 ),
                 (
+                    ExprParser::new().parse("(Var \"lut4_g1_mem\" 16)").unwrap(),
                     ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Var \"lut4_g1_mem\" 16)",
-                        )
-                        .unwrap(),
-                    ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Symbolic \"lut4_g1_mem\" 16)",
-                        )
+                        .parse("(Symbolic \"lut4_g1_mem\" 16)")
                         .unwrap(),
                 ),
                 (
+                    ExprParser::new().parse("(Var \"lut4_p1_mem\" 16)").unwrap(),
                     ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Var \"lut4_p1_mem\" 16)",
-                        )
-                        .unwrap(),
-                    ExprParser::new()
-                        .parse(
-                            &Arc::new(SrcFile {
-                                name: "unused".to_owned(),
-                                contents: None,
-                            }),
-                            "(Symbolic \"lut4_p1_mem\" 16)",
-                        )
+                        .parse("(Symbolic \"lut4_p1_mem\" 16)")
                         .unwrap(),
                 ),
             ]
@@ -406,7 +195,6 @@ fn antiunify() {
 
     egraph
         .parse_and_run_program(
-            None,
             r#"
 (let out (debruijnify (vec-of (Var "x" 8) (Var "y" 16))))
 (check (= out (vec-of 0 1)))
@@ -473,7 +261,6 @@ fn antiunify_permuter() {
 
     egraph
         .parse_and_run_program(
-            None,
             r#"
 (include "tests/egglog_tests/permuter.egg")
 "#,
@@ -482,15 +269,15 @@ fn antiunify_permuter() {
 
     // Run enumeration rewrites
     egraph
-        .parse_and_run_program(None, "(run-schedule (saturate enumerate-modules))")
+        .parse_and_run_program("(run-schedule (saturate enumerate-modules))")
         .unwrap();
 
     egraph
-        .parse_and_run_program(None, "(run-schedule (saturate typing))")
+        .parse_and_run_program("(run-schedule (saturate typing))")
         .unwrap();
 
     egraph
-        .parse_and_run_program(None,"(run-schedule (repeat 100 (seq (run expansion) (saturate typing) (saturate enumerate-modules))))")
+        .parse_and_run_program("(run-schedule (repeat 100 (seq (run expansion) (saturate typing) (saturate enumerate-modules))))")
         .unwrap();
 
     // let serialized = egraph.serialize_for_graphviz(true);
@@ -505,7 +292,6 @@ fn find_loop() {
 
     egraph
         .parse_and_run_program(
-            None,
             r#"
 
 ; This file comes from an example permuter design given to us by Intel.
