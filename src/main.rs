@@ -356,7 +356,10 @@ fn main() {
     // design.
 
     let serialized = egraph.serialize(SerializeConfig::default());
-    let choices = GlobalGreedyDagExtractor.extract(&serialized, &[]);
+    let choices = GlobalGreedyDagExtractor {
+        structural_only: true,
+    }
+    .extract(&serialized, &[]);
     let verilog = to_verilog_egraph_serialize(
         &serialized,
         &choices,

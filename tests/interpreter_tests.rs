@@ -51,7 +51,12 @@ fn prep_interpreter(
 
     let serialized = egraph.serialize(SerializeConfig::default());
 
-    let choices = GlobalGreedyDagExtractor.extract(&serialized, &[]);
+    let choices = GlobalGreedyDagExtractor {
+        // We don't care about only extracting legal structural Verilog
+        // constructs when interpreting.
+        structural_only: false,
+    }
+    .extract(&serialized, &[]);
 
     let (_, is_output_node) = serialized
         .nodes
