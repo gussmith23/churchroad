@@ -4,7 +4,7 @@ use std::{
     fmt::Write,
     fs,
     io::Write as IOWrite,
-    path::{Path, PathBuf},
+    path::{PathBuf},
     usize, vec,
 };
 
