@@ -1,15 +1,18 @@
 use std::collections::HashMap;
 use std::fs::create_dir_all;
+use std::io::{stdin, stdout, Write};
 use std::path::PathBuf;
 
+use churchroad::global_greedy_dag::GlobalGreedyDagExtractor;
 use churchroad::{
     call_lakeroad_on_primitive_interface_and_spec, find_primitive_interfaces_serialized,
-    find_spec_for_primitive_interface, from_verilog_file, node_to_string,
-    to_verilog_egraph_serialize, StructuralVerilogExtractor,
+    find_spec_for_primitive_interface_including_nodes, from_verilog_file, get_bitwidth_for_node,
+    get_inputs_and_outputs_serialized, node_to_string, to_verilog_egraph_serialize,
+    StructuralVerilogExtractor,
 };
 use clap::ValueHint::FilePath;
 use clap::{ArgAction, Parser, ValueEnum};
-use egglog::SerializeConfig;
+use egglog::{EGraph, SerializeConfig};
 use log::{debug, info, warn};
 use tempfile::NamedTempFile;
 
@@ -44,6 +47,22 @@ enum Architecture {
     XilinxUltrascalePlus,
 }
 
+/// Run commands to interact with the egraph.
+fn egraph_interact(egraph: &mut EGraph) {
+    loop {
+        print!("> ");
+        stdout().flush().unwrap();
+        let mut buf = String::new();
+        stdin().read_line(&mut buf).unwrap();
+        let out = egraph.parse_and_run_program(None, &buf);
+        if let Ok(out) = out {
+            println!("{}", out.join("\n"));
+        } else {
+            println!("Error: {:?}", out);
+        }
+    }
+}
+
 // TODO(@gussmith23): Seems redundant to do this; I think clap already does something like this under the hood.
 impl ToString for Architecture {
     fn to_string(&self) -> String {
@@ -68,6 +87,43 @@ fn main() {
     );
 
     info!("Loaded design into egraph.");
+
+    // Get initial input and output ports.
+    let outputs: Vec<_> = {
+        let serialized = egraph.serialize(SerializeConfig::default());
+        get_inputs_and_outputs_serialized(&serialized)
+            .1
+            .drain(..)
+            .map(|(output_name, class_id)| (egraph.class_id_to_value(&class_id), output_name))
+            .collect()
+    };
+
+    let output_names_and_bws: Vec<_> = {
+        let serialized = egraph.serialize(SerializeConfig::default());
+        get_inputs_and_outputs_serialized(&serialized)
+            .1
+            .drain(..)
+            .map(|(output_name, class_id)| {
+                (
+                    output_name,
+                    get_bitwidth_for_node(&serialized, &serialized[&class_id].nodes[0]).unwrap(),
+                )
+            })
+            .collect()
+    };
+    let input_names_and_bws: Vec<_> = {
+        let serialized = egraph.serialize(SerializeConfig::default());
+        get_inputs_and_outputs_serialized(&serialized)
+            .0
+            .drain(..)
+            .map(|(input_name, class_id)| {
+                (
+                    input_name,
+                    get_bitwidth_for_node(&serialized, &serialized[&class_id].nodes[0]).unwrap(),
+                )
+            })
+            .collect()
+    };
 
     if let Some(svg_dirpath) = &args.svg_dirpath {
         create_dir_all(svg_dirpath).unwrap();
@@ -101,23 +157,69 @@ fn main() {
     info!("Running rewrites.");
     egraph
         .parse_and_run_program(
+            None,
             r#"
         (ruleset mapping)
+        ;; TODO need to write a rewrite that deals with multiplying zero extended bvs
         (rule 
             ((= expr (Op2 (Mul) a b))
              (HasType expr (Bitvector n))
              (< n 18))
             ((union expr (PrimitiveInterfaceDSP a b)))
             :ruleset mapping)
+        ;; TODO bitwidths are hardcoded here
+        (rule 
+            ((= expr (Op2 (Mul) (Op1 (ZeroExtend ?n) ?a) (Op1 (ZeroExtend ?n) ?b)))
+             (HasType expr (Bitvector ?n))
+             (HasType ?a (Bitvector ?a-bw))
+             (HasType ?b (Bitvector ?b-bw))
+             (<= ?a-bw 16)
+             (<= ?b-bw 16)
+             (< ?n 36)
+             )
+            ((union expr (PrimitiveInterfaceDSP ?a ?b)))
+            :ruleset mapping)
+        (rule 
+            ((= expr (Op2 (Add) (Op2 (Mul) (Op1 (ZeroExtend ?n) ?a) (Op1 (ZeroExtend ?n) ?b)) ?c))
+             (HasType expr (Bitvector ?n))
+             (HasType ?a (Bitvector ?a-bw))
+             (HasType ?b (Bitvector ?b-bw))
+             (HasType ?c (Bitvector ?c-bw))
+             (<= ?a-bw 16)
+             (<= ?b-bw 16)
+             (<= ?c-bw 48)
+             (< ?n 36)
+             )
+            ((union expr (PrimitiveInterfaceDSP3 ?a ?b ?c)))
+            :ruleset mapping)
+        
+        (ruleset transform)
+        (rule
+            ((= expr (Op2 (Mul) (Op1 (ZeroExtend b-bw) a) b))
+             (HasType expr (Bitvector expr-bw))
+             (HasType a (Bitvector a-bw))
+             (HasType b (Bitvector b-bw))
+             (<= expr-bw 48)
+             (<= a-bw 16)
+             (<= b-bw 32)
+             (= 0 (% expr-bw 2)))
+            ((union 
+               expr 
+               (Op2 (Add)
+                (Op2 (Mul) (Op1 (ZeroExtend expr-bw) a) (Op1 (ZeroExtend expr-bw) (Op1 (Extract (- (/ expr-bw 2) 1) 0) b)))
+                (Op2 (Shl) (Op2 (Mul) (Op1 (ZeroExtend expr-bw) a) (Op1 (ZeroExtend expr-bw) (Op1 (Extract (- expr-bw 1) (/ expr-bw 2)) b))) (Op0 (BV (/ expr-bw 2) expr-bw))))))
+            :ruleset transform)
     "#,
         )
         .unwrap();
     egraph
-        .parse_and_run_program("(run-schedule (saturate typing))")
+        .parse_and_run_program(
+            None,
+            "(run-schedule (saturate (seq typing transform mapping)))",
+        )
         .unwrap();
-    egraph
-        .parse_and_run_program("(run-schedule (saturate mapping))")
-        .unwrap();
+
+    // egraph_interact(&mut egraph);
 
     // May need this rebuild. See
     // https://github.com/egraphs-good/egglog/pull/391
@@ -181,9 +283,15 @@ fn main() {
         // synthesis against. Given that solvers are strange and often benefit
         // from running in a portfolio, having many equivalent specs might
         // increase chances at synthesis termination.
-        let (spec_choices, spec_node_id) = find_spec_for_primitive_interface(
+        let (spec_choices, spec_node_id) = find_spec_for_primitive_interface_including_nodes(
             &serialized_egraph[sketch_template_node_id].eclass,
             &serialized_egraph,
+            // Use the children of the sketch template node as the required-to-be-extracted nodes.
+            serialized_egraph[sketch_template_node_id]
+                .children
+                .iter()
+                .cloned()
+                .collect(),
         );
 
         log::info!(
@@ -203,16 +311,28 @@ fn main() {
 
         log::debug!(
             "First few lines of commands generated from Lakeroad output:\n{}",
-            commands.lines().take(10).collect::<String>()
+            commands.lines().take(10).collect::<Vec<_>>().join("\n")
         );
 
         // STEP 5.3: Insert Lakeroad's results back into the egraph.
         // If Lakeroad finds a mapping, insert the mapping into the egraph.
         // If Lakeroad proves UNSAT, put some kind of marker into the egraph
         // to indicate that this mapping shouldn't be attempted again.
-        egraph.parse_and_run_program(&commands).unwrap();
+        egraph.parse_and_run_program(None, &commands).unwrap();
 
         info!("Inserted Lakeroad's results back into egraph.");
+
+        // Write out image if the user requested it.
+        if let Some(svg_dirpath) = &args.svg_dirpath {
+            let serialized = egraph.serialize_for_graphviz(true, usize::MAX, usize::MAX);
+            serialized
+                .to_svg_file(svg_dirpath.join("during_lakeroad.svg"))
+                .unwrap();
+            info!(
+                "Egraph after nth call to Lakeroad: {}",
+                svg_dirpath.join("during_lakeroad.svg").to_string_lossy()
+            );
+        }
     }
 
     // Write out image if the user requested it.
@@ -237,8 +357,23 @@ fn main() {
     // design.
 
     let serialized = egraph.serialize(SerializeConfig::default());
-    let choices = StructuralVerilogExtractor.extract(&serialized, &[]);
-    let verilog = to_verilog_egraph_serialize(&serialized, &choices, "clk");
+    let choices = GlobalGreedyDagExtractor.extract(&serialized, &[]);
+    let verilog = to_verilog_egraph_serialize(
+        &serialized,
+        &choices,
+        "clk",
+        [].into(),
+        // Use the original outputs as the outputs of the final design.
+        Some(
+            outputs
+                .iter()
+                .cloned()
+                .map(|(value, output_name)| {
+                    (egraph.value_to_class_id(&egraph.find(value)), output_name)
+                })
+                .collect(),
+        ),
+    );
 
     debug!("Final extracted Verilog:\n{}", &verilog);
 
@@ -301,25 +436,18 @@ fn main() {
             .arg(new_module_name)
             .arg("--ground_truth_module_name")
             .arg(args.top_module_name)
-            // TODO(@gussmith23): hardcoded.
-            .arg("--output_signal")
-            .arg({
-                warn!("hardcoded");
-                "out:16"
-            })
-            .arg("--input_signal")
-            .arg({
-                warn!("hardcoded");
-                "a:16"
-            })
-            .arg("--input_signal")
-            .arg({
-                warn!("hardcoded");
-                "b:16"
-            })
             .arg("--verilator_extra_arg")
             .arg(args.filepath)
             .args(args.simulate_with_verilator_arg);
+
+        for input in &input_names_and_bws {
+            cmd.arg("--input_signal")
+                .arg(format!("{}:{}", input.0, input.1));
+        }
+        for output in &output_names_and_bws {
+            cmd.arg("--output_signal")
+                .arg(format!("{}:{}", output.0, output.1));
+        }
 
         let output = cmd.output().unwrap();
 
