@@ -60,11 +60,11 @@ fn prep_interpreter(
     let mut egraph: EGraph = EGraph::default();
     import_churchroad(&mut egraph);
     egraph
-        .parse_and_run_program(&std::fs::read_to_string(churchroad_src_path).unwrap())
+        .parse_and_run_program(None, &std::fs::read_to_string(churchroad_src_path).unwrap())
         .unwrap();
 
     egraph
-        .parse_and_run_program("(run-schedule (saturate typing))")
+        .parse_and_run_program(None, "(run-schedule (saturate typing))")
         .unwrap();
 
     let serialized = egraph.serialize(SerializeConfig::default());
@@ -508,10 +508,10 @@ macro_rules! interpreter_test_churchroad {
             let mut egraph: EGraph = EGraph::default();
 
             import_churchroad(&mut egraph);
-            egraph.parse_and_run_program($churchroad_src).unwrap();
+            egraph.parse_and_run_program(None, $churchroad_src).unwrap();
 
             egraph
-                .parse_and_run_program("(run-schedule (saturate typing))")
+                .parse_and_run_program(None, "(run-schedule (saturate typing))")
                 .unwrap();
 
             let serialized = egraph.serialize(SerializeConfig::default());
