@@ -2,12 +2,16 @@
 
 use std::{fmt::Write, fs, io::Write as IOWrite, path::PathBuf, vec};
 
-use egraph_serialize::NodeId;
+use egraph_serialize::{ClassId, NodeId};
+use indexmap::IndexMap;
 use rand::{rngs::StdRng, RngCore, SeedableRng};
 
 use egglog::{EGraph, SerializeConfig};
 
-use churchroad::{get_bitwidth_for_node, import_churchroad, interpret, InterpreterResult};
+use churchroad::{
+    commands_from_verilog_file, get_bitwidth_for_node, global_greedy_dag::GlobalGreedyDagExtractor,
+    import_churchroad, interpret, InterpreterResult,
+};
 
 // Creates an EGraph from a Verilog file using Churchroad, and returns the serialized EGraph and the root node.
 fn prep_interpreter(
@@ -15,42 +19,20 @@ fn prep_interpreter(
     test_output_dir: PathBuf,
     top_module_name: &str,
     out: &str,
-) -> (egraph_serialize::EGraph, egraph_serialize::Node) {
+) -> (
+    egraph_serialize::EGraph,
+    IndexMap<ClassId, NodeId>,
+    egraph_serialize::Node,
+) {
     if std::env::var("CHURCHROAD_DIR").is_err() {
         panic!("Please set the CHURCHROAD_DIR environment variable!");
     }
 
-    let churchroad_dir_str: String = std::env::var("CHURCHROAD_DIR").unwrap();
-
-    let churchroad_yosys_dir =
-        std::path::Path::new(&churchroad_dir_str).join("yosys-plugin/churchroad.so");
-
     let churchroad_src_path = test_output_dir.join(format!("{}.egg", top_module_name));
+    let churchroad_commands =
+        commands_from_verilog_file(&module_verilog_path, top_module_name, true, true, [].into());
 
-    let yosys_commands = format!(
-        "read_verilog -sv {}; prep -top {}; pmuxtree; write_churchroad",
-        module_verilog_path.to_str().unwrap(),
-        top_module_name,
-    );
-
-    let yosys_proc = std::process::Command::new("yosys")
-        .arg("-m")
-        .arg(churchroad_yosys_dir)
-        .arg("-q")
-        .arg("-p")
-        .arg(yosys_commands)
-        .output();
-
-    let yosys_output = yosys_proc.unwrap();
-
-    if !yosys_output.status.success() {
-        panic!(
-            "Yosys failed, stderr: {:?}",
-            String::from_utf8(yosys_output.stderr)
-        );
-    }
-
-    std::fs::write(&churchroad_src_path, yosys_output.stdout).unwrap();
+    std::fs::write(&churchroad_src_path, churchroad_commands).unwrap();
     println!(
         "logged Churchroad source to: {}",
         churchroad_src_path.to_str().unwrap()
@@ -68,6 +50,8 @@ fn prep_interpreter(
         .unwrap();
 
     let serialized = egraph.serialize(SerializeConfig::default());
+
+    let choices = GlobalGreedyDagExtractor.extract(&serialized, &[]);
 
     let (_, is_output_node) = serialized
         .nodes
@@ -101,13 +85,15 @@ fn prep_interpreter(
     }
 
     let output_id = is_output_node.children.last().unwrap();
-    let (_, output_node) = serialized
+    let output_node = serialized
         .nodes
         .iter()
         .find(|(node_id, _)| **node_id == *output_id)
-        .unwrap();
+        .unwrap()
+        .1
+        .clone();
 
-    (serialized.clone(), output_node.clone())
+    (serialized, choices, output_node)
 }
 
 // TODO(@ninehusky): macroify this
@@ -214,7 +200,7 @@ fn verilator_vs_interpreter(
         })
         .collect();
 
-    let (serialized, root_node) = prep_interpreter(
+    let (serialized, choices, root_node) = prep_interpreter(
         verilog_module_path.clone(),
         test_output_dir.clone(),
         top_module_name,
@@ -241,7 +227,14 @@ fn verilator_vs_interpreter(
         // return streams, or we should be able to memoize some way. This just
         // redoes a bunch of work each call.
         for timestep in 0..num_clock_cycles {
-            let result = interpret(&serialized, &root_node.eclass, timestep, &env).unwrap();
+            let result = interpret(
+                &serialized,
+                &root_node.eclass,
+                timestep,
+                &env,
+                Some(&choices),
+            )
+            .unwrap();
             interpreter_results.push(result);
         }
     }
@@ -486,7 +479,7 @@ macro_rules! interpreter_test_verilog {
         $(#[$meta])*
         #[test]
         fn $test_name() {
-            let (serialized, root_node) = prep_interpreter(
+            let (serialized, choices, root_node) = prep_interpreter(
                 PathBuf::from($verilog_path),
                 std::env::temp_dir(),
                 $module_name,
@@ -495,7 +488,7 @@ macro_rules! interpreter_test_verilog {
 
             assert_eq!(
                 $expected,
-                interpret(&serialized, &root_node.eclass, $time, $env).unwrap()
+                interpret(&serialized, &root_node.eclass, $time, $env, Some(&choices)).unwrap()
             );
         }
     };
@@ -535,7 +528,7 @@ macro_rules! interpreter_test_churchroad {
                 .unwrap();
 
             let interpreter_result =
-                interpret(&serialized, &output_node.eclass, $time, $env).unwrap();
+                interpret(&serialized, &output_node.eclass, $time, $env, None).unwrap();
             assert_eq!(
                 $expected, interpreter_result,
                 "(left: expected, right: interpreter_result)"

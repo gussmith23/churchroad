@@ -2,7 +2,7 @@ pub mod global_greedy_dag;
 
 use egraph_serialize::{ClassId, Node, NodeId};
 use indexmap::IndexMap;
-use log::info;
+use log::{info, warn};
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -830,7 +830,7 @@ pub fn commands_from_verilog_file(
         .arg(logfile.path())
         .arg("-p")
         .arg(format!(
-            "read_verilog {path}; hierarchy {simcheck} -top {top_module_name}; write_churchroad -salt {salt} {let_bindings_flag} {port_union_flags}",
+            "read_verilog -sv {path}; hierarchy {simcheck} -top {top_module_name}; prep; write_churchroad -salt {salt} {let_bindings_flag} {port_union_flags}",
             path = verilog_filepath.to_str().unwrap(),
             simcheck = if simcheck { "-simcheck" } else { "" },
             salt = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos(),
@@ -913,9 +913,10 @@ pub fn interpret(
     class_id: &ClassId,
     time: usize,
     env: &HashMap<&str, Vec<u64>>,
+    choices: Option<&IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>>,
 ) -> Result<InterpreterResult, String> {
     let result = match egraph.classes().iter().find(|(id, _)| *id == class_id) {
-        Some((id, _)) => interpret_helper(egraph, id, time, env, &mut HashMap::default()),
+        Some((id, _)) => interpret_helper(egraph, id, time, env, &mut HashMap::default(), choices),
         None => return Err("No class with the given ID.".to_string()),
     };
 
@@ -962,20 +963,38 @@ fn interpret_helper(
     time: usize,
     env: &HashMap<&str, Vec<u64>>,
     cache: &mut HashMap<(ClassId, usize), InterpreterResult>,
+    choices: Option<&IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>>,
 ) -> Result<InterpreterResult, String> {
     if cache.contains_key(&(id.clone(), time)) {
         return Ok(cache[&(id.clone(), time)].clone());
     }
-    let node_ids = &egraph.classes().get(id).unwrap().nodes;
-    if node_ids.len() != 1 {
-        return Err(format!(
-            "There should be exactly one node in the class, but there are {}.",
-            node_ids.len()
-        ));
-    }
 
-    let node_id = node_ids.first().unwrap();
-    let node = egraph.nodes.get(node_id).unwrap();
+    // Get node.
+    let node_id = if let Some(choices) = choices {
+        choices.get(id).unwrap().to_owned()
+    } else {
+        let node_ids = egraph
+            .classes()
+            .get(id)
+            .unwrap()
+            .nodes
+            .iter().filter(|&node_id| egraph.nodes.get(node_id).unwrap().op != "Wire").cloned()
+            .collect::<Vec<_>>();
+        if node_ids.len() != 1 {
+            warn!(
+                "There is more than one node in the eclass. Will choose the first. Nodes:\n{}",
+                node_ids
+                    .iter()
+                    .map(|node_id| egraph.nodes.get(node_id).unwrap().op.clone())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+        }
+
+        node_ids.first().unwrap().to_owned()
+    };
+
+    let node = egraph.nodes.get(&node_id).unwrap();
 
     let result = match node.op.as_str() {
         "Var" => {
@@ -1006,7 +1025,7 @@ fn interpret_helper(
                 if time == 0 {
                     let clk = egraph.nodes.get(&node.children[1]).unwrap();
                     let InterpreterResult::Bitvector(curr_clk_val, _) =
-                        interpret_helper(egraph, &clk.eclass, time, env, cache).unwrap();
+                        interpret_helper(egraph, &clk.eclass, time, env, cache, choices).unwrap();
                     assert_eq!(
                         curr_clk_val, 0,
                         "We don't currently know what to do when clk=1 at time 0! See #88"
@@ -1019,15 +1038,16 @@ fn interpret_helper(
                 } else {
                     let clk = egraph.nodes.get(&node.children[1]).unwrap();
                     let InterpreterResult::Bitvector(prev_clk_val, _) =
-                        interpret_helper(egraph, &clk.eclass, time - 1, env, cache).unwrap();
+                        interpret_helper(egraph, &clk.eclass, time - 1, env, cache, choices)
+                            .unwrap();
                     let InterpreterResult::Bitvector(curr_clk_val, _) =
-                        interpret_helper(egraph, &clk.eclass, time, env, cache).unwrap();
+                        interpret_helper(egraph, &clk.eclass, time, env, cache, choices).unwrap();
 
                     if prev_clk_val == 0 && curr_clk_val == 1 {
                         let d = egraph.nodes.get(&node.children[2]).unwrap();
-                        return interpret_helper(egraph, &d.eclass, time - 1, env, cache);
+                        return interpret_helper(egraph, &d.eclass, time - 1, env, cache, choices);
                     } else {
-                        return interpret_helper(egraph, id, time - 1, env, cache);
+                        return interpret_helper(egraph, id, time - 1, env, cache, choices);
                     }
                 }
             }
@@ -1037,7 +1057,7 @@ fn interpret_helper(
                 .skip(1)
                 .map(|id| {
                     let child = egraph.nodes.get(id).unwrap();
-                    interpret_helper(egraph, &child.eclass, time, env, cache)
+                    interpret_helper(egraph, &child.eclass, time, env, cache, choices)
                 })
                 .collect();
 
@@ -1315,7 +1335,7 @@ pub fn to_verilog_egraph_serialize(
     // let mut wires = HashMap::default();
 
     fn id_to_wire_name(id: &ClassId) -> String {
-        format!("wire_{}", id.to_string().replace("-", "_"))
+        format!("wire_{}", id.to_string().replace('-', "_"))
     }
 
     struct ModuleInstance {
@@ -1736,7 +1756,7 @@ pub fn to_verilog_egraph_serialize(
                 if !module_instantiations.contains_key(module_class) {
                     module_instantiations.insert(module_class.clone(), ModuleInstance {
                         module_class_name: module_class_name.to_owned(),
-                        instance_name: format!("module_{}", module_class.to_string().replace("-", "_")),
+                        instance_name: format!("module_{}", module_class.to_string().replace('-', "_")),
                         parameters: parameter_names.into_iter().zip(parameter_exprs.into_iter()).collect(),
                         inputs: input_port_names.into_iter().zip(input_port_exprs.into_iter()).collect(),
                         outputs: [(output_name.to_owned(), term.eclass.clone())].into(),
@@ -3020,6 +3040,7 @@ mod tests {
                 (let placeholder (Wire "placeholder" 8))
                 (let reg (Op1 (Reg 0) placeholder))
                 (union placeholder reg)
+                (run-schedule (saturate typing))
                 (delete (Wire "placeholder" 8))
                 (IsPort "" "out" (Output) reg)
             "#,
@@ -3034,13 +3055,13 @@ mod tests {
             "module top(
   
   
-  output out,
+  output [8-1:0] out,
 );
-  logic out = wire_10;
-  logic wire_10 = 0;
+  assign out = wire_Expr_11;
+  logic [8-1:0] wire_Expr_11 = 0;
   
 always @(posedge clk) begin
-                            wire_10 <= wire_10;
+                            wire_Expr_11 <= wire_Expr_11;
                         end
 
 
@@ -3063,6 +3084,11 @@ endmodule",
                 (let b (Var "b" 8))
                 (IsPort "" "b" (Input) b)
                 (IsPort "" "out" (Output) (GetOutput (ModuleInstance "some_module" (StringCons "p" (StringNil)) (ExprCons (Op0 (BV 4 4)) (ExprNil)) (StringCons "a" (StringCons "b" (StringNil))) (ExprCons a (ExprCons b (ExprNil)))) "out"))
+
+                ; TODO(@gussmith23): Manually fixing #98 for now
+                (HasType (GetOutput (ModuleInstance "some_module" (StringCons "p" (StringNil)) (ExprCons (Op0 (BV 4 4)) (ExprNil)) (StringCons "a" (StringCons "b" (StringNil))) (ExprCons a (ExprCons b (ExprNil)))) "out")
+                         (Bitvector 8))
+
             "#,
             )
             .unwrap();
@@ -3076,21 +3102,21 @@ endmodule",
   input [8-1:0] a,
   input [8-1:0] b,
   
-  output out,
+  output [8-1:0] out,
 );
-  logic out = wire_27;
-  logic wire_27;
-  logic [4-1:0] wire_19 = 4'd4;
-  logic [8-1:0] wire_13 = b;
-  logic [8-1:0] wire_10 = a;
+  assign out = wire_Expr_28;
+  logic [8-1:0] wire_Expr_28;
+  localparam [4-1:0] wire_Expr_20 = 4'd4;
+  logic [8-1:0] wire_Expr_14 = b;
+  logic [8-1:0] wire_Expr_11 = a;
   
 
   some_module #(
-    .p(wire_19)
-) module_26 (
-    .a(wire_10),
-    .b(wire_13),
-    .out(wire_27));
+    .p(wire_Expr_20)
+) module_ModuleInstanceSort_27 (
+    .a(wire_Expr_11),
+    .b(wire_Expr_14),
+    .out(wire_Expr_28));
 endmodule",
             to_verilog_egraph_serialize(&serialized, &out, "", [].into(), None)
         );
