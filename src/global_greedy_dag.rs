@@ -202,7 +202,6 @@ impl GlobalGreedyDagExtractor {
                                     | "SignExtend"
                                     | "Shr"
                                     | "Shl"
-                                    | "Add"
                             )
                         }
                         _ => false,
