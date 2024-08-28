@@ -727,8 +727,13 @@ pub fn call_lakeroad_on_primitive_interface(term: &Term, term_dag: &TermDag) {
 pub fn call_lakeroad() {}
 
 /// ```
-/// let mut egraph = churchroad::from_verilog("module identity(input i, output o); assign o = i; endmodule", "identity");
-/// egraph.parse_and_run_program(r#"(check (IsPort "" "i" (Input) i) (IsPort "" "o" (Output) o) (= i o))"#);
+/// let mut egraph = churchroad::from_verilog(
+///     "module identity(input i, output o); assign o = i; endmodule", 
+///     "identity",
+///     true,
+///     true,
+///     [].into());
+/// egraph.parse_and_run_program(None, r#"(check (IsPort "" "i" (Input) i) (IsPort "" "o" (Output) o) (= i o))"#);
 /// ```
 pub fn from_verilog(
     verilog: &str,
@@ -866,7 +871,7 @@ pub enum InterpreterResult {
 /// use egraph_serialize::NodeId;
 /// let mut egraph = EGraph::default();
 /// import_churchroad(&mut egraph);
-/// egraph.parse_and_run_program(
+/// egraph.parse_and_run_program(None,
 /// r#"
 /// (let v0 (Wire "v0" 1))
 /// (let v1 (Wire "v1" 1))
@@ -902,7 +907,8 @@ pub enum InterpreterResult {
 ///     .unwrap();
 ///
 /// let result = interpret(&serialized, &output_node.eclass, 0,
-///     &[("a", vec![1]), ("b", vec![1])].into()
+///     &[("a", vec![1]), ("b", vec![1])].into(),
+///     None
 /// );
 ///
 /// assert_eq!(result, Ok(InterpreterResult::Bitvector(1, 1)));
@@ -2517,7 +2523,7 @@ type Ports = Vec<(String, ArcSort, Value)>;
 ///
 /// import_churchroad(&mut egraph);
 /// egraph
-///     .parse_and_run_program(
+///     .parse_and_run_program(None,
 ///         r#"
 /// ; wire declarations
 /// ; $and$<<EOF:2$1_Y
@@ -2661,7 +2667,7 @@ type PortsFromSerialized = Vec<(String, ClassId)>;
 /// let mut egraph = EGraph::default();
 /// import_churchroad(&mut egraph);
 /// egraph
-///     .parse_and_run_program(
+///     .parse_and_run_program(None,
 ///         r#"
 ///     ; wire declarations
 ///     ; $and$<<EOF:2$1_Y
