@@ -213,16 +213,10 @@ fn main() {
         )
         .unwrap();
     egraph
-        .parse_and_run_program(None, "(run-schedule (saturate typing))")
-        .unwrap();
-    egraph
-        .parse_and_run_program(None, "(run-schedule (saturate transform))")
-        .unwrap();
-    egraph
-        .parse_and_run_program(None, "(run-schedule (saturate typing))")
-        .unwrap();
-    egraph
-        .parse_and_run_program(None, "(run-schedule (saturate mapping))")
+        .parse_and_run_program(
+            None,
+            "(run-schedule (saturate (seq typing transform mapping)))",
+        )
         .unwrap();
 
     // egraph_interact(&mut egraph);
