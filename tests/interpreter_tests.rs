@@ -1,6 +1,12 @@
 // This file contains tests for the interpreter module.
 
-use std::{fmt::Write, fs, io::Write as IOWrite, path::PathBuf, vec};
+use std::{
+    fmt::Write,
+    fs,
+    io::Write as IOWrite,
+    path::{Path, PathBuf},
+    usize, vec,
+};
 
 use egraph_serialize::{ClassId, NodeId};
 use indexmap::IndexMap;
@@ -137,6 +143,11 @@ fn test_lut6_combinational_verilator() {
         std::env::temp_dir(),
         churchroad_dir
             .join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus/LUT6-modified.v"),
+        // Here we can use the choices produced by the extractor, as the design
+        // is acyclic. Furthermore, this test loops forever without using the
+        // extractor, as the interpreter makes a bad choice for one of the
+        // eclasses.
+        true,
     );
 }
 
@@ -170,9 +181,17 @@ fn test_counter_verilator() {
         include_dirs,
         std::env::temp_dir(),
         churchroad_dir.join("tests/interpreter_tests/verilog/toy_examples/counter.sv"),
+        // Must be false as the counter is cyclic. Here we just have to hope
+        // that the interpreter makes a sane choice.
+        false,
     );
 }
 
+/// - use_choices: whether to use the choices produced by our extractor when
+///   running the interpreter. The choices determine what node of each eclass
+///   should be interpreted. If false, the interpreter will make its own choice.
+///   NOTE: you should only set this to true if the design is not cyclic, as the
+///   extractor does not currently support cyclic designs.
 fn verilator_vs_interpreter(
     num_test_cases: usize,
     num_clock_cycles: usize,
@@ -183,6 +202,7 @@ fn verilator_vs_interpreter(
     include_dirs: Vec<PathBuf>,
     test_output_dir: PathBuf,
     verilog_module_path: PathBuf,
+    use_choices: bool,
 ) {
     // create seeded rng
     let mut rng = StdRng::seed_from_u64(0xb0bacafe);
@@ -237,7 +257,7 @@ fn verilator_vs_interpreter(
                 &root_node.eclass,
                 timestep,
                 &env,
-                Some(&choices),
+                if use_choices { Some(&choices) } else { None },
             )
             .unwrap();
             interpreter_results.push(result);
@@ -484,7 +504,7 @@ macro_rules! interpreter_test_verilog {
         $(#[$meta])*
         #[test]
         fn $test_name() {
-            let (serialized, choices, root_node) = prep_interpreter(
+            let (serialized, _choices, root_node) = prep_interpreter(
                 PathBuf::from($verilog_path),
                 std::env::temp_dir(),
                 $module_name,
@@ -493,7 +513,12 @@ macro_rules! interpreter_test_verilog {
 
             assert_eq!(
                 $expected,
-                interpret(&serialized, &root_node.eclass, $time, $env, Some(&choices)).unwrap()
+                // Note that we *may* need to start using _choices here, if we
+                // start hitting infinite loops because of bad choices of enode
+                // from eclass in the interpreter. However, in that case, we can
+                // only use choices if the design is acyclic. See the comment in
+                // the `verilator_vs_interpreter` function for more details.
+                interpret(&serialized, &root_node.eclass, $time, $env, None).unwrap()
             );
         }
     };
