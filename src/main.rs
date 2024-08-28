@@ -8,7 +8,6 @@ use churchroad::{
     call_lakeroad_on_primitive_interface_and_spec, find_primitive_interfaces_serialized,
     find_spec_for_primitive_interface_including_nodes, from_verilog_file, get_bitwidth_for_node,
     get_inputs_and_outputs_serialized, node_to_string, to_verilog_egraph_serialize,
-    StructuralVerilogExtractor,
 };
 use clap::ValueHint::FilePath;
 use clap::{ArgAction, Parser, ValueEnum};
@@ -357,7 +356,10 @@ fn main() {
     // design.
 
     let serialized = egraph.serialize(SerializeConfig::default());
-    let choices = GlobalGreedyDagExtractor.extract(&serialized, &[]);
+    let choices = GlobalGreedyDagExtractor {
+        structural_only: true,
+    }
+    .extract(&serialized, &[]);
     let verilog = to_verilog_egraph_serialize(
         &serialized,
         &choices,

@@ -156,7 +156,9 @@ impl TermDag {
     }
 }
 
-pub struct GlobalGreedyDagExtractor;
+pub struct GlobalGreedyDagExtractor {
+    pub structural_only: bool,
+}
 impl GlobalGreedyDagExtractor {
     pub fn extract(
         &self,
@@ -172,35 +174,39 @@ impl GlobalGreedyDagExtractor {
         let mut i = 0;
         while keep_going {
             i += 1;
-            println!("iteration {}", i);
             keep_going = false;
 
             'node_loop: for (node_id, node) in &nodes {
                 // NOTE: This is the only modification we made to make this work
                 // with churchroad. Could find a different way to do this.
+                //
+                // Always exclude certain nodes that are always unwanted.
                 if node.op == "Wire"
                     || node.op == "PrimitiveInterfaceDSP"
                     || node.op == "PrimitiveInterfaceDSP3"
                 {
                     continue 'node_loop;
                 }
-                if match node.op.as_str() {
-                    "Op0" | "Op1" | "Op2" | "Op3" => {
-                        let op_name = &egraph[node_id].children[0];
-                        !matches!(
-                            egraph[op_name].op.as_str(),
-                            "Extract"
-                                | "Concat"
-                                | "BV"
-                                | "CRString"
-                                | "ZeroExtend"
-                                | "SignExtend"
-                                | "Shr"
-                                | "Shl"
-                        )
+                // Sometimes exclude nodes that are only structural, if the user wants.
+                if self.structural_only
+                    && match node.op.as_str() {
+                        "Op0" | "Op1" | "Op2" | "Op3" => {
+                            let op_name = &egraph[node_id].children[0];
+                            !matches!(
+                                egraph[op_name].op.as_str(),
+                                "Extract"
+                                    | "Concat"
+                                    | "BV"
+                                    | "CRString"
+                                    | "ZeroExtend"
+                                    | "SignExtend"
+                                    | "Shr"
+                                    | "Shl"
+                            )
+                        }
+                        _ => false,
                     }
-                    _ => false,
-                } {
+                {
                     continue 'node_loop;
                 }
 
