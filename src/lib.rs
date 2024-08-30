@@ -728,7 +728,7 @@ pub fn call_lakeroad() {}
 
 /// ```
 /// let mut egraph = churchroad::from_verilog(
-///     "module identity(input i, output o); assign o = i; endmodule", 
+///     "module identity(input i, output o); assign o = i; endmodule",
 ///     "identity",
 ///     true,
 ///     true,
@@ -984,7 +984,9 @@ fn interpret_helper(
             .get(id)
             .unwrap()
             .nodes
-            .iter().filter(|&node_id| egraph.nodes.get(node_id).unwrap().op != "Wire").cloned()
+            .iter()
+            .filter(|&node_id| egraph.nodes.get(node_id).unwrap().op != "Wire")
+            .cloned()
             .collect::<Vec<_>>();
         if node_ids.len() != 1 {
             warn!(
