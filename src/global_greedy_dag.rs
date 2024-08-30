@@ -9,7 +9,7 @@ use super::*;
 
 type TermId = usize;
 
-pub const INFINITY: Cost = unsafe { NotNan::new_unchecked(std::f64::INFINITY) };
+pub const INFINITY: Cost = unsafe { NotNan::new_unchecked(f64::INFINITY) };
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Term {
@@ -171,9 +171,7 @@ impl GlobalGreedyDagExtractor {
         let mut termdag = TermDag::default();
         let mut best_in_class: HashMap<ClassId, TermId> = HashMap::default();
 
-        let mut i = 0;
         while keep_going {
-            i += 1;
             keep_going = false;
 
             'node_loop: for (node_id, node) in &nodes {

@@ -1,12 +1,6 @@
 // This file contains tests for the interpreter module.
 
-use std::{
-    fmt::Write,
-    fs,
-    io::Write as IOWrite,
-    path::{Path, PathBuf},
-    usize, vec,
-};
+use std::{fmt::Write, fs, io::Write as IOWrite, path::PathBuf, usize, vec};
 
 use egraph_serialize::{ClassId, NodeId};
 use indexmap::IndexMap;

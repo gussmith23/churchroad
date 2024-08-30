@@ -47,7 +47,7 @@ enum Architecture {
 }
 
 /// Run commands to interact with the egraph.
-fn egraph_interact(egraph: &mut EGraph) {
+fn _egraph_interact(egraph: &mut EGraph) {
     loop {
         print!("> ");
         stdout().flush().unwrap();
