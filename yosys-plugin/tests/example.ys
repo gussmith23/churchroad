@@ -9,9 +9,6 @@ endmodule
 EOF
 
 write_churchroad
-# Write output to file.egg
-write_churchroad file.egg
-!rm file.egg
 
 # CHECK: (let v0 (Wire "v0" 2))
 # CHECK: (let v1 (Wire "v1" 2))
