@@ -51,17 +51,6 @@ RUN apt install -y \
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:$PATH"
 
-# Build Rust package.
-WORKDIR /root/churchroad
-# ADD has weird behavior when it comes to directories. That's why we need so
-# many ADDs.
-ADD egglog_src egglog_src
-ADD src src
-ADD tests tests
-ADD Cargo.toml Cargo.toml
-ADD Cargo.lock Cargo.lock
-RUN cargo build
-
 # Build Yosys.
 WORKDIR /root
 ARG MAKE_JOBS=2
@@ -75,11 +64,6 @@ RUN source /root/dependencies.sh \
 
 # Add /root/.local/bin to PATH.
 ENV PATH="/root/.local/bin:$PATH"
-
-# Build Yosys plugin.
-WORKDIR /root/churchroad/yosys-plugin
-ADD yosys-plugin .
-RUN make -j ${MAKE_JOBS}
 
 # Make a binary for `lit`. If you're on Mac, you can install lit via Brew.
 # Ubuntu doesn't have a binary for it, but it is available on pip and is
@@ -115,6 +99,23 @@ RUN apt install -y help2man && source /root/dependencies.sh \
   && cd .. \
   && rm -rf verilator
  
+# Build Rust package. This should be as far down as it can be, as it'll change
+# frequently.
+WORKDIR /root/churchroad
+# ADD has weird behavior when it comes to directories. That's why we need so
+# many ADDs.
+ADD egglog_src egglog_src
+ADD src src
+ADD tests tests
+ADD Cargo.toml Cargo.toml
+ADD Cargo.lock Cargo.lock
+RUN cargo build
+
+# Build Yosys plugin.
+WORKDIR /root/churchroad/yosys-plugin
+ADD yosys-plugin .
+RUN make -j ${MAKE_JOBS}
+
 
 # Add other Churchroad files. It's useful to put this as far down as possible.
 # In general, only ADD files just before they're needed. This maximizes the
