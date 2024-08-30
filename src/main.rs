@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::fs::create_dir_all;
 use std::io::{stdin, stdout, Write};
 use std::path::PathBuf;
@@ -63,10 +64,10 @@ fn _egraph_interact(egraph: &mut EGraph) {
 }
 
 // TODO(@gussmith23): Seems redundant to do this; I think clap already does something like this under the hood.
-impl ToString for Architecture {
-    fn to_string(&self) -> String {
+impl Display for Architecture {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Architecture::XilinxUltrascalePlus => "xilinx-ultrascale-plus".to_owned(),
+            Architecture::XilinxUltrascalePlus => f.write_str("xilinx-ultrascale-plus"),
         }
     }
 }
