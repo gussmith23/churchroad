@@ -49,7 +49,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        submodules: recursive
+        with:
+          submodules: recursive
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
