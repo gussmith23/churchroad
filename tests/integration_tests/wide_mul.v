@@ -2,6 +2,7 @@
 // RUN:   --filepath %s \
 // RUN:   --top-module-name mul \
 // RUN:   --architecture xilinx-ultrascale-plus \
+// RUN:   --svg-dirpath wide_mul_svgs \
 // RUN:   --simulate \
 // RUN:   --simulate-with-verilator-arg="--verilator_include_dir=$LAKEROAD_DIR/lakeroad-private/DSP48E2" \
 // RUN:   --simulate-with-verilator-arg="--verilator_extra_arg=-DXIL_XECLIB" \
@@ -13,6 +14,7 @@
 // RUN:   --simulate-with-verilator-arg="--verilator_extra_arg=-Wno-CASEX" \
 // RUN:   --simulate-with-verilator-arg="--verilator_extra_arg=-Wno-TIMESCALEMOD" \
 // RUN:   --simulate-with-verilator-arg="--verilator_extra_arg=-Wno-PINMISSING" \
+// RUN:   --simulate-with-verilator-arg="--testbench_stdout_log_filepath=tmp.txt" \
 // RUN: | FileCheck %s
 
 module mul(input [15:0] a, input [31:0] b, output [31:0] out);

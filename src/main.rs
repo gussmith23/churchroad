@@ -234,7 +234,28 @@ fn main() {
                  ; TODO hardcoded shift amount
                  (Op0 (BV 16 ?expr-bw))))))
             :ruleset transform)
-    "#,
+
+        ; Discover the "interesting" parts of bitvectors---basically, the parts
+        ; that are not just zero-extension or sign-extension bits.
+        (relation RealBitwidth (Expr i64))
+        (rule
+            ((= ?extended (Op1 (ZeroExtend ?n) ?expr))
+             ; This is already known based on the ops above, but good for sanity
+             ; checking.
+             (HasType ?extended (Bitvector ?n))
+             (HasType ?expr (Bitvector ?m)))
+            ((RealBitwidth ?expr ?m))
+            :ruleset typing)
+        (rule
+            ((= ?extended (Op1 (SignExtend ?n) ?expr))
+             ; This is already known based on the ops above, but good for sanity
+             ; checking.
+             (HasType ?extended (Bitvector ?n))
+             (HasType ?expr (Bitvector ?m)))
+            ((RealBitwidth ?expr ?m))
+            :ruleset typing)
+
+   "#,
         )
         .unwrap();
     egraph

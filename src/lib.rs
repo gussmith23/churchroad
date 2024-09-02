@@ -3097,6 +3097,7 @@ endmodule",
                 (HasType (GetOutput (ModuleInstance "some_module" (StringCons "p" (StringNil)) (ExprCons (Op0 (BV 4 4)) (ExprNil)) (StringCons "a" (StringCons "b" (StringNil))) (ExprCons a (ExprCons b (ExprNil)))) "out")
                          (Bitvector 8))
 
+                (run-schedule (saturate typing))
             "#,
             )
             .unwrap();
