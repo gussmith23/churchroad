@@ -1,3 +1,4 @@
+use core::panic;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fs::create_dir_all;
@@ -360,7 +361,10 @@ fn main() {
     let choices = GlobalGreedyDagExtractor {
         structural_only: true,
     }
-    .extract(&serialized, &[]);
+    .extract(&serialized, &[])
+    .unwrap_or_else(|e| {
+        panic!("Failed to extract design: {}", e);
+    });
     let verilog = to_verilog_egraph_serialize(
         &serialized,
         &choices,

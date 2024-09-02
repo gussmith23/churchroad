@@ -2,6 +2,7 @@
 use std::iter;
 
 use egraph_serialize::Cost;
+use log::debug;
 use ordered_float::NotNan;
 use rpds::HashTrieSet;
 
@@ -63,7 +64,14 @@ impl TermDag {
             return Some(*id);
         }
 
-        let node_cost = node.cost;
+        // NOTE: This is the only modification we made to make this work with
+        // churchroad. Could find a different way to do this.
+        let node_cost = match node.op.as_str() {
+            "Wire" | "And" | "Add" | "Sub" | "Mul" | "Or" | "Xor" | "Shr" | "Shl" | "Eq" | "Ne"
+            | "Not" | "ReduceOr" | "ReduceAnd" | "ReduceXor" | "LogicNot" | "LogicAnd"
+            | "LogicOr" | "Mux" => NotNan::new(f64::INFINITY).unwrap(),
+            _ => node.cost,
+        };
 
         if children.is_empty() {
             let next_id = self.nodes.len();
@@ -164,7 +172,7 @@ impl GlobalGreedyDagExtractor {
         &self,
         egraph: &egraph_serialize::EGraph,
         _roots: &[ClassId],
-    ) -> IndexMap<ClassId, NodeId> {
+    ) -> Result<IndexMap<ClassId, NodeId>, String> {
         let mut keep_going = true;
 
         let nodes = egraph.nodes.clone();
@@ -175,38 +183,38 @@ impl GlobalGreedyDagExtractor {
             keep_going = false;
 
             'node_loop: for (node_id, node) in &nodes {
-                // NOTE: This is the only modification we made to make this work
-                // with churchroad. Could find a different way to do this.
-                //
-                // Always exclude certain nodes that are always unwanted.
-                if node.op == "Wire"
-                    || node.op == "PrimitiveInterfaceDSP"
-                    || node.op == "PrimitiveInterfaceDSP3"
-                {
-                    continue 'node_loop;
-                }
-                // Sometimes exclude nodes that are only structural, if the user wants.
-                if self.structural_only
-                    && match node.op.as_str() {
-                        "Op0" | "Op1" | "Op2" | "Op3" => {
-                            let op_name = &egraph[node_id].children[0];
-                            !matches!(
-                                egraph[op_name].op.as_str(),
-                                "Extract"
-                                    | "Concat"
-                                    | "BV"
-                                    | "CRString"
-                                    | "ZeroExtend"
-                                    | "SignExtend"
-                                    | "Shr"
-                                    | "Shl"
-                            )
-                        }
-                        _ => false,
-                    }
-                {
-                    continue 'node_loop;
-                }
+                // // NOTE: This is the only modification we made to make this work
+                // // with churchroad. Could find a different way to do this.
+                // //
+                // // Always exclude certain nodes that are always unwanted.
+                // if node.op == "Wire"
+                //     || node.op == "PrimitiveInterfaceDSP"
+                //     || node.op == "PrimitiveInterfaceDSP3"
+                // {
+                //     continue 'node_loop;
+                // }
+                // // Sometimes exclude nodes that are only structural, if the user wants.
+                // if self.structural_only
+                //     && match node.op.as_str() {
+                //         "Op0" | "Op1" | "Op2" | "Op3" => {
+                //             let op_name = &egraph[node_id].children[0];
+                //             !matches!(
+                //                 egraph[op_name].op.as_str(),
+                //                 "Extract"
+                //                     | "Concat"
+                //                     | "BV"
+                //                     | "CRString"
+                //                     | "ZeroExtend"
+                //                     | "SignExtend"
+                //                     | "Shr"
+                //                     | "Shl"
+                //             )
+                //         }
+                //         _ => false,
+                //     }
+                // {
+                //     continue 'node_loop;
+                // }
 
                 let mut children: Vec<TermId> = vec![];
                 // compute the cost set from the children
@@ -215,6 +223,10 @@ impl GlobalGreedyDagExtractor {
                     if let Some(best) = best_in_class.get(child_cid) {
                         children.push(*best);
                     } else {
+                        debug!(
+                            "Skipping node {} (class {}) because child {} (class {}) is missing",
+                            node_id, node.eclass, child, child_cid
+                        );
                         continue 'node_loop;
                     }
                 }
@@ -230,6 +242,10 @@ impl GlobalGreedyDagExtractor {
                     if cadidate_cost < old_cost {
                         best_in_class.insert(node.eclass.clone(), candidate);
                         keep_going = true;
+                        debug!(
+                            "Node {} (class {}) cost {} -> {}",
+                            node_id, node.eclass, old_cost, cadidate_cost
+                        );
                     }
                 }
             }
@@ -239,6 +255,24 @@ impl GlobalGreedyDagExtractor {
         for (class, term) in best_in_class {
             result.insert(class, termdag.info[term].node.clone());
         }
-        result
+
+        let missing = egraph
+            .classes()
+            .iter()
+            .filter(|&(cid, _)| !result.contains_key(cid))
+            .collect::<Vec<_>>();
+
+        if missing.is_empty() {
+            Ok(result)
+        } else {
+            Err(
+                "Not all classes were able to be extracted. Missing classes: ".to_string()
+                    + &missing
+                        .iter()
+                        .map(|(cid, _)| format!("{:?}", cid))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+            )
+        }
     }
 }
