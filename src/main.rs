@@ -431,7 +431,7 @@ fn main() {
                 .expect("LAKEROAD_DIR environment variable should be set."),
         );
 
-        let mut cmd = std::process::Command::new("python");
+        let mut cmd = std::process::Command::new("python3");
         cmd.arg(lakeroad_dir.join("bin").join("simulate_with_verilator.py"))
             .arg("--verilog_filepath")
             .arg(verilog_file.path())
