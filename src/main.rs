@@ -210,6 +210,30 @@ fn main() {
                 (Op2 (Mul) (Op1 (ZeroExtend expr-bw) a) (Op1 (ZeroExtend expr-bw) (Op1 (Extract (- (/ expr-bw 2) 1) 0) b)))
                 (Op2 (Shl) (Op2 (Mul) (Op1 (ZeroExtend expr-bw) a) (Op1 (ZeroExtend expr-bw) (Op1 (Extract (- expr-bw 1) (/ expr-bw 2)) b))) (Op0 (BV (/ expr-bw 2) expr-bw))))))
             :ruleset transform)
+        
+        ; General mul splitting rewrite
+        ; TODO there's gotta be things wrong here w/ sign vs zero extend
+        ; TODO This is buggy, keeps running forever
+        (rule
+            ((= ?expr (Op2 (Mul) ?a ?b))
+             (HasType ?expr (Bitvector ?expr-bw))
+             ; TODO hardcoded bitwidth
+             (> ?expr-bw 16))
+            ((union 
+               ?expr 
+               (Op2 (Add)
+                (Op2 (Mul) 
+                 ?a
+                 ; TODO hardcoded extraction width
+                 (Op1 (ZeroExtend ?expr-bw) (Op1 (Extract 15 0) ?b)))
+                (Op2 (Shl) 
+                 (Op2 (Mul) 
+                  ?a
+                  ; TODO hardcoded extraction width
+                  (Op1 (ZeroExtend ?expr-bw) (Op1 (Extract (- ?expr-bw 1) 16) ?b)))
+                 ; TODO hardcoded shift amount
+                 (Op0 (BV 16 ?expr-bw))))))
+            :ruleset transform)
     "#,
         )
         .unwrap();
@@ -219,8 +243,6 @@ fn main() {
             "(run-schedule (saturate (seq typing transform mapping)))",
         )
         .unwrap();
-
-    // egraph_interact(&mut egraph);
 
     // May need this rebuild. See
     // https://github.com/egraphs-good/egglog/pull/391
@@ -237,6 +259,8 @@ fn main() {
             svg_dirpath.join("after_rewrites.svg").to_string_lossy()
         );
     }
+
+    _egraph_interact(&mut egraph);
 
     let serialized_egraph = egraph.serialize(SerializeConfig::default());
 
