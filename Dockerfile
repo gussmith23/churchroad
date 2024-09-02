@@ -5,9 +5,11 @@ FROM ubuntu:22.04
 ARG MAKE_JOBS=2
 SHELL ["/bin/bash", "-c"] 
 
-# Update, get add-apt-repository.
+# Update, get add-apt-repository, add PPA for Racket, update again.
 RUN apt update \
-  &&  apt install -y software-properties-common
+  &&  apt install -y software-properties-common \
+  &&  add-apt-repository ppa:plt/racket \
+  && apt update
 
 # Install apt dependencies
 # `noninteractive` prevents the tzdata package from asking for a timezone on the
@@ -51,17 +53,6 @@ RUN apt install -y \
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:$PATH"
 
-# Build Rust package.
-WORKDIR /root/churchroad
-# ADD has weird behavior when it comes to directories. That's why we need so
-# many ADDs.
-ADD egglog_src egglog_src
-ADD src src
-ADD tests tests
-ADD Cargo.toml Cargo.toml
-ADD Cargo.lock Cargo.lock
-RUN cargo build
-
 # Build Yosys.
 WORKDIR /root
 ARG MAKE_JOBS=2
@@ -75,11 +66,6 @@ RUN source /root/dependencies.sh \
 
 # Add /root/.local/bin to PATH.
 ENV PATH="/root/.local/bin:$PATH"
-
-# Build Yosys plugin.
-WORKDIR /root/churchroad/yosys-plugin
-ADD yosys-plugin .
-RUN make -j ${MAKE_JOBS}
 
 # Make a binary for `lit`. If you're on Mac, you can install lit via Brew.
 # Ubuntu doesn't have a binary for it, but it is available on pip and is
@@ -115,6 +101,23 @@ RUN apt install -y help2man && source /root/dependencies.sh \
   && cd .. \
   && rm -rf verilator
  
+# Build Rust package. This should be as far down as it can be, as it'll change
+# frequently.
+WORKDIR /root/churchroad
+# ADD has weird behavior when it comes to directories. That's why we need so
+# many ADDs.
+ADD egglog_src egglog_src
+ADD src src
+ADD tests tests
+ADD Cargo.toml Cargo.toml
+ADD Cargo.lock Cargo.lock
+RUN cargo build
+
+# Build Yosys plugin.
+WORKDIR /root/churchroad/yosys-plugin
+ADD yosys-plugin .
+RUN make -j ${MAKE_JOBS}
+
 
 # Add other Churchroad files. It's useful to put this as far down as possible.
 # In general, only ADD files just before they're needed. This maximizes the
@@ -126,6 +129,89 @@ RUN apt install -y help2man && source /root/dependencies.sh \
 # wanted, but I think this is a clean approach for now.
 WORKDIR /root/churchroad
 ADD --keep-git-dir=false . .
+
+# Add Lakeroad.
+WORKDIR /root
+ADD lakeroad lakeroad
+ENV LAKEROAD_DIR=/root/lakeroad
+
+# Build Bitwuzla.
+WORKDIR /root
+RUN source $LAKEROAD_DIR/dependencies.sh \
+  && mkdir bitwuzla \
+  && wget -qO- https://github.com/bitwuzla/bitwuzla/archive/$BITWUZLA_COMMIT_HASH.tar.gz | tar xz -C bitwuzla --strip-components=1 \
+  && cd bitwuzla \
+  && ./configure.py --prefix=/root/.local \
+  && cd build \
+  && ninja -j${MAKE_JOBS} \
+  && ninja install \
+  && rm -rf /root/bitwuzla
+
+# Install raco (Racket) dependencies. 
+WORKDIR /root
+RUN \
+  # First, fix https://github.com/racket/racket/issues/2691 by building the
+  # docs.
+  raco setup --doc-index --force-user-docs \
+  # Install packages.
+  && raco pkg install --deps search-auto --batch \
+  rosette \
+  yaml \
+  # Install fmt directly from GitHub. This prevents the version from changing on
+  # us unexpectedly.
+  && cd /root \
+  && git clone https://github.com/sorawee/fmt \
+  && cd fmt \
+  && source $LAKEROAD_DIR/dependencies.sh \
+  && git checkout $RACKET_FMT_COMMIT_HASH \
+  && raco pkg install --deps search-auto --batch
+
+# Build STP.
+WORKDIR /root
+RUN apt-get install -y git cmake bison flex libboost-all-dev python2 perl && \
+  source $LAKEROAD_DIR/dependencies.sh && \
+  mkdir stp && cd stp && \
+  wget -qO- https://github.com/$STP_USER_AND_REPO/archive/$STP_COMMIT_HASH.tar.gz | tar xz --strip-components=1 && \
+  ./scripts/deps/setup-gtest.sh && \
+  ./scripts/deps/setup-outputcheck.sh && \
+  ./scripts/deps/setup-cms.sh && \
+  ./scripts/deps/setup-minisat.sh && \
+  mkdir build && \
+  cd build && \
+  cmake .. -DCMAKE_INSTALL_PREFIX=/root/.local && \
+  make -j ${MAKE_JOBS}
+# TODO(@gussmith23): Install and delete folder once
+# https://github.com/stp/stp/issues/479 is fixed.
+# make install && \
+# rm -rf /root/stp
+# And after that we also don't need to add STP to the path.
+ENV PATH="/root/stp/build:${PATH}"
+# TODO(@gussmith23): We shouldn't need this once https://github.com/stp/stp/issues/481 is fixed or https://github.com/stp/stp/pull/482 works correctly.
+ENV LD_LIBRARY_PATH="/root/stp/deps/cadical/build:/root/stp/deps/cadiback/:$LD_LIBRARY_PATH"
+
+# Build CVC5.
+RUN source $LAKEROAD_DIR/dependencies.sh \
+  && mkdir cvc5 && cd cvc5 \
+  && wget -qO- https://github.com/cvc5/cvc5/archive/$CVC5_COMMIT_HASH.tar.gz  | tar xz --strip-components=1 \
+  && ./configure.sh --prefix="/root/.local"  --auto-download \
+  && cd ./build \
+  && make -j ${MAKE_JOBS} \
+  && make -j ${MAKE_JOBS} install \
+  && rm -rf /root/cvc5
+
+# Build Yices2.
+RUN source $LAKEROAD_DIR/dependencies.sh \
+  && apt-get install -y gperf \
+  && mkdir yices2 && cd yices2 \
+  && wget -qO- https://github.com/SRI-CSL/yices2/archive/$YICES2_COMMIT_HASH.tar.gz | tar xz --strip-components=1 \
+  && autoconf \
+  && ./configure --prefix="/root/.local" \
+  && make -j ${MAKE_JOBS} \
+  && make -j ${MAKE_JOBS} install \
+  && rm -rf /root/yices2
+
+# Build Racket bytecode; makes Lakeroad much faster.
+RUN raco make $LAKEROAD_DIR/bin/main.rkt
 
 WORKDIR /root/churchroad
 ADD fmt.sh run-tests.sh ./

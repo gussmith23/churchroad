@@ -2,10 +2,8 @@
 // RUN:   --filepath %s \
 // RUN:   --top-module-name mul \
 // RUN:   --architecture xilinx-ultrascale-plus \
-// RUN:   --svg-dirpath simple_mul_svgs \
 // RUN:   --simulate \
-// TODO Hardcoded
-// RUN:   --simulate-with-verilator-arg="--verilator_include_dir=/Users/gus/lakeroad-private/DSP48E2" \
+// RUN:   --simulate-with-verilator-arg="--verilator_include_dir=$LAKEROAD_DIR/lakeroad-private/DSP48E2" \
 // RUN:   --simulate-with-verilator-arg="--verilator_extra_arg=-DXIL_XECLIB" \
 // RUN:   --simulate-with-verilator-arg="--verilator_extra_arg=-Wno-UNOPTFLAT" \
 // RUN:   --simulate-with-verilator-arg="--verilator_extra_arg=-Wno-COMBDLY" \
@@ -15,7 +13,6 @@
 // RUN:   --simulate-with-verilator-arg="--verilator_extra_arg=-Wno-CASEX" \
 // RUN:   --simulate-with-verilator-arg="--verilator_extra_arg=-Wno-TIMESCALEMOD" \
 // RUN:   --simulate-with-verilator-arg="--verilator_extra_arg=-Wno-PINMISSING" \
-// RUN:   --simulate-with-verilator-arg="--testbench_stdout_log_filepath=tmp.txt" \
 // RUN: | FileCheck %s
 
 module mul(input [15:0] a, b, output [15:0] out);
