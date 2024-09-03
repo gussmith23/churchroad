@@ -394,8 +394,6 @@ fn main() {
         // );
     }
 
-    // _egraph_interact(&mut egraph);
-
     let serialized_egraph = egraph.serialize(SerializeConfig::default());
 
     // STEP 3: Collect all proposed mappings.
@@ -418,6 +416,8 @@ fn main() {
         "Found {} potential mappings; running Lakeroad on each.",
         node_ids.len()
     );
+
+    // _egraph_interact(&mut egraph);
 
     // STEP 5: For each proposed mapping, attempt synthesis with Lakeroad.
     for sketch_template_node_id in &node_ids {
