@@ -67,9 +67,13 @@ impl TermDag {
         // NOTE: This is the only modification we made to make this work with
         // churchroad. Could find a different way to do this.
         let node_cost = match node.op.as_str() {
-            "Wire" | "And" | "Add" | "Sub" | "Mul" | "Or" | "Xor" | "Shr" | "Shl" | "Eq" | "Ne"
-            | "Not" | "ReduceOr" | "ReduceAnd" | "ReduceXor" | "LogicNot" | "LogicAnd"
-            | "LogicOr" | "Mux" => NotNan::new(f64::INFINITY).unwrap(),
+            "Wire" => INFINITY,
+            "Shr" | "Shl" => {
+                warn!("Shr and Shl probably shouldn't be extractable");
+                10000.into()
+            }
+            "And" | "Add" | "Sub" | "Mul" | "Or" | "Xor" | "Eq" | "Ne" | "Not" | "ReduceOr"
+            | "ReduceAnd" | "ReduceXor" | "LogicNot" | "LogicAnd" | "LogicOr" | "Mux" => INFINITY,
             _ => node.cost,
         };
 
