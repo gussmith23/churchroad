@@ -251,24 +251,24 @@ fn main() {
              (<= ?c-bw 48)
              (< ?n 36)
              )
-            ((union expr (PrimitiveInterfaceDSP3 ?a ?b ?c)))
+            ((union ?expr (PrimitiveInterfaceDSP3 ?a ?b ?c)))
             :ruleset mapping)
         
         (ruleset transform)
         (rule
-            ((= expr (Op2 (Mul) (Op1 (ZeroExtend b-bw) a) b))
-             (HasType expr (Bitvector expr-bw))
+            ((= ?expr (Op2 (Mul) (Op1 (ZeroExtend b-bw) a) b))
+             (HasType ?expr (Bitvector ?expr-bw))
              (HasType a (Bitvector a-bw))
              (HasType b (Bitvector b-bw))
-             (<= expr-bw 48)
+             (<= ?expr-bw 48)
              (<= a-bw 16)
              (<= b-bw 32)
-             (= 0 (% expr-bw 2)))
+             (= 0 (% ?expr-bw 2)))
             ((union 
-               expr 
+               ?expr 
                (Op2 (Add)
-                (Op2 (Mul) (Op1 (ZeroExtend expr-bw) a) (Op1 (ZeroExtend expr-bw) (Op1 (Extract (- (/ expr-bw 2) 1) 0) b)))
-                (Op2 (Shl) (Op2 (Mul) (Op1 (ZeroExtend expr-bw) a) (Op1 (ZeroExtend expr-bw) (Op1 (Extract (- expr-bw 1) (/ expr-bw 2)) b))) (Op0 (BV (/ expr-bw 2) expr-bw))))))
+                (Op2 (Mul) (Op1 (ZeroExtend ?expr-bw) a) (Op1 (ZeroExtend ?expr-bw) (Op1 (Extract (- (/ ?expr-bw 2) 1) 0) b)))
+                (Op2 (Shl) (Op2 (Mul) (Op1 (ZeroExtend ?expr-bw) a) (Op1 (ZeroExtend ?expr-bw) (Op1 (Extract (- ?expr-bw 1) (/ ?expr-bw 2)) b))) (Op0 (BV (/ ?expr-bw 2) ?expr-bw))))))
             :ruleset transform)
 
         ; General mul splitting rewrite
