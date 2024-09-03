@@ -204,10 +204,10 @@ fn main() {
         (ruleset mapping)
         ;; TODO need to write a rewrite that deals with multiplying zero extended bvs
         (rule 
-            ((= expr (Op2 (Mul) a b))
-             (HasType expr (Bitvector n))
-             (< n 18))
-            ((union expr (PrimitiveInterfaceDSP a b)))
+            ((= ?expr (Op2 (Mul) ?a ?b))
+             (HasType ?expr (Bitvector ?n))
+             (< ?n 18))
+            ((union ?expr (PrimitiveInterfaceDSP ?a ?b)))
             :ruleset mapping)
         ;; TODO bitwidths are hardcoded here
         (rule 
