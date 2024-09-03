@@ -590,15 +590,15 @@ impl EnsureExtractSpecExtractor {
                     .collect();
                 sorted_nodes.sort_by_key(|node_id| ensure_extract_tracker[node_id]);
                 sorted_nodes.reverse();
-                debug!(
-                    "Class {} has nodes {:?} with ensure_extract_tracker {:?}",
-                    id,
-                    sorted_nodes,
-                    sorted_nodes
-                        .iter()
-                        .map(|node_id| ensure_extract_tracker[node_id])
-                        .collect::<Vec<_>>()
-                );
+                // debug!(
+                //     "Class {} has nodes {:?} with ensure_extract_tracker {:?}",
+                //     id,
+                //     sorted_nodes,
+                //     sorted_nodes
+                //         .iter()
+                //         .map(|node_id| ensure_extract_tracker[node_id])
+                //         .collect::<Vec<_>>()
+                // );
                 // Update new choice only if it's increased
                 let new_choice = if ensure_extract_tracker[&sorted_nodes[0]]
                     > ensure_extract_tracker[&choices[id]]
@@ -648,7 +648,7 @@ impl EnsureExtractSpecExtractor {
                     continue;
                 }
 
-                debug!("Updating node {}.", egraph[node_id].op);
+                // debug!("Updating node {}.", egraph[node_id].op);
                 let new_value = node
                     .children
                     .iter()
@@ -659,10 +659,10 @@ impl EnsureExtractSpecExtractor {
                         // that that node might not actually be the current
                         // choice for the eclass.
                         let node_choice = &choices[&egraph[child_id].eclass];
-                        debug!(
-                            "Child ID: {} with value {}",
-                            node_choice, ensure_extract_tracker[node_choice]
-                        );
+                        // debug!(
+                        //     "Child ID: {} with value {}",
+                        //     node_choice, ensure_extract_tracker[node_choice]
+                        // );
                         ensure_extract_tracker[node_choice]
                     })
                     .sum();
