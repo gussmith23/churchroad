@@ -1379,6 +1379,33 @@ impl AnythingExtractor {
     }
 }
 
+#[derive(Default)]
+pub struct RandomExtractor;
+impl RandomExtractor {
+    pub fn extract(
+        &self,
+        egraph: &egraph_serialize::EGraph,
+        _roots: &[egraph_serialize::ClassId],
+    ) -> IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId> {
+        let mut rng = rand::thread_rng();
+        egraph
+            .classes()
+            .iter()
+            .map(|(id, class)| {
+                let node_id = class
+                    .nodes
+                    .iter()
+                    .filter(|&node_id| egraph[node_id].op != "Wire")
+                    .cloned()
+                    .collect::<Vec<_>>();
+                // debug!("Number of options: {}", node_id.len());
+                let node_id = node_id.choose(&mut rng).unwrap().clone();
+                (id.clone(), node_id)
+            })
+            .collect()
+    }
+}
+
 /// - bottom_out_at: maps ClassIds to variable names. Any time we reach a node
 ///   with a class ID in this map, we simply output a variable with the given
 ///   name.
