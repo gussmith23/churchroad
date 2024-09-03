@@ -271,30 +271,66 @@ fn main() {
                  (Op2 (Mul) 
                   ?a
                   ; TODO hardcoded extraction width
-                  (Op1 (ZeroExtend ?expr-bw) (Op1 (Extract (- ?expr-bw 1) 16) ?b)))
+                  (Op1 (ZeroExtend ?expr-bw) (Op1 (Extract (- ?b-real-bw 1) 16) ?b)))
+                 ; TODO hardcoded shift amount
+                 (Op0 (BV 16 ?expr-bw))))))
+            :ruleset transform)
+        ; And the other direction
+        (rule
+            ((= ?expr (Op2 (Mul) ?a ?b))
+             (RealBitwidth ?a ?a-real-bw)
+             (HasType ?expr (Bitvector ?expr-bw))
+             (> ?a-real-bw 16))
+            ((union 
+               ?expr 
+               (Op2 (Add)
+                (Op2 (Mul) 
+                 ; TODO hardcoded extraction width
+                 (Op1 (ZeroExtend ?expr-bw) (Op1 (Extract 15 0) ?a))
+                 ?b)
+                (Op2 (Shl) 
+                 (Op2 (Mul) 
+                  ; TODO hardcoded extraction width
+                  (Op1 (ZeroExtend ?expr-bw) (Op1 (Extract (- ?a-real-bw 1) 16) ?a))
+                  ?b
+                  )
                  ; TODO hardcoded shift amount
                  (Op0 (BV 16 ?expr-bw))))))
             :ruleset transform)
 
-        ; Discover the "interesting" parts of bitvectors---basically, the parts
-        ; that are not just zero-extension or sign-extension bits.
-        (relation RealBitwidth (Expr i64))
+        ; mul shrinking
+        ; When a mul doesn't need all of its bits, we can shrink it and then 
+        ; extend the result.
         (rule
-            ((= ?extended (Op1 (ZeroExtend ?n) ?expr))
-             ; This is already known based on the ops above, but good for sanity
-             ; checking.
-             (HasType ?extended (Bitvector ?n))
-             (HasType ?expr (Bitvector ?m)))
-            ((RealBitwidth ?expr ?m))
-            :ruleset typing)
+            ((= ?expr (Op2 (Mul) ?a ?b))
+             (RealBitwidth ?a ?a-real-bw)
+             (RealBitwidth ?b ?b-real-bw)
+             (HasType ?expr (Bitvector ?expr-bw))
+             (< (* 2 (max ?a-real-bw ?b-real-bw)) ?expr-bw))
+            ((union 
+               ?expr 
+               (Op1 (ZeroExtend ?expr-bw) 
+                (Op2 (Mul) 
+                 (Op1 (Extract (- (* 2 (max ?a-real-bw ?b-real-bw)) 1) 0) ?a)
+                 (Op1 (Extract (- (* 2 (max ?a-real-bw ?b-real-bw)) 1) 0) ?b)))))
+            :ruleset transform)
+
+        (ruleset simplification)
         (rule
-            ((= ?extended (Op1 (SignExtend ?n) ?expr))
-             ; This is already known based on the ops above, but good for sanity
-             ; checking.
-             (HasType ?extended (Bitvector ?n))
-             (HasType ?expr (Bitvector ?m)))
-            ((RealBitwidth ?expr ?m))
-            :ruleset typing)
+         ((= ?expr (Op1 (ZeroExtend ?m) (Op1 (ZeroExtend ?n) ?e)))
+          (>= ?m ?n))
+         ((union ?expr (Op1 (ZeroExtend ?m) ?e))
+          (subsume (Op1 (ZeroExtend ?m) (Op1 (ZeroExtend ?n) ?e)))))
+        ; If we're extracting through a zero-extend, we can sometimes delete the
+        ; zero-extend.
+        (rule
+         ((= ?expr (Op1 (Extract ?hi ?lo) (Op1 (ZeroExtend ?n) ?e)))
+          (HasType ?e (Bitvector ?orig-bw))
+          (< ?hi ?orig-bw)
+          (< ?lo ?orig-bw))
+         ((union ?expr (Op1 (Extract ?hi ?lo) ?e))
+          (subsume (Op1 (Extract ?hi ?lo) (Op1 (ZeroExtend ?n) ?e))))
+         :ruleset simplification)
 
    "#,
         )
