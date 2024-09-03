@@ -42,32 +42,32 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
 
     let out_bw = get_bitwidth_for_node(serialized_egraph, sketch_template_node_id).unwrap();
 
-    log::debug!(
-        "a expr: {}",
-        node_to_string(
-            serialized_egraph,
-            &serialized_egraph[sketch_template_node_id].children[0],
-            spec_choices
-        )
-    );
-    log::debug!(
-        "b expr: {}",
-        node_to_string(
-            serialized_egraph,
-            &serialized_egraph[sketch_template_node_id].children[1],
-            spec_choices
-        )
-    );
+    // log::debug!(
+    //     "a expr: {}",
+    //     node_to_string(
+    //         serialized_egraph,
+    //         &serialized_egraph[sketch_template_node_id].children[0],
+    //         spec_choices
+    //     )
+    // );
+    // log::debug!(
+    //     "b expr: {}",
+    //     node_to_string(
+    //         serialized_egraph,
+    //         &serialized_egraph[sketch_template_node_id].children[1],
+    //         spec_choices
+    //     )
+    // );
 
     if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
-        log::debug!(
-            "c expr: {}",
-            node_to_string(
-                serialized_egraph,
-                &serialized_egraph[sketch_template_node_id].children[2],
-                spec_choices
-            )
-        );
+        // log::debug!(
+        //     "c expr: {}",
+        //     node_to_string(
+        //         serialized_egraph,
+        //         &serialized_egraph[sketch_template_node_id].children[2],
+        //         spec_choices
+        //     )
+        // );
     }
 
     let a_bw = get_bitwidth_for_node(
