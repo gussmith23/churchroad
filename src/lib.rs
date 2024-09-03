@@ -589,16 +589,38 @@ impl EnsureExtractSpecExtractor {
                     .collect();
                 sorted_nodes.sort_by_key(|node_id| ensure_extract_tracker[node_id]);
                 sorted_nodes.reverse();
-                let new_choice = sorted_nodes[0].clone();
-                let old_choice = choices
-                    .insert(id.clone(), new_choice.clone())
-                    .expect("Class should have already been in choices.");
+                debug!(
+                    "Class {} has nodes {:?} with ensure_extract_tracker {:?}",
+                    id,
+                    sorted_nodes,
+                    sorted_nodes
+                        .iter()
+                        .map(|node_id| ensure_extract_tracker[node_id])
+                        .collect::<Vec<_>>()
+                );
+                // Update new choice only if it's increased
+                let new_choice = if ensure_extract_tracker[&sorted_nodes[0]]
+                    > ensure_extract_tracker[&choices[id]]
+                {
+                    sorted_nodes[0].clone()
+                } else {
+                    choices[id].clone()
+                };
+                let old_choice = if new_choice != choices[id] {
+                    choices
+                        .insert(id.clone(), new_choice.clone())
+                        .expect("Class should have already been in choices.")
+                } else {
+                    choices[id].clone()
+                };
                 if new_choice != old_choice {
                     log::debug!(
-                        "Changed choice for class {} from {} to {}",
+                        "Changed choice for class {} from {} to {} (value {} -> {}).",
                         id,
                         egraph[&old_choice].op,
-                        egraph[&new_choice].op
+                        egraph[&new_choice].op,
+                        ensure_extract_tracker[&old_choice],
+                        ensure_extract_tracker[&new_choice]
                     );
                 }
             }
@@ -609,6 +631,7 @@ impl EnsureExtractSpecExtractor {
             egraph: &egraph_serialize::EGraph,
             ensure_extract_tracker: &mut HashMap<NodeId, i32>,
             choices: &IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
+            ensure_extract: &HashSet<NodeId>,
         ) -> bool {
             let mut update_occurred = false;
             for (node_id, node) in egraph.nodes.iter() {
@@ -618,6 +641,13 @@ impl EnsureExtractSpecExtractor {
                     continue;
                 }
 
+                // We don't need to update the nodes we're trying to ensure
+                // extraction of.
+                if ensure_extract.contains(node_id) {
+                    continue;
+                }
+
+                debug!("Updating node {}.", egraph[node_id].op);
                 let new_value = node
                     .children
                     .iter()
@@ -628,6 +658,10 @@ impl EnsureExtractSpecExtractor {
                         // that that node might not actually be the current
                         // choice for the eclass.
                         let node_choice = &choices[&egraph[child_id].eclass];
+                        debug!(
+                            "Child ID: {} with value {}",
+                            node_choice, ensure_extract_tracker[node_choice]
+                        );
                         ensure_extract_tracker[node_choice]
                     })
                     .sum();
@@ -636,8 +670,20 @@ impl EnsureExtractSpecExtractor {
                     old_value.is_some(),
                     "Node should have already been in ensure_extract_tracker."
                 );
+                assert!(
+                    new_value >= old_value.unwrap(),
+                    "New value {} should be >= old value {}.",
+                    new_value,
+                    old_value.unwrap()
+                );
 
                 if old_value.unwrap() != new_value {
+                    debug!(
+                        "Node {} has new value {} (was {}).",
+                        egraph[node_id].op,
+                        new_value,
+                        old_value.unwrap()
+                    );
                     update_occurred = true;
                 }
             }
@@ -650,7 +696,12 @@ impl EnsureExtractSpecExtractor {
         // Keep updating until no more updates are made.
         while updates_occurred {
             update_choices(egraph, &ensure_extract_tracker, &mut choices);
-            updates_occurred = update_node_tracker(egraph, &mut ensure_extract_tracker, &choices);
+            updates_occurred = update_node_tracker(
+                egraph,
+                &mut ensure_extract_tracker,
+                &choices,
+                &self.ensure_extract,
+            );
         }
 
         choices
