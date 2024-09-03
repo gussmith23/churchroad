@@ -160,6 +160,47 @@ fn main() {
         .parse_and_run_program(
             None,
             r#"
+        ; Discover the "interesting" parts of bitvectors---basically, the parts
+        ; that are not just zero-extension or sign-extension bits.
+        (relation RealBitwidth (Expr i64))
+        (rule
+            ((= ?extended (Op1 (ZeroExtend ?n) ?expr))
+             ; This is already known based on the ops above, but good for sanity
+             ; checking.
+             (HasType ?extended (Bitvector ?n))
+             (HasType ?expr (Bitvector ?m)))
+            ((RealBitwidth ?extended ?m))
+            :ruleset typing)
+        (rule
+            ((= ?extended (Op1 (SignExtend ?n) ?expr))
+             ; This is already known based on the ops above, but good for sanity
+             ; checking.
+             (HasType ?extended (Bitvector ?n))
+             (HasType ?expr (Bitvector ?m)))
+            ((RealBitwidth ?extended ?m))
+            :ruleset typing)
+        ; Real width of an extract.
+        ; worked examples:
+        ; 9876543210
+        ;    [xx   ] <-- real width of orig = 7
+        ; [  xx]     <-- extract 9:4 inclusive
+        ; new real width = 3 (x locations)
+        ; r - lo 
+        ; (min of hi, r-1) down to lo
+        ; (min hi r-1) - lo + 1
+        ; = (min 9 7-1) - 4 + 1 = 3
+        ; example 2
+        ; 9876543210
+        ; [  xxxxxx]<-- real width of orig = 10
+        ;    [xxxxx]<-- extract 6:0 inclusive
+        ; new real width = 7
+        ; (min 6 10-1) - 0 + 1 = 7
+        (rule
+            ((= ?extracted (Op1 (Extract ?hi ?lo) ?expr))
+             (RealBitwidth ?expr ?m))
+            ((RealBitwidth ?extracted (+ 1 (- (min ?hi (- ?m 1)) ?lo))))
+            :ruleset typing)
+        
         (ruleset mapping)
         ;; TODO need to write a rewrite that deals with multiplying zero extended bvs
         (rule 
