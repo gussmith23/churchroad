@@ -385,6 +385,21 @@ fn main() {
                  (Op1 (Extract (- (* 2 (max ?a-real-bw ?b-real-bw)) 1) 0) ?a)
                  (Op1 (Extract (- (* 2 (max ?a-real-bw ?b-real-bw)) 1) 0) ?b)))))
             :ruleset transform)
+        ; Add shrinking
+        (rule
+         ((= ?expr (Op2 (Add) ?a ?b))
+          (RealBitwidth ?a ?a-real-bw)
+          (RealBitwidth ?b ?b-real-bw)
+          (HasType ?expr (Bitvector ?expr-bw))
+          (< (max ?a-real-bw ?b-real-bw) ?expr-bw))
+         ((union 
+           ?expr 
+           (Op1 (ZeroExtend ?expr-bw) 
+            (Op2 (Add) 
+             (Op1 (Extract (- (max ?a-real-bw ?b-real-bw) 1) 0) ?a)
+             (Op1 (Extract (- (max ?a-real-bw ?b-real-bw) 1) 0) ?b)))))
+         :ruleset transform)
+        
 
         (ruleset simplification)
         (rule
