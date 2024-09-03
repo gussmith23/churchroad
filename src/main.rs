@@ -222,6 +222,25 @@ fn main() {
             ((union expr (PrimitiveInterfaceDSP ?a ?b)))
             :ruleset mapping)
         (rule 
+            ((= expr (Op2 (Mul) ?a ?b))
+             (HasType expr (Bitvector ?n))
+             (RealBitwidth ?a ?a-bw)
+             (RealBitwidth ?b ?b-bw)
+             (HasType ?a (Bitvector ?a-bw-full))
+             (HasType ?b (Bitvector ?b-bw-full))
+             (<= ?a-bw 16)
+             (<= ?b-bw 16)
+             (<= ?n 48)
+             )
+            (; We need these first two unions to ensure that the new expressions for a and b are actually connected
+             ; to the other expressions in the egraph. Otherwise, they're only children of PrimitiveInterfaceDSP,
+             ; and are thus not extractable!
+             (union ?a (Op1 (ZeroExtend ?a-bw-full) (Op1 (Extract (- ?a-bw 1) 0) ?a)))
+             (union ?b (Op1 (ZeroExtend ?b-bw-full) (Op1 (Extract (- ?b-bw 1) 0) ?b)))
+             (union expr (PrimitiveInterfaceDSP (Op1 (Extract (- ?a-bw 1) 0) ?a) (Op1 (Extract (- ?b-bw 1) 0) ?b))))
+            :ruleset mapping)
+        ; TODO: need a rule for DSP3
+        (rule 
             ((= expr (Op2 (Add) (Op2 (Mul) (Op1 (ZeroExtend ?n) ?a) (Op1 (ZeroExtend ?n) ?b)) ?c))
              (HasType expr (Bitvector ?n))
              (HasType ?a (Bitvector ?a-bw))
