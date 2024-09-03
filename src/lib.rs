@@ -2,7 +2,8 @@ pub mod global_greedy_dag;
 
 use egraph_serialize::{ClassId, Node, NodeId};
 use indexmap::IndexMap;
-use log::{info, warn};
+use log::{debug, info, warn};
+use rand::seq::SliceRandom;
 use std::{
     collections::{HashMap, HashSet},
     env,
