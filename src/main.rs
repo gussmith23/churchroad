@@ -9,7 +9,7 @@ use churchroad::global_greedy_dag::GlobalGreedyDagExtractor;
 use churchroad::{
     call_lakeroad_on_primitive_interface_and_spec, find_primitive_interfaces_serialized,
     find_spec_for_primitive_interface_including_nodes, from_verilog_file, get_bitwidth_for_node,
-    get_inputs_and_outputs_serialized, node_to_string, to_verilog_egraph_serialize,
+    get_inputs_and_outputs_serialized, to_verilog_egraph_serialize,
 };
 use clap::ValueHint::FilePath;
 use clap::{ArgAction, Parser, ValueEnum};
