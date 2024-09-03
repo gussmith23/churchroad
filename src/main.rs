@@ -432,11 +432,11 @@ fn main() {
                 .collect(),
         );
 
-        log::info!(
-            "Calling Lakeroad with spec:\n{}\nand sketch:\n{}",
-            node_to_string(&serialized_egraph, &spec_node_id, &spec_choices),
-            serialized_egraph[sketch_template_node_id].op
-        );
+        // log::info!(
+        //     "Calling Lakeroad with spec:\n{}\nand sketch:\n{}",
+        //     node_to_string(&serialized_egraph, &spec_node_id, &spec_choices),
+        //     serialized_egraph[sketch_template_node_id].op
+        // );
 
         // STEP 5.2: Call Lakeroad.
         let commands = call_lakeroad_on_primitive_interface_and_spec(
