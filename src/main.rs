@@ -361,6 +361,8 @@ fn main() {
         )
         .unwrap();
 
+    warn!("I don't think the add shrinking rewrite is correct---it's not considering that nbit+nbit =n+1bit.");
+
     // May need this rebuild. See
     // https://github.com/egraphs-good/egglog/pull/391
     // egraph.rebuild();
