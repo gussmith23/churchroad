@@ -200,6 +200,30 @@ fn main() {
              (RealBitwidth ?expr ?m))
             ((RealBitwidth ?extracted (+ 1 (- (min ?hi (- ?m 1)) ?lo))))
             :ruleset typing)
+        ; The max bitwidth of a multiply is the sum of the bitwidths of the
+        ; operands, which could be less than the bitwidth of the mul expr. 
+        (rule
+         ((= ?mul-expr (Op2 (Mul) ?a ?b))
+          (RealBitwidth ?a ?a-bw)
+          (RealBitwidth ?b ?b-bw)
+          (HasType ?mul-expr (Bitvector ?n)))
+         ((RealBitwidth ?mul-expr (min ?n (+ ?a-bw ?b-bw))))
+         :ruleset typing)
+        ; Real bitwidth of shifting by a constant
+        (rule
+         ((= ?shifted (Op2 (Shl) ?a (Op0 (BV ?shift-amount ?_))))
+          (RealBitwidth ?a ?a-bw)
+          (HasType ?shifted (Bitvector ?n)))
+         ((RealBitwidth ?shifted (min ?n (+ ?a-bw ?shift-amount))))
+         :ruleset typing)
+        ; Real bitwidth of an add
+        (rule
+         ((= ?add-expr (Op2 (Add) ?a ?b))
+          (RealBitwidth ?a ?a-bw)
+          (RealBitwidth ?b ?b-bw)
+          (HasType ?add-expr (Bitvector ?n)))
+         ((RealBitwidth ?add-expr (min ?n (max ?a-bw ?b-bw))))
+         :ruleset typing)
         
         (ruleset mapping)
         ;; TODO need to write a rewrite that deals with multiplying zero extended bvs
