@@ -251,15 +251,15 @@ fn main() {
                 (Op2 (Mul) (Op1 (ZeroExtend expr-bw) a) (Op1 (ZeroExtend expr-bw) (Op1 (Extract (- (/ expr-bw 2) 1) 0) b)))
                 (Op2 (Shl) (Op2 (Mul) (Op1 (ZeroExtend expr-bw) a) (Op1 (ZeroExtend expr-bw) (Op1 (Extract (- expr-bw 1) (/ expr-bw 2)) b))) (Op0 (BV (/ expr-bw 2) expr-bw))))))
             :ruleset transform)
-        
+
         ; General mul splitting rewrite
         ; TODO there's gotta be things wrong here w/ sign vs zero extend
         ; TODO This is buggy, keeps running forever
         (rule
             ((= ?expr (Op2 (Mul) ?a ?b))
+             (RealBitwidth ?b ?b-real-bw)
              (HasType ?expr (Bitvector ?expr-bw))
-             ; TODO hardcoded bitwidth
-             (> ?expr-bw 16))
+             (> ?b-real-bw 16))
             ((union 
                ?expr 
                (Op2 (Add)
