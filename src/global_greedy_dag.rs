@@ -266,16 +266,34 @@ impl GlobalGreedyDagExtractor {
             .filter(|&(cid, _)| !result.contains_key(cid))
             .collect::<Vec<_>>();
 
+        fn display_node(node: &Node, egraph: &egraph_serialize::EGraph) -> String {
+            match node.op.as_str() {
+                "Op0" | "Op1" | "Op2" | "Op3" => {
+                    format!("{} {}", node.op, egraph[&node.children[0]].op)
+                }
+                _ => node.op.clone(),
+            }
+        }
+
+        fn display_eclass(cid: &ClassId, egraph: &egraph_serialize::EGraph) -> String {
+            egraph[cid]
+                .nodes
+                .iter()
+                .map(|nid| display_node(&egraph[nid], egraph))
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+
         if missing.is_empty() {
             Ok(result)
         } else {
             Err(
-                "Not all classes were able to be extracted. Missing classes: ".to_string()
+                "Not all classes were able to be extracted. Missing classes:\n".to_string()
                     + &missing
                         .iter()
-                        .map(|(cid, _)| format!("{:?}", cid))
+                        .map(|(cid, _)| format!("{}: {}", cid, display_eclass(cid, egraph)))
                         .collect::<Vec<_>>()
-                        .join(", "),
+                        .join("\n"),
             )
         }
     }
