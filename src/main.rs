@@ -356,9 +356,24 @@ fn main() {
             "Egraph after rewrites: {}",
             svg_dirpath.join("after_rewrites.svg").to_string_lossy()
         );
+
+        // Extracting random programs for debugging.
+        // let mut set_of_exprs = HashSet::new();
+        // for _ in 0..100 {
+        //     let choices = &RandomExtractor.extract(&serialized, &[]);
+        //     set_of_exprs.insert(node_to_string(
+        //         &serialized,
+        //         &choices[&egraph.value_to_class_id(&outputs[0].0)],
+        //         &choices,
+        //     ));
+        // }
+        // debug!(
+        //     "Random programs:\n{}",
+        //     set_of_exprs.drain().collect::<Vec<_>>().join("\n")
+        // );
     }
 
-    _egraph_interact(&mut egraph);
+    // _egraph_interact(&mut egraph);
 
     let serialized_egraph = egraph.serialize(SerializeConfig::default());
 
