@@ -106,6 +106,11 @@ WORKDIR /root/churchroad/yosys-plugin
 ADD yosys-plugin .
 RUN make -j ${MAKE_JOBS}
 
+# Add Lakeroad's dependencies.sh (later we add all of Lakeroad).
+WORKDIR /root
+ADD lakeroad/dependencies.sh lakeroad/dependencies.sh
+ENV LAKEROAD_DIR=/root/lakeroad
+
 # Build Bitwuzla.
 WORKDIR /root
 RUN source $LAKEROAD_DIR/dependencies.sh \
