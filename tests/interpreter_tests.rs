@@ -56,7 +56,8 @@ fn prep_interpreter(
         // constructs when interpreting.
         structural_only: false,
     }
-    .extract(&serialized, &[]);
+    .extract(&serialized, &[])
+    .unwrap();
 
     let (_, is_output_node) = serialized
         .nodes

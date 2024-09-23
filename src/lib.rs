@@ -2,7 +2,8 @@ pub mod global_greedy_dag;
 
 use egraph_serialize::{ClassId, Node, NodeId};
 use indexmap::IndexMap;
-use log::{info, warn};
+use log::{debug, info, warn};
+use rand::seq::SliceRandom;
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -42,32 +43,32 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
 
     let out_bw = get_bitwidth_for_node(serialized_egraph, sketch_template_node_id).unwrap();
 
-    log::debug!(
-        "a expr: {}",
-        node_to_string(
-            serialized_egraph,
-            &serialized_egraph[sketch_template_node_id].children[0],
-            spec_choices
-        )
-    );
-    log::debug!(
-        "b expr: {}",
-        node_to_string(
-            serialized_egraph,
-            &serialized_egraph[sketch_template_node_id].children[1],
-            spec_choices
-        )
-    );
+    // log::debug!(
+    //     "a expr: {}",
+    //     node_to_string(
+    //         serialized_egraph,
+    //         &serialized_egraph[sketch_template_node_id].children[0],
+    //         spec_choices
+    //     )
+    // );
+    // log::debug!(
+    //     "b expr: {}",
+    //     node_to_string(
+    //         serialized_egraph,
+    //         &serialized_egraph[sketch_template_node_id].children[1],
+    //         spec_choices
+    //     )
+    // );
 
     if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
-        log::debug!(
-            "c expr: {}",
-            node_to_string(
-                serialized_egraph,
-                &serialized_egraph[sketch_template_node_id].children[2],
-                spec_choices
-            )
-        );
+        // log::debug!(
+        //     "c expr: {}",
+        //     node_to_string(
+        //         serialized_egraph,
+        //         &serialized_egraph[sketch_template_node_id].children[2],
+        //         spec_choices
+        //     )
+        // );
     }
 
     let a_bw = get_bitwidth_for_node(
@@ -591,16 +592,38 @@ impl EnsureExtractSpecExtractor {
                     .collect();
                 sorted_nodes.sort_by_key(|node_id| ensure_extract_tracker[node_id]);
                 sorted_nodes.reverse();
-                let new_choice = sorted_nodes[0].clone();
-                let old_choice = choices
-                    .insert(id.clone(), new_choice.clone())
-                    .expect("Class should have already been in choices.");
+                // debug!(
+                //     "Class {} has nodes {:?} with ensure_extract_tracker {:?}",
+                //     id,
+                //     sorted_nodes,
+                //     sorted_nodes
+                //         .iter()
+                //         .map(|node_id| ensure_extract_tracker[node_id])
+                //         .collect::<Vec<_>>()
+                // );
+                // Update new choice only if it's increased
+                let new_choice = if ensure_extract_tracker[&sorted_nodes[0]]
+                    > ensure_extract_tracker[&choices[id]]
+                {
+                    sorted_nodes[0].clone()
+                } else {
+                    choices[id].clone()
+                };
+                let old_choice = if new_choice != choices[id] {
+                    choices
+                        .insert(id.clone(), new_choice.clone())
+                        .expect("Class should have already been in choices.")
+                } else {
+                    choices[id].clone()
+                };
                 if new_choice != old_choice {
                     log::debug!(
-                        "Changed choice for class {} from {} to {}",
+                        "Changed choice for class {} from {} to {} (value {} -> {}).",
                         id,
                         egraph[&old_choice].op,
-                        egraph[&new_choice].op
+                        egraph[&new_choice].op,
+                        ensure_extract_tracker[&old_choice],
+                        ensure_extract_tracker[&new_choice]
                     );
                 }
             }
@@ -611,6 +634,7 @@ impl EnsureExtractSpecExtractor {
             egraph: &egraph_serialize::EGraph,
             ensure_extract_tracker: &mut HashMap<NodeId, i32>,
             choices: &IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
+            ensure_extract: &HashSet<NodeId>,
         ) -> bool {
             let mut update_occurred = false;
             for (node_id, node) in egraph.nodes.iter() {
@@ -620,6 +644,13 @@ impl EnsureExtractSpecExtractor {
                     continue;
                 }
 
+                // We don't need to update the nodes we're trying to ensure
+                // extraction of.
+                if ensure_extract.contains(node_id) {
+                    continue;
+                }
+
+                // debug!("Updating node {}.", egraph[node_id].op);
                 let new_value = node
                     .children
                     .iter()
@@ -630,6 +661,10 @@ impl EnsureExtractSpecExtractor {
                         // that that node might not actually be the current
                         // choice for the eclass.
                         let node_choice = &choices[&egraph[child_id].eclass];
+                        // debug!(
+                        //     "Child ID: {} with value {}",
+                        //     node_choice, ensure_extract_tracker[node_choice]
+                        // );
                         ensure_extract_tracker[node_choice]
                     })
                     .sum();
@@ -638,8 +673,20 @@ impl EnsureExtractSpecExtractor {
                     old_value.is_some(),
                     "Node should have already been in ensure_extract_tracker."
                 );
+                assert!(
+                    new_value >= old_value.unwrap(),
+                    "New value {} should be >= old value {}.",
+                    new_value,
+                    old_value.unwrap()
+                );
 
                 if old_value.unwrap() != new_value {
+                    debug!(
+                        "Node {} has new value {} (was {}).",
+                        egraph[node_id].op,
+                        new_value,
+                        old_value.unwrap()
+                    );
                     update_occurred = true;
                 }
             }
@@ -652,7 +699,12 @@ impl EnsureExtractSpecExtractor {
         // Keep updating until no more updates are made.
         while updates_occurred {
             update_choices(egraph, &ensure_extract_tracker, &mut choices);
-            updates_occurred = update_node_tracker(egraph, &mut ensure_extract_tracker, &choices);
+            updates_occurred = update_node_tracker(
+                egraph,
+                &mut ensure_extract_tracker,
+                &choices,
+                &self.ensure_extract,
+            );
         }
 
         choices
@@ -1324,6 +1376,33 @@ impl AnythingExtractor {
             .iter()
             .map(|(id, class)| {
                 let node_id = class.nodes.first().unwrap().clone();
+                (id.clone(), node_id)
+            })
+            .collect()
+    }
+}
+
+#[derive(Default)]
+pub struct RandomExtractor;
+impl RandomExtractor {
+    pub fn extract(
+        &self,
+        egraph: &egraph_serialize::EGraph,
+        _roots: &[egraph_serialize::ClassId],
+    ) -> IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId> {
+        let mut rng = rand::thread_rng();
+        egraph
+            .classes()
+            .iter()
+            .map(|(id, class)| {
+                let node_id = class
+                    .nodes
+                    .iter()
+                    .filter(|&node_id| egraph[node_id].op != "Wire")
+                    .cloned()
+                    .collect::<Vec<_>>();
+                // debug!("Number of options: {}", node_id.len());
+                let node_id = node_id.choose(&mut rng).unwrap().clone();
                 (id.clone(), node_id)
             })
             .collect()
@@ -3099,6 +3178,7 @@ endmodule",
                 (HasType (GetOutput (ModuleInstance "some_module" (StringCons "p" (StringNil)) (ExprCons (Op0 (BV 4 4)) (ExprNil)) (StringCons "a" (StringCons "b" (StringNil))) (ExprCons a (ExprCons b (ExprNil)))) "out")
                          (Bitvector 8))
 
+                (run-schedule (saturate typing))
             "#,
             )
             .unwrap();

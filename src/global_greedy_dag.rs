@@ -2,6 +2,7 @@
 use std::iter;
 
 use egraph_serialize::Cost;
+use log::debug;
 use ordered_float::NotNan;
 use rpds::HashTrieSet;
 
@@ -63,7 +64,18 @@ impl TermDag {
             return Some(*id);
         }
 
-        let node_cost = node.cost;
+        // NOTE: This is the only modification we made to make this work with
+        // churchroad. Could find a different way to do this.
+        let node_cost = match node.op.as_str() {
+            // "Wire" => INFINITY,
+            // "Shr" | "Shl" => {
+            //     warn!("Shr and Shl probably shouldn't be extractable");
+            //     10000.into()
+            // }
+            // "And" | "Add" | "Sub" | "Mul" | "Or" | "Xor" | "Eq" | "Ne" | "Not" | "ReduceOr"
+            // | "ReduceAnd" | "ReduceXor" | "LogicNot" | "LogicAnd" | "LogicOr" | "Mux" => 10000.into(),
+            _ => node.cost,
+        };
 
         if children.is_empty() {
             let next_id = self.nodes.len();
@@ -164,7 +176,7 @@ impl GlobalGreedyDagExtractor {
         &self,
         egraph: &egraph_serialize::EGraph,
         _roots: &[ClassId],
-    ) -> IndexMap<ClassId, NodeId> {
+    ) -> Result<IndexMap<ClassId, NodeId>, String> {
         let mut keep_going = true;
 
         let nodes = egraph.nodes.clone();
@@ -215,6 +227,10 @@ impl GlobalGreedyDagExtractor {
                     if let Some(best) = best_in_class.get(child_cid) {
                         children.push(*best);
                     } else {
+                        debug!(
+                            "Skipping node {} (class {}) because child {} (class {}) is missing",
+                            node_id, node.eclass, child, child_cid
+                        );
                         continue 'node_loop;
                     }
                 }
@@ -230,6 +246,10 @@ impl GlobalGreedyDagExtractor {
                     if cadidate_cost < old_cost {
                         best_in_class.insert(node.eclass.clone(), candidate);
                         keep_going = true;
+                        debug!(
+                            "Node {} (class {}) cost {} -> {}",
+                            node_id, node.eclass, old_cost, cadidate_cost
+                        );
                     }
                 }
             }
@@ -239,6 +259,42 @@ impl GlobalGreedyDagExtractor {
         for (class, term) in best_in_class {
             result.insert(class, termdag.info[term].node.clone());
         }
-        result
+
+        let missing = egraph
+            .classes()
+            .iter()
+            .filter(|&(cid, _)| !result.contains_key(cid))
+            .collect::<Vec<_>>();
+
+        fn display_node(node: &Node, egraph: &egraph_serialize::EGraph) -> String {
+            match node.op.as_str() {
+                "Op0" | "Op1" | "Op2" | "Op3" => {
+                    format!("{} {}", node.op, egraph[&node.children[0]].op)
+                }
+                _ => node.op.clone(),
+            }
+        }
+
+        fn display_eclass(cid: &ClassId, egraph: &egraph_serialize::EGraph) -> String {
+            egraph[cid]
+                .nodes
+                .iter()
+                .map(|nid| display_node(&egraph[nid], egraph))
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+
+        if missing.is_empty() {
+            Ok(result)
+        } else {
+            Err(
+                "Not all classes were able to be extracted. Missing classes:\n".to_string()
+                    + &missing
+                        .iter()
+                        .map(|(cid, _)| format!("{}: {}", cid, display_eclass(cid, egraph)))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+            )
+        }
     }
 }

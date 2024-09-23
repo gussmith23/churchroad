@@ -1,3 +1,4 @@
+use core::panic;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fs::create_dir_all;
@@ -8,7 +9,7 @@ use churchroad::global_greedy_dag::GlobalGreedyDagExtractor;
 use churchroad::{
     call_lakeroad_on_primitive_interface_and_spec, find_primitive_interfaces_serialized,
     find_spec_for_primitive_interface_including_nodes, from_verilog_file, get_bitwidth_for_node,
-    get_inputs_and_outputs_serialized, node_to_string, to_verilog_egraph_serialize,
+    get_inputs_and_outputs_serialized, to_verilog_egraph_serialize,
 };
 use clap::ValueHint::FilePath;
 use clap::{ArgAction, Parser, ValueEnum};
@@ -159,13 +160,78 @@ fn main() {
         .parse_and_run_program(
             None,
             r#"
+        ; Discover the "interesting" parts of bitvectors---basically, the parts
+        ; that are not just zero-extension or sign-extension bits.
+        (relation RealBitwidth (Expr i64))
+        (rule
+            ((= ?extended (Op1 (ZeroExtend ?n) ?expr))
+             ; This is already known based on the ops above, but good for sanity
+             ; checking.
+             (HasType ?extended (Bitvector ?n))
+             (HasType ?expr (Bitvector ?m)))
+            ((RealBitwidth ?extended ?m))
+            :ruleset typing)
+        (rule
+            ((= ?extended (Op1 (SignExtend ?n) ?expr))
+             ; This is already known based on the ops above, but good for sanity
+             ; checking.
+             (HasType ?extended (Bitvector ?n))
+             (HasType ?expr (Bitvector ?m)))
+            ((RealBitwidth ?extended ?m))
+            :ruleset typing)
+        ; Real width of an extract.
+        ; worked examples:
+        ; 9876543210
+        ;    [xx   ] <-- real width of orig = 7
+        ; [  xx]     <-- extract 9:4 inclusive
+        ; new real width = 3 (x locations)
+        ; r - lo 
+        ; (min of hi, r-1) down to lo
+        ; (min hi r-1) - lo + 1
+        ; = (min 9 7-1) - 4 + 1 = 3
+        ; example 2
+        ; 9876543210
+        ; [  xxxxxx]<-- real width of orig = 10
+        ;    [xxxxx]<-- extract 6:0 inclusive
+        ; new real width = 7
+        ; (min 6 10-1) - 0 + 1 = 7
+        (rule
+            ((= ?extracted (Op1 (Extract ?hi ?lo) ?expr))
+             (RealBitwidth ?expr ?m))
+            ((RealBitwidth ?extracted (+ 1 (- (min ?hi (- ?m 1)) ?lo))))
+            :ruleset typing)
+        ; The max bitwidth of a multiply is the sum of the bitwidths of the
+        ; operands, which could be less than the bitwidth of the mul expr. 
+        (rule
+         ((= ?mul-expr (Op2 (Mul) ?a ?b))
+          (RealBitwidth ?a ?a-bw)
+          (RealBitwidth ?b ?b-bw)
+          (HasType ?mul-expr (Bitvector ?n)))
+         ((RealBitwidth ?mul-expr (min ?n (+ ?a-bw ?b-bw))))
+         :ruleset typing)
+        ; Real bitwidth of shifting by a constant
+        (rule
+         ((= ?shifted (Op2 (Shl) ?a (Op0 (BV ?shift-amount ?_))))
+          (RealBitwidth ?a ?a-bw)
+          (HasType ?shifted (Bitvector ?n)))
+         ((RealBitwidth ?shifted (min ?n (+ ?a-bw ?shift-amount))))
+         :ruleset typing)
+        ; Real bitwidth of an add
+        (rule
+         ((= ?add-expr (Op2 (Add) ?a ?b))
+          (RealBitwidth ?a ?a-bw)
+          (RealBitwidth ?b ?b-bw)
+          (HasType ?add-expr (Bitvector ?n)))
+         ((RealBitwidth ?add-expr (min ?n (max ?a-bw ?b-bw))))
+         :ruleset typing)
+        
         (ruleset mapping)
         ;; TODO need to write a rewrite that deals with multiplying zero extended bvs
         (rule 
-            ((= expr (Op2 (Mul) a b))
-             (HasType expr (Bitvector n))
-             (< n 18))
-            ((union expr (PrimitiveInterfaceDSP a b)))
+            ((= ?expr (Op2 (Mul) ?a ?b))
+             (HasType ?expr (Bitvector ?n))
+             (< ?n 18))
+            ((union ?expr (PrimitiveInterfaceDSP ?a ?b)))
             :ruleset mapping)
         ;; TODO bitwidths are hardcoded here
         (rule 
@@ -180,8 +246,55 @@ fn main() {
             ((union expr (PrimitiveInterfaceDSP ?a ?b)))
             :ruleset mapping)
         (rule 
-            ((= expr (Op2 (Add) (Op2 (Mul) (Op1 (ZeroExtend ?n) ?a) (Op1 (ZeroExtend ?n) ?b)) ?c))
+            ((= expr (Op2 (Mul) ?a ?b))
              (HasType expr (Bitvector ?n))
+             (RealBitwidth ?a ?a-bw)
+             (RealBitwidth ?b ?b-bw)
+             (HasType ?a (Bitvector ?a-bw-full))
+             (HasType ?b (Bitvector ?b-bw-full))
+             (<= ?a-bw 16)
+             (<= ?b-bw 16)
+             (<= ?n 48)
+             )
+            (; We need these first two unions to ensure that the new expressions for a and b are actually connected
+             ; to the other expressions in the egraph. Otherwise, they're only children of PrimitiveInterfaceDSP,
+             ; and are thus not extractable!
+             (union ?a (Op1 (ZeroExtend ?a-bw-full) (Op1 (Extract (- ?a-bw 1) 0) ?a)))
+             (union ?b (Op1 (ZeroExtend ?b-bw-full) (Op1 (Extract (- ?b-bw 1) 0) ?b)))
+             (union expr (PrimitiveInterfaceDSP (Op1 (Extract (- ?a-bw 1) 0) ?a) (Op1 (Extract (- ?b-bw 1) 0) ?b))))
+            :ruleset mapping)
+        (rule 
+            ((= ?expr (Op2 (Add) (Op1 ?extract-or-zero-extend-TODO-kind-of-a-hack (Op2 (Mul) ?a ?b)) ?c))
+             (RealBitwidth ?a ?a-bw)
+             (RealBitwidth ?b ?b-bw)
+             (RealBitwidth ?c ?c-bw)
+             (RealBitwidth (Op2 (Mul) ?a ?b) ?mul-bw)
+             (HasType ?expr (Bitvector ?add-bw))
+             (HasType ?a (Bitvector ?a-bw-full))
+             (HasType ?b (Bitvector ?b-bw-full))
+             (HasType ?c (Bitvector ?c-bw-full))
+             (<= ?a-bw 16)
+             (<= ?b-bw 16)
+             (<= ?c-bw 48)
+             (<= ?mul-bw 48)
+             ; TODO we need some kind of constraint here
+             (<= ?add-bw 48)
+             )
+            (; We need these first two unions to ensure that the new expressions for a and b are actually connected
+             ; to the other expressions in the egraph. Otherwise, they're only children of PrimitiveInterfaceDSP,
+             ; and are thus not extractable!
+             (union ?a (Op1 (ZeroExtend ?a-bw-full) (Op1 (Extract (- ?a-bw 1) 0) ?a)))
+             (union ?b (Op1 (ZeroExtend ?b-bw-full) (Op1 (Extract (- ?b-bw 1) 0) ?b)))
+             (union ?c (Op1 (ZeroExtend ?c-bw-full) (Op1 (Extract (- ?c-bw 1) 0) ?c)))
+             (union ?expr 
+              (PrimitiveInterfaceDSP3 
+               (Op1 (Extract (- ?a-bw 1) 0) ?a)
+               (Op1 (Extract (- ?b-bw 1) 0) ?b)
+               (Op1 (Extract (- ?c-bw 1) 0) ?c))))
+            :ruleset mapping)
+        (rule 
+            ((= ?expr (Op2 (Add) (Op2 (Mul) (Op1 (ZeroExtend ?n) ?a) (Op1 (ZeroExtend ?n) ?b)) ?c))
+             (HasType ?expr (Bitvector ?n))
              (HasType ?a (Bitvector ?a-bw))
              (HasType ?b (Bitvector ?b-bw))
              (HasType ?c (Bitvector ?c-bw))
@@ -190,36 +303,132 @@ fn main() {
              (<= ?c-bw 48)
              (< ?n 36)
              )
-            ((union expr (PrimitiveInterfaceDSP3 ?a ?b ?c)))
+            ((union ?expr (PrimitiveInterfaceDSP3 ?a ?b ?c)))
             :ruleset mapping)
         
         (ruleset transform)
         (rule
-            ((= expr (Op2 (Mul) (Op1 (ZeroExtend b-bw) a) b))
-             (HasType expr (Bitvector expr-bw))
+            ((= ?expr (Op2 (Mul) (Op1 (ZeroExtend b-bw) a) b))
+             (HasType ?expr (Bitvector ?expr-bw))
              (HasType a (Bitvector a-bw))
              (HasType b (Bitvector b-bw))
-             (<= expr-bw 48)
+             (<= ?expr-bw 48)
              (<= a-bw 16)
              (<= b-bw 32)
-             (= 0 (% expr-bw 2)))
+             (= 0 (% ?expr-bw 2)))
             ((union 
-               expr 
+               ?expr 
                (Op2 (Add)
-                (Op2 (Mul) (Op1 (ZeroExtend expr-bw) a) (Op1 (ZeroExtend expr-bw) (Op1 (Extract (- (/ expr-bw 2) 1) 0) b)))
-                (Op2 (Shl) (Op2 (Mul) (Op1 (ZeroExtend expr-bw) a) (Op1 (ZeroExtend expr-bw) (Op1 (Extract (- expr-bw 1) (/ expr-bw 2)) b))) (Op0 (BV (/ expr-bw 2) expr-bw))))))
+                (Op2 (Mul) (Op1 (ZeroExtend ?expr-bw) a) (Op1 (ZeroExtend ?expr-bw) (Op1 (Extract (- (/ ?expr-bw 2) 1) 0) b)))
+                (Op2 (Shl) (Op2 (Mul) (Op1 (ZeroExtend ?expr-bw) a) (Op1 (ZeroExtend ?expr-bw) (Op1 (Extract (- ?expr-bw 1) (/ ?expr-bw 2)) b))) (Op0 (BV (/ ?expr-bw 2) ?expr-bw))))))
             :ruleset transform)
-    "#,
+
+        ; General mul splitting rewrite
+        ; TODO there's gotta be things wrong here w/ sign vs zero extend
+        ; TODO This is buggy, keeps running forever
+        (rule
+            ((= ?expr (Op2 (Mul) ?a ?b))
+             (RealBitwidth ?b ?b-real-bw)
+             (HasType ?expr (Bitvector ?expr-bw))
+             (> ?b-real-bw 16))
+            ((union 
+               ?expr 
+               (Op2 (Add)
+                (Op2 (Mul) 
+                 ?a
+                 ; TODO hardcoded extraction width
+                 (Op1 (ZeroExtend ?expr-bw) (Op1 (Extract 15 0) ?b)))
+                (Op2 (Shl) 
+                 (Op2 (Mul) 
+                  ?a
+                  ; TODO hardcoded extraction width
+                  (Op1 (ZeroExtend ?expr-bw) (Op1 (Extract (- ?b-real-bw 1) 16) ?b)))
+                 ; TODO hardcoded shift amount
+                 (Op0 (BV 16 ?expr-bw))))))
+            :ruleset transform)
+        ; And the other direction
+        (rule
+            ((= ?expr (Op2 (Mul) ?a ?b))
+             (RealBitwidth ?a ?a-real-bw)
+             (HasType ?expr (Bitvector ?expr-bw))
+             (> ?a-real-bw 16))
+            ((union 
+               ?expr 
+               (Op2 (Add)
+                (Op2 (Mul) 
+                 ; TODO hardcoded extraction width
+                 (Op1 (ZeroExtend ?expr-bw) (Op1 (Extract 15 0) ?a))
+                 ?b)
+                (Op2 (Shl) 
+                 (Op2 (Mul) 
+                  ; TODO hardcoded extraction width
+                  (Op1 (ZeroExtend ?expr-bw) (Op1 (Extract (- ?a-real-bw 1) 16) ?a))
+                  ?b
+                  )
+                 ; TODO hardcoded shift amount
+                 (Op0 (BV 16 ?expr-bw))))))
+            :ruleset transform)
+
+        ; mul shrinking
+        ; When a mul doesn't need all of its bits, we can shrink it and then 
+        ; extend the result.
+        (rule
+            ((= ?expr (Op2 (Mul) ?a ?b))
+             (RealBitwidth ?a ?a-real-bw)
+             (RealBitwidth ?b ?b-real-bw)
+             (HasType ?expr (Bitvector ?expr-bw))
+             (< (* 2 (max ?a-real-bw ?b-real-bw)) ?expr-bw))
+            ((union 
+               ?expr 
+               (Op1 (ZeroExtend ?expr-bw) 
+                (Op2 (Mul) 
+                 (Op1 (Extract (- (* 2 (max ?a-real-bw ?b-real-bw)) 1) 0) ?a)
+                 (Op1 (Extract (- (* 2 (max ?a-real-bw ?b-real-bw)) 1) 0) ?b)))))
+            :ruleset transform)
+        ; Add shrinking
+        (rule
+         ((= ?expr (Op2 (Add) ?a ?b))
+          (RealBitwidth ?a ?a-real-bw)
+          (RealBitwidth ?b ?b-real-bw)
+          (HasType ?expr (Bitvector ?expr-bw))
+          (< (max ?a-real-bw ?b-real-bw) ?expr-bw))
+         ((union 
+           ?expr 
+           (Op1 (ZeroExtend ?expr-bw) 
+            (Op2 (Add) 
+             (Op1 (Extract (- (max ?a-real-bw ?b-real-bw) 1) 0) ?a)
+             (Op1 (Extract (- (max ?a-real-bw ?b-real-bw) 1) 0) ?b)))))
+         :ruleset transform)
+        
+
+        (ruleset simplification)
+        (rule
+         ((= ?expr (Op1 (ZeroExtend ?m) (Op1 (ZeroExtend ?n) ?e)))
+          (>= ?m ?n))
+         ((union ?expr (Op1 (ZeroExtend ?m) ?e))
+          (subsume (Op1 (ZeroExtend ?m) (Op1 (ZeroExtend ?n) ?e)))))
+        ; If we're extracting through a zero-extend, we can sometimes delete the
+        ; zero-extend.
+        (rule
+         ((= ?expr (Op1 (Extract ?hi ?lo) (Op1 (ZeroExtend ?n) ?e)))
+          (HasType ?e (Bitvector ?orig-bw))
+          (< ?hi ?orig-bw)
+          (< ?lo ?orig-bw))
+         ((union ?expr (Op1 (Extract ?hi ?lo) ?e))
+          (subsume (Op1 (Extract ?hi ?lo) (Op1 (ZeroExtend ?n) ?e))))
+         :ruleset simplification)
+
+   "#,
         )
         .unwrap();
     egraph
         .parse_and_run_program(
             None,
-            "(run-schedule (saturate (seq typing transform mapping)))",
+            "(run-schedule (saturate (seq (saturate typing) transform (saturate mapping) (saturate simplification) (saturate typing))))",
         )
         .unwrap();
 
-    // egraph_interact(&mut egraph);
+    warn!("I don't think the add shrinking rewrite is correct---it's not considering that nbit+nbit =n+1bit.");
 
     // May need this rebuild. See
     // https://github.com/egraphs-good/egglog/pull/391
@@ -235,6 +444,21 @@ fn main() {
             "Egraph after rewrites: {}",
             svg_dirpath.join("after_rewrites.svg").to_string_lossy()
         );
+
+        // Extracting random programs for debugging.
+        // let mut set_of_exprs = HashSet::new();
+        // for _ in 0..100 {
+        //     let choices = &RandomExtractor.extract(&serialized, &[]);
+        //     set_of_exprs.insert(node_to_string(
+        //         &serialized,
+        //         &choices[&egraph.value_to_class_id(&outputs[0].0)],
+        //         &choices,
+        //     ));
+        // }
+        // debug!(
+        //     "Random programs:\n{}",
+        //     set_of_exprs.drain().collect::<Vec<_>>().join("\n")
+        // );
     }
 
     let serialized_egraph = egraph.serialize(SerializeConfig::default());
@@ -259,6 +483,8 @@ fn main() {
         "Found {} potential mappings; running Lakeroad on each.",
         node_ids.len()
     );
+
+    // _egraph_interact(&mut egraph);
 
     // STEP 5: For each proposed mapping, attempt synthesis with Lakeroad.
     for sketch_template_node_id in &node_ids {
@@ -294,11 +520,11 @@ fn main() {
                 .collect(),
         );
 
-        log::info!(
-            "Calling Lakeroad with spec:\n{}\nand sketch:\n{}",
-            node_to_string(&serialized_egraph, &spec_node_id, &spec_choices),
-            serialized_egraph[sketch_template_node_id].op
-        );
+        // log::info!(
+        //     "Calling Lakeroad with spec:\n{}\nand sketch:\n{}",
+        //     node_to_string(&serialized_egraph, &spec_node_id, &spec_choices),
+        //     serialized_egraph[sketch_template_node_id].op
+        // );
 
         // STEP 5.2: Call Lakeroad.
         let commands = call_lakeroad_on_primitive_interface_and_spec(
@@ -360,7 +586,10 @@ fn main() {
     let choices = GlobalGreedyDagExtractor {
         structural_only: true,
     }
-    .extract(&serialized, &[]);
+    .extract(&serialized, &[])
+    .unwrap_or_else(|e| {
+        panic!("Failed to extract design: {}", e);
+    });
     let verilog = to_verilog_egraph_serialize(
         &serialized,
         &choices,
