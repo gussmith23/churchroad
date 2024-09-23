@@ -67,13 +67,13 @@ impl TermDag {
         // NOTE: This is the only modification we made to make this work with
         // churchroad. Could find a different way to do this.
         let node_cost = match node.op.as_str() {
-            "Wire" => INFINITY,
-            "Shr" | "Shl" => {
-                warn!("Shr and Shl probably shouldn't be extractable");
-                10000.into()
-            }
-            "And" | "Add" | "Sub" | "Mul" | "Or" | "Xor" | "Eq" | "Ne" | "Not" | "ReduceOr"
-            | "ReduceAnd" | "ReduceXor" | "LogicNot" | "LogicAnd" | "LogicOr" | "Mux" => INFINITY,
+            // "Wire" => INFINITY,
+            // "Shr" | "Shl" => {
+            //     warn!("Shr and Shl probably shouldn't be extractable");
+            //     10000.into()
+            // }
+            // "And" | "Add" | "Sub" | "Mul" | "Or" | "Xor" | "Eq" | "Ne" | "Not" | "ReduceOr"
+            // | "ReduceAnd" | "ReduceXor" | "LogicNot" | "LogicAnd" | "LogicOr" | "Mux" => 10000.into(),
             _ => node.cost,
         };
 
@@ -187,38 +187,38 @@ impl GlobalGreedyDagExtractor {
             keep_going = false;
 
             'node_loop: for (node_id, node) in &nodes {
-                // // NOTE: This is the only modification we made to make this work
-                // // with churchroad. Could find a different way to do this.
-                // //
-                // // Always exclude certain nodes that are always unwanted.
-                // if node.op == "Wire"
-                //     || node.op == "PrimitiveInterfaceDSP"
-                //     || node.op == "PrimitiveInterfaceDSP3"
-                // {
-                //     continue 'node_loop;
-                // }
-                // // Sometimes exclude nodes that are only structural, if the user wants.
-                // if self.structural_only
-                //     && match node.op.as_str() {
-                //         "Op0" | "Op1" | "Op2" | "Op3" => {
-                //             let op_name = &egraph[node_id].children[0];
-                //             !matches!(
-                //                 egraph[op_name].op.as_str(),
-                //                 "Extract"
-                //                     | "Concat"
-                //                     | "BV"
-                //                     | "CRString"
-                //                     | "ZeroExtend"
-                //                     | "SignExtend"
-                //                     | "Shr"
-                //                     | "Shl"
-                //             )
-                //         }
-                //         _ => false,
-                //     }
-                // {
-                //     continue 'node_loop;
-                // }
+                // NOTE: This is the only modification we made to make this work
+                // with churchroad. Could find a different way to do this.
+                //
+                // Always exclude certain nodes that are always unwanted.
+                if node.op == "Wire"
+                    || node.op == "PrimitiveInterfaceDSP"
+                    || node.op == "PrimitiveInterfaceDSP3"
+                {
+                    continue 'node_loop;
+                }
+                // Sometimes exclude nodes that are only structural, if the user wants.
+                if self.structural_only
+                    && match node.op.as_str() {
+                        "Op0" | "Op1" | "Op2" | "Op3" => {
+                            let op_name = &egraph[node_id].children[0];
+                            !matches!(
+                                egraph[op_name].op.as_str(),
+                                "Extract"
+                                    | "Concat"
+                                    | "BV"
+                                    | "CRString"
+                                    | "ZeroExtend"
+                                    | "SignExtend"
+                                    | "Shr"
+                                    | "Shl"
+                            )
+                        }
+                        _ => false,
+                    }
+                {
+                    continue 'node_loop;
+                }
 
                 let mut children: Vec<TermId> = vec![];
                 // compute the cost set from the children
