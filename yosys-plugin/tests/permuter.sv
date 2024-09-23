@@ -22,7 +22,7 @@
 // TODO(@gussmith23): are we in line with this license?
 
 // RUN: $YOSYS -q -m $CHURCHROAD_DIR/yosys-plugin/churchroad.so \
-// RUN:   -p 'read_verilog -sv %s; prep -top permuter_4x4_sim; pmuxtree; prep; write_lakeroad' \
+// RUN:   -p 'read_verilog -sv %s; prep -top permuter_4x4_sim; pmuxtree; prep; write_churchroad' \
 // RUN:   | FileCheck %s
 
 module permuter_4x4_sim #(
@@ -103,38 +103,3 @@ endmodule
 // CHECK: (let v26 (Op0 (BV 1 1)))
 // CHECK: (let v27 (Op1 (ZeroExtend 2) v26))
 // CHECK: (union v19 (Op2 (Eq) v21 v27))
-// CHECK: (let clk (Var "clk" 1))
-// CHECK: (IsPort "" "clk" (Input) clk)
-// CHECK: (union v20 clk)
-// CHECK: (let control (Var "control" 2))
-// CHECK: (IsPort "" "control" (Input) control)
-// CHECK: (union v21 control)
-// CHECK: (let din (Var "din" 16))
-// CHECK: (IsPort "" "din" (Input) din)
-// CHECK: (union v22 din)
-// CHECK: (let dout v23)
-// CHECK: (IsPort "" "dout" (Output) dout)
-// CHECK: (delete (Wire "v0" 16))
-// CHECK: (delete (Wire "v1" 1))
-// CHECK: (delete (Wire "v2" 16))
-// CHECK: (delete (Wire "v3" 16))
-// CHECK: (delete (Wire "v4" 8))
-// CHECK: (delete (Wire "v5" 12))
-// CHECK: (delete (Wire "v6" 16))
-// CHECK: (delete (Wire "v7" 16))
-// CHECK: (delete (Wire "v8" 8))
-// CHECK: (delete (Wire "v9" 12))
-// CHECK: (delete (Wire "v10" 16))
-// CHECK: (delete (Wire "v11" 4))
-// CHECK: (delete (Wire "v12" 4))
-// CHECK: (delete (Wire "v13" 4))
-// CHECK: (delete (Wire "v14" 4))
-// CHECK: (delete (Wire "v15" 8))
-// CHECK: (delete (Wire "v16" 8))
-// CHECK: (delete (Wire "v17" 1))
-// CHECK: (delete (Wire "v18" 1))
-// CHECK: (delete (Wire "v19" 1))
-// CHECK: (delete (Wire "v20" 1))
-// CHECK: (delete (Wire "v21" 2))
-// CHECK: (delete (Wire "v22" 16))
-// CHECK: (delete (Wire "v23" 16))

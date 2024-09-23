@@ -1,5 +1,5 @@
 // RUN: $YOSYS -q -m $CHURCHROAD_DIR/yosys-plugin/churchroad.so \
-// RUN:   -p 'read_verilog -sv %s; prep -top top; pmuxtree; prep; write_lakeroad' \
+// RUN:   -p 'read_verilog -sv %s; prep -top top; pmuxtree; prep; write_churchroad' \
 // RUN:   | FileCheck %s
 
 module top
@@ -57,29 +57,8 @@ endmodule
 // CHECK: (union v3 (Op2 (Xor) v5 v6))
 // CHECK: (union v10 (Op2 (Xor) v7 v8))
 // CHECK: (union v4 (Op2 (Xor) v10 v11))
-// CHECK: (let i_a (Var "i_a" 2))
-// CHECK: (IsPort "" "i_a" (Input) i_a)
-// CHECK: (union v13 i_a)
-// CHECK: (let i_b (Var "i_b" 2))
-// CHECK: (IsPort "" "i_b" (Input) i_b)
-// CHECK: (union v14 i_b)
-// CHECK: (let o_c v12)
-// CHECK: (IsPort "" "o_c" (Output) o_c)
-// CHECK: (let o_s v15)
-// CHECK: (IsPort "" "o_s" (Output) o_s)
-// CHECK: (delete (Wire "v0" 1))
-// CHECK: (delete (Wire "v1" 1))
-// CHECK: (delete (Wire "v2" 1))
-// CHECK: (delete (Wire "v3" 1))
-// CHECK: (delete (Wire "v4" 1))
-// CHECK: (delete (Wire "v5" 1))
-// CHECK: (delete (Wire "v6" 1))
-// CHECK: (delete (Wire "v7" 1))
-// CHECK: (delete (Wire "v8" 1))
-// CHECK: (delete (Wire "v9" 1))
-// CHECK: (delete (Wire "v10" 1))
-// CHECK: (delete (Wire "v11" 1))
-// CHECK: (delete (Wire "v12" 1))
-// CHECK: (delete (Wire "v13" 2))
-// CHECK: (delete (Wire "v14" 2))
-// CHECK: (delete (Wire "v15" 2))
+// CHECK: (IsPort "" "i_a" (Input) v13)
+// CHECK: (IsPort "" "i_b" (Input) v14)
+// CHECK: (IsPort "" "o_c" (Output) v12)
+// CHECK: (IsPort "" "o_s" (Output) v15)
+// CHECK: (run-schedule (saturate (seq typing misc)))

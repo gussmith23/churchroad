@@ -1,16 +1,862 @@
+pub mod global_greedy_dag;
+
 use egraph_serialize::{ClassId, Node, NodeId};
 use indexmap::IndexMap;
+use log::{info, warn};
 use std::{
     collections::{HashMap, HashSet},
+    env,
+    fmt::Debug,
+    fs::read_to_string,
+    io::Write,
+    path::Path,
+    process::{Command, Stdio},
     sync::Arc,
+    time::SystemTime,
 };
+use tempfile::NamedTempFile;
 
 use egglog::{
-    ast::{Literal, Symbol},
+    ast::{Literal, Span, SrcFile, Symbol},
     constraint::{SimpleTypeConstraint, TypeConstraint},
     sort::{FromSort, I64Sort, IntoSort, Sort, VecSort},
     ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
 };
+
+pub fn call_lakeroad_on_primitive_interface_and_spec(
+    serialized_egraph: &egraph_serialize::EGraph,
+    spec_choices: &indexmap::IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
+    _spec_node_id: &NodeId,
+    sketch_template_node_id: &NodeId,
+    architecture: &str,
+) -> String {
+    let eclass = &serialized_egraph[sketch_template_node_id].eclass;
+    // Assert the two nodes are the same class.
+    assert_eq!(eclass, &serialized_egraph[_spec_node_id].eclass);
+
+    // Not supporting anything other than a simple DSP sketch at the moment.
+    assert!(
+        serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP"
+            || serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3"
+    );
+
+    let out_bw = get_bitwidth_for_node(serialized_egraph, sketch_template_node_id).unwrap();
+
+    log::debug!(
+        "a expr: {}",
+        node_to_string(
+            serialized_egraph,
+            &serialized_egraph[sketch_template_node_id].children[0],
+            spec_choices
+        )
+    );
+    log::debug!(
+        "b expr: {}",
+        node_to_string(
+            serialized_egraph,
+            &serialized_egraph[sketch_template_node_id].children[1],
+            spec_choices
+        )
+    );
+
+    if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
+        log::debug!(
+            "c expr: {}",
+            node_to_string(
+                serialized_egraph,
+                &serialized_egraph[sketch_template_node_id].children[2],
+                spec_choices
+            )
+        );
+    }
+
+    let a_bw = get_bitwidth_for_node(
+        serialized_egraph,
+        &serialized_egraph[sketch_template_node_id].children[0],
+    )
+    .unwrap();
+    let b_bw = get_bitwidth_for_node(
+        serialized_egraph,
+        &serialized_egraph[sketch_template_node_id].children[1],
+    )
+    .unwrap();
+
+    let mut bottom_out_at = HashMap::new();
+    bottom_out_at.insert(
+        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[0]]
+            .eclass
+            .clone(),
+        "a".to_string(),
+    );
+    bottom_out_at.insert(
+        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[1]]
+            .eclass
+            .clone(),
+        "b".to_string(),
+    );
+    if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
+        bottom_out_at.insert(
+            serialized_egraph[&serialized_egraph[sketch_template_node_id].children[2]]
+                .eclass
+                .clone(),
+            "c".to_string(),
+        );
+    }
+
+    // Put the spec in a tempfile.
+    let mut spec_file = NamedTempFile::new().unwrap();
+    let spec_filepath = spec_file.path().to_owned();
+    spec_file
+        .write_all(
+            to_verilog_egraph_serialize(
+                serialized_egraph,
+                spec_choices,
+                "clk",
+                bottom_out_at,
+                Some([(eclass.clone(), "out".to_string())].into()),
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+    spec_file.flush().unwrap();
+    // spec_file.persist("tmp.v").unwrap();
+
+    let binding =
+        env::var("LAKEROAD_DIR").expect("LAKEROAD_DIR environment variable should be set.");
+    let lakeroad_dir = Path::new(&binding);
+    let mut command = Command::new("racket");
+    command
+        .arg(lakeroad_dir.join("bin").join("main.rkt"))
+        .arg("--architecture")
+        .arg(architecture)
+        .arg("--verilog-module-filepath")
+        .arg(spec_filepath)
+        // TODO(@gussmith23): This should probably not be implicit in the generate-verilog function.
+        .arg("--top-module-name")
+        .arg("top")
+        // TODO(@gussmith23): Determine this automatically somehow.
+        .arg("--verilog-module-out-signal")
+        .arg(format!("out:{out_bw}"))
+        .arg("--input-signal")
+        .arg(format!("a:(port a {a_bw}):{a_bw}"))
+        .arg("--input-signal")
+        .arg(format!("b:(port b {b_bw}):{b_bw}"))
+        .arg("--template")
+        .arg("dsp")
+        .arg("--pipeline-depth")
+        .arg("0")
+        .arg("--out-format")
+        .arg("verilog")
+        .arg("--timeout")
+        .arg("120");
+    if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
+        let c_bw = get_bitwidth_for_node(
+            serialized_egraph,
+            &serialized_egraph[sketch_template_node_id].children[2],
+        )
+        .unwrap();
+        command
+            .arg("--input-signal")
+            .arg(format!("c:(port c {c_bw}):{c_bw}"));
+    }
+    log::debug!(
+        "Lakeroad command: {}",
+        &command
+            .get_args()
+            .map(|s| s.to_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    let output = command.output().unwrap();
+
+    if !output.status.success() {
+        panic!(
+            "Lakeroad failed with code {}. stdout:\n{}\n\nstderr:\n{}",
+            output.status.code().unwrap(),
+            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+
+    let mut verilog = String::from_utf8_lossy(&output.stdout).into_owned();
+
+    info!(
+        "First few lines of generated Verilog:\n{}",
+        verilog.lines().take(10).collect::<Vec<_>>().join("\n")
+    );
+
+    // TODO(@gussmith23): hardcoding the definition of DSP48E2 here. Should
+    // instead take it as input to the flow at some point.
+    verilog.push_str(
+        r#"
+// DSP48E2 definition from Xilinx. Note that we keep the module empty for now --
+// we only need the input/output port definitions.
+
+///////////////////////////////////////////////////////////////////////////////
+//  Copyright (c) 1995/2018 Xilinx, Inc.
+//  All Right Reserved.
+///////////////////////////////////////////////////////////////////////////////
+//   ____  ____
+//  /   /\/   /
+// /___/  \  /     Vendor      : Xilinx
+// \   \   \/      Version     : 2018.3
+//  \   \          Description : Xilinx Unified Simulation Library Component
+//  /   /                        48-bit Multi-Functional Arithmetic Block
+// /___/   /\      Filename    : DSP48E2.v
+// \   \  /  \
+//  \___\/\___\
+//
+///////////////////////////////////////////////////////////////////////////////
+//  Revision:
+//  07/15/12 - Migrate from E1.
+//  12/10/12 - Add dynamic registers
+//  01/10/13 - 694456 - DIN_in/D_in connectivity issue
+//  01/11/13 - DIN, D_DATA data width change (26/24) sync4 yml
+//  02/13/13 - PCIN_47A change from internal feedback to PCIN(47) pin
+//  03/06/13 - 701316 - A_B_reg no clk when REG=0
+//  04/03/13 - yaml update
+//  04/08/13 - 710304 - AREG, BREG, ACASCREG and BCASCREG dynamic registers mis sized.
+//  04/22/13 - 714213 - ACOUT, BCOUT wrong logic
+//  04/22/13 - 713695 - Zero mult result on USE_SIMD
+//  04/22/13 - 713617 - CARRYCASCOUT behaviour
+//  04/23/13 - 714772 - remove sensitivity to negedge GSR
+//  04/23/13 - 713706 - change P_PDBK connection
+//  05/07/13 - 716896 - AREG, BREG, ACASCREG and BCASCREG localparams mis sized.
+//  05/07/13 - 716896 - ALUMODE/OPMODE_INV_REG mis sized
+//  05/07/13 - 716896 - INMODE_INV_REG mis sized
+//  05/07/13 - x_mac_cascd missing for sensitivity list.
+//  10/22/14 - 808642 - Added #1 to $finish
+//  End Revision:
+///////////////////////////////////////////////////////////////////////////////
+
+module DSP48E2 #(
+    parameter integer ACASCREG = 1,
+    parameter integer ADREG = 1,
+    parameter integer ALUMODEREG = 1,
+    parameter AMULTSEL = "A",
+    parameter integer AREG = 1,
+    parameter AUTORESET_PATDET = "NO_RESET",
+    parameter AUTORESET_PRIORITY = "RESET",
+    parameter A_INPUT = "DIRECT",
+    parameter integer BCASCREG = 1,
+    parameter BMULTSEL = "B",
+    parameter integer BREG = 1,
+    parameter B_INPUT = "DIRECT",
+    parameter integer CARRYINREG = 1,
+    parameter integer CARRYINSELREG = 1,
+    parameter integer CREG = 1,
+    parameter integer DREG = 1,
+    parameter integer INMODEREG = 1,
+    parameter [3:0] IS_ALUMODE_INVERTED = 4'b0000,
+    parameter [0:0] IS_CARRYIN_INVERTED = 1'b0,
+    parameter [0:0] IS_CLK_INVERTED = 1'b0,
+    parameter [4:0] IS_INMODE_INVERTED = 5'b00000,
+    parameter [8:0] IS_OPMODE_INVERTED = 9'b000000000,
+    parameter [0:0] IS_RSTALLCARRYIN_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTALUMODE_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTA_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTB_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTCTRL_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTC_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTD_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTINMODE_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTM_INVERTED = 1'b0,
+    parameter [0:0] IS_RSTP_INVERTED = 1'b0,
+    parameter [47:0] MASK = 48'h3FFFFFFFFFFF,
+    parameter integer MREG = 1,
+    parameter integer OPMODEREG = 1,
+    parameter [47:0] PATTERN = 48'h000000000000,
+    parameter PREADDINSEL = "A",
+    parameter integer PREG = 1,
+    parameter [47:0] RND = 48'h000000000000,
+    parameter SEL_MASK = "MASK",
+    parameter SEL_PATTERN = "PATTERN",
+    parameter USE_MULT = "MULTIPLY",
+    parameter USE_PATTERN_DETECT = "NO_PATDET",
+    parameter USE_SIMD = "ONE48",
+    parameter USE_WIDEXOR = "FALSE",
+    parameter XORSIMD = "XOR24_48_96"
+) (
+    output [29:0] ACOUT,
+    output [17:0] BCOUT,
+    output CARRYCASCOUT,
+    output [3:0] CARRYOUT,
+    output MULTSIGNOUT,
+    output OVERFLOW,
+    output [47:0] P,
+    output PATTERNBDETECT,
+    output PATTERNDETECT,
+    output [47:0] PCOUT,
+    output UNDERFLOW,
+    output [7:0] XOROUT,
+
+    input [29:0] A,
+    input [29:0] ACIN,
+    input [3:0] ALUMODE,
+    input [17:0] B,
+    input [17:0] BCIN,
+    input [47:0] C,
+    input CARRYCASCIN,
+    input CARRYIN,
+    input [2:0] CARRYINSEL,
+    input CEA1,
+    input CEA2,
+    input CEAD,
+    input CEALUMODE,
+    input CEB1,
+    input CEB2,
+    input CEC,
+    input CECARRYIN,
+    input CECTRL,
+    input CED,
+    input CEINMODE,
+    input CEM,
+    input CEP,
+    input CLK,
+    input [26:0] D,
+    input [4:0] INMODE,
+    input MULTSIGNIN,
+    input [8:0] OPMODE,
+    input [47:0] PCIN,
+    input RSTA,
+    input RSTALLCARRYIN,
+    input RSTALUMODE,
+    input RSTB,
+    input RSTC,
+    input RSTCTRL,
+    input RSTD,
+    input RSTINMODE,
+    input RSTM,
+    input RSTP
+);
+
+endmodule
+"#,
+    );
+
+    let choices = AnythingExtractor.extract(serialized_egraph, &[]);
+
+    // Generate port bindings.
+    let mut port_to_expr_map = HashMap::new();
+    port_to_expr_map.insert(
+        "a".to_string(),
+        node_to_string(
+            serialized_egraph,
+            &serialized_egraph[sketch_template_node_id].children[0],
+            &choices,
+        ),
+    );
+    port_to_expr_map.insert(
+        "b".to_string(),
+        node_to_string(
+            serialized_egraph,
+            &serialized_egraph[sketch_template_node_id].children[1],
+            &choices,
+        ),
+    );
+    if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
+        port_to_expr_map.insert(
+            "c".to_string(),
+            node_to_string(
+                serialized_egraph,
+                &serialized_egraph[sketch_template_node_id].children[2],
+                &choices,
+            ),
+        );
+    }
+    port_to_expr_map.insert(
+        "out".to_string(),
+        node_to_string(serialized_egraph, sketch_template_node_id, &choices),
+    );
+
+    // TODO(@gussmith23): hardcoded module name
+    // Don't simcheck, because there'll be undefined modules. That's expected.
+    // Don't generate let bindings.
+
+    commands_from_verilog(&verilog, "top", false, false, port_to_expr_map)
+}
+
+/// Converts serialized egraph with map of choices and root node to an S-expr.
+/// TODO(@gussmith23): this will probably run infinitely when there are cycles.
+pub fn node_to_string(
+    egraph: &egraph_serialize::EGraph,
+    node_id: &NodeId,
+    choices: &indexmap::IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
+) -> String {
+    let node = &egraph.nodes[node_id];
+    let mut out = String::new();
+    // Don't wrap in parens when op begins with a quote or a number.
+    // TODO(@gussmith23): this is very rough.
+    let wrap_in_parens = node.op.chars().next().unwrap().is_ascii_alphabetic();
+
+    if wrap_in_parens {
+        out += "(";
+    }
+    out += node.op.as_str();
+    for child_id in &node.children {
+        out += " ";
+        out += &node_to_string(egraph, &choices[&egraph[child_id].eclass], choices);
+    }
+
+    if wrap_in_parens {
+        out += ")";
+    }
+
+    out
+}
+
+// TODO(@gussmith23): It would be nice to not have to use a mutable reference
+// here.
+pub fn find_primitive_interface_values(egraph: &mut EGraph) -> Vec<(ArcSort, Value)> {
+    const NUM_TO_GET: usize = 100;
+    let (results, termdag) = egraph
+        .function_to_dag("PrimitiveInterfaceDSP".into(), NUM_TO_GET)
+        .unwrap();
+    assert!(results.len() < NUM_TO_GET);
+
+    for (term, output) in &results {
+        // I don't know if this is actually always the case, but I don't know
+        // what it means when it's not the case.
+        assert_eq!(term, output);
+    }
+
+    let sorts_and_exprs: Vec<_> = results
+        .iter()
+        .map(|(term, output)| {
+            // I don't know if this is actually always the case, but I don't know
+            // what it means when it's not the case.
+            assert_eq!(term, output);
+
+            egraph.eval_expr(&termdag.term_to_expr(term)).unwrap()
+        })
+        .collect();
+
+    sorts_and_exprs
+}
+
+/// Same as [`find_primitive_interface_values`] but over a serialized egraph.
+pub fn find_primitive_interfaces_serialized(egraph: &egraph_serialize::EGraph) -> Vec<NodeId> {
+    egraph
+        .nodes
+        .iter()
+        .filter_map(|(node_id, node)| {
+            if node.op == "PrimitiveInterfaceDSP" || node.op == "PrimitiveInterfaceDSP3" {
+                Some(node_id.to_owned())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Extracts only expressions legal in structural Verilog.
+#[derive(Default)]
+pub struct StructuralVerilogExtractor;
+impl StructuralVerilogExtractor {
+    pub fn extract(
+        &self,
+        egraph: &egraph_serialize::EGraph,
+        _roots: &[egraph_serialize::ClassId],
+    ) -> IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId> {
+        egraph
+            .classes()
+            .iter()
+            .map(|(id, class)| {
+                let mut potential_nodes = class
+                    .nodes
+                    .iter()
+                    .filter(|node_id| {
+                        let op = &egraph[*node_id].op;
+                        // Filter certain op types.
+                        !(["PrimitiveInterfaceDSP"].contains(&op.as_str()))
+                    })
+                    .filter(|node_id| {
+                        let op = egraph[*node_id].op.as_str();
+                        match op {
+                            "Op0" | "Op1" | "Op2" | "Op3" => {
+                                let op_name = &egraph[*node_id].children[0];
+                                matches!(
+                                    egraph[op_name].op.as_str(),
+                                    "Extract"
+                                        | "Concat"
+                                        | "BV"
+                                        | "CRString"
+                                        | "ZeroExtend"
+                                        | "SignExtend"
+                                )
+                            }
+                            _ => true,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                potential_nodes.sort_by(|a, b| {
+                    // If either is a wire, it should come last.
+                    let are_wires = (egraph[*a].op == "Wire", egraph[*b].op == "Wire");
+                    match are_wires {
+                        (true, true) => std::cmp::Ordering::Equal,
+                        (true, false) => std::cmp::Ordering::Greater,
+                        (false, true) => std::cmp::Ordering::Less,
+                        (false, false) => {
+                            // Otherwise, sort by the node ID.
+                            a.cmp(b)
+                        }
+                    }
+                });
+                assert!(!potential_nodes.is_empty(), "Found unextractable class.");
+                let node_id = potential_nodes[0].clone();
+                // Warn if we're still extracting a Wire.
+                if egraph[&node_id].op == "Wire" {
+                    log::warn!(
+                        "Extracting wire {}. All nodes in this eclass:\n{}",
+                        egraph[&egraph[&node_id].children[0]].op,
+                        class
+                            .nodes
+                            .iter()
+                            .map(|node_id| egraph[node_id].op.clone())
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    );
+                }
+                (id.clone(), node_id)
+            })
+            .collect()
+    }
+}
+
+/// Extract specs, ensuring specific nodes are chosen.
+#[derive(Default)]
+pub struct EnsureExtractSpecExtractor {
+    pub ensure_extract: HashSet<egraph_serialize::NodeId>,
+}
+impl EnsureExtractSpecExtractor {
+    pub fn extract(
+        &self,
+        egraph: &egraph_serialize::EGraph,
+        _roots: &[egraph_serialize::ClassId],
+    ) -> IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId> {
+        let _work_to_be_done = true;
+
+        // Maps node ID to the number of desired-to-be-extracted nodes that can
+        // be extracted via this node.
+        let mut ensure_extract_tracker: HashMap<_, _> = egraph
+            .nodes
+            .iter()
+            .map(|(node_id, _)| {
+                if self.ensure_extract.contains(node_id) {
+                    (node_id.clone(), 1)
+                } else {
+                    (node_id.clone(), 0)
+                }
+            })
+            .collect();
+
+        let mut choices: IndexMap<_, _> = egraph
+            .classes()
+            .iter()
+            .map(|(id, class)| {
+                let node_id = class
+                    .nodes
+                    .iter()
+                    .find(|node_id| {
+                        let op = &egraph[*node_id].op;
+
+                        // Filter certain op types.
+                        !(["PrimitiveInterfaceDSP", "PrimitiveInterfaceDSP3", "Wire"]
+                            .contains(&op.as_str()))
+                    })
+                    .unwrap()
+                    .clone();
+                (id.clone(), node_id)
+            })
+            .collect();
+
+        // For every eclass, choose the node with the highest number of
+        // desired-to-be-extracted nodes under it.
+        fn update_choices(
+            egraph: &egraph_serialize::EGraph,
+            ensure_extract_tracker: &HashMap<NodeId, i32>,
+            choices: &mut IndexMap<ClassId, NodeId>,
+        ) {
+            for (id, class) in egraph.classes() {
+                let mut sorted_nodes: Vec<_> = class
+                    .nodes
+                    .iter()
+                    .filter(|&node_id| {
+                        let op = &egraph[node_id].op;
+                        // Filter out banned nodes.
+                        !(["PrimitiveInterfaceDSP", "PrimitiveInterfaceDSP3", "Wire"]
+                            .contains(&op.as_str()))
+                    })
+                    .cloned()
+                    .collect();
+                sorted_nodes.sort_by_key(|node_id| ensure_extract_tracker[node_id]);
+                sorted_nodes.reverse();
+                let new_choice = sorted_nodes[0].clone();
+                let old_choice = choices
+                    .insert(id.clone(), new_choice.clone())
+                    .expect("Class should have already been in choices.");
+                if new_choice != old_choice {
+                    log::debug!(
+                        "Changed choice for class {} from {} to {}",
+                        id,
+                        egraph[&old_choice].op,
+                        egraph[&new_choice].op
+                    );
+                }
+            }
+        }
+
+        // Returns whether any updates were made.
+        fn update_node_tracker(
+            egraph: &egraph_serialize::EGraph,
+            ensure_extract_tracker: &mut HashMap<NodeId, i32>,
+            choices: &IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
+        ) -> bool {
+            let mut update_occurred = false;
+            for (node_id, node) in egraph.nodes.iter() {
+                // Leaves already have their final value and don't need to be
+                // updated.
+                if node.children.is_empty() {
+                    continue;
+                }
+
+                let new_value = node
+                    .children
+                    .iter()
+                    .map(|child_id| {
+                        // We have to make sure to use choices to get the
+                        // *actual* node ID. Indexing an egraph at a nodeid
+                        // gives you another node, but we need to consider
+                        // that that node might not actually be the current
+                        // choice for the eclass.
+                        let node_choice = &choices[&egraph[child_id].eclass];
+                        ensure_extract_tracker[node_choice]
+                    })
+                    .sum();
+                let old_value = ensure_extract_tracker.insert(node_id.clone(), new_value);
+                assert!(
+                    old_value.is_some(),
+                    "Node should have already been in ensure_extract_tracker."
+                );
+
+                if old_value.unwrap() != new_value {
+                    update_occurred = true;
+                }
+            }
+
+            update_occurred
+        }
+
+        // Set to true so we do at least one iteration.
+        let mut updates_occurred = true;
+        // Keep updating until no more updates are made.
+        while updates_occurred {
+            update_choices(egraph, &ensure_extract_tracker, &mut choices);
+            updates_occurred = update_node_tracker(egraph, &mut ensure_extract_tracker, &choices);
+        }
+
+        choices
+    }
+}
+/// I don't know if we should be making Extractors in such an ad-hoc way, but
+/// this actually seems to be the most convenient way to do this.
+///
+/// An extractor for extracting things we can use as specifications. This mostly
+/// means that it extract things that we can turn into legal Verilog.
+#[derive(Default)]
+pub struct SpecExtractor;
+impl SpecExtractor {
+    pub fn extract(
+        &self,
+        egraph: &egraph_serialize::EGraph,
+        _roots: &[egraph_serialize::ClassId],
+    ) -> IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId> {
+        egraph
+            .classes()
+            .iter()
+            .map(|(id, class)| {
+                let node_id = class
+                    .nodes
+                    .iter()
+                    .find(|node_id| {
+                        let op = &egraph[*node_id].op;
+
+                        // Filter certain op types.
+                        !(["PrimitiveInterfaceDSP", "Wire"].contains(&op.as_str()))
+                    })
+                    .unwrap()
+                    .clone();
+                (id.clone(), node_id)
+            })
+            .collect()
+    }
+}
+
+/// For a given primitive interface term `term`, find an equivalent "concrete"
+/// expression that we can use as our spec for synthesis via Lakeroad.
+///
+/// Returns the node choides for each node in the egraph, plus the specific node
+/// ID representing the spec.
+pub fn find_spec_for_primitive_interface(
+    eclass: &egraph_serialize::ClassId,
+    serialized_egraph: &egraph_serialize::EGraph,
+) -> (IndexMap<ClassId, NodeId>, NodeId) {
+    let choices = SpecExtractor.extract(serialized_egraph, vec![].as_slice());
+    let node_id = choices.get(eclass).unwrap().to_owned();
+    (choices, node_id)
+}
+
+/// For a given primitive interface term `term`, find an equivalent "concrete"
+/// expression that we can use as our spec for synthesis via Lakeroad. This
+/// version allows the caller to specify a set of nodes that must be extracted.
+pub fn find_spec_for_primitive_interface_including_nodes(
+    eclass: &egraph_serialize::ClassId,
+    serialized_egraph: &egraph_serialize::EGraph,
+    ensure_extract: HashSet<NodeId>,
+) -> (IndexMap<ClassId, NodeId>, NodeId) {
+    let extractor = EnsureExtractSpecExtractor { ensure_extract };
+    let choices = extractor.extract(serialized_egraph, vec![].as_slice());
+    let node_id = choices.get(eclass).unwrap().to_owned();
+    (choices, node_id)
+}
+
+pub fn call_lakeroad_on_primitive_interface(term: &Term, term_dag: &TermDag) {
+    dbg!(term_dag.term_to_expr(term).to_string());
+
+    dbg!(to_verilog(term_dag, term_dag.lookup(term)));
+}
+
+pub fn call_lakeroad() {}
+
+/// ```
+/// let mut egraph = churchroad::from_verilog(
+///     "module identity(input i, output o); assign o = i; endmodule",
+///     "identity",
+///     true,
+///     true,
+///     [].into());
+/// egraph.parse_and_run_program(None, r#"(check (IsPort "" "i" (Input) i) (IsPort "" "o" (Output) o) (= i o))"#);
+/// ```
+pub fn from_verilog(
+    verilog: &str,
+    top_module_name: &str,
+    simcheck: bool,
+    let_bindings: bool,
+    port_to_expr_map: HashMap<String, String>,
+) -> EGraph {
+    let mut f = NamedTempFile::new().unwrap();
+    f.write_all(verilog.as_bytes()).unwrap();
+    from_verilog_file(
+        f.path(),
+        top_module_name,
+        simcheck,
+        let_bindings,
+        port_to_expr_map,
+    )
+}
+
+/// Version of [`from_verilog`] that takes a filepath argument.
+pub fn from_verilog_file(
+    verilog_filepath: &Path,
+    top_module_name: &str,
+    simcheck: bool,
+    let_bindings: bool,
+    port_to_expr_map: HashMap<String, String>,
+) -> EGraph {
+    let mut egraph = EGraph::default();
+    import_churchroad(&mut egraph);
+    egraph
+        .parse_and_run_program(
+            None,
+            &commands_from_verilog_file(
+                verilog_filepath,
+                top_module_name,
+                simcheck,
+                let_bindings,
+                port_to_expr_map,
+            ),
+        )
+        .unwrap();
+
+    egraph
+}
+
+pub fn commands_from_verilog(
+    verilog: &str,
+    top_module_name: &str,
+    simcheck: bool,
+    let_bindings: bool,
+    port_to_expr_map: HashMap<String, String>,
+) -> String {
+    let mut f = NamedTempFile::new().unwrap();
+    f.write_all(verilog.as_bytes()).unwrap();
+    commands_from_verilog_file(
+        f.path(),
+        top_module_name,
+        simcheck,
+        let_bindings,
+        port_to_expr_map,
+    )
+}
+
+/// simcheck: whether to run `hierarchy` with `-simcheck`.
+pub fn commands_from_verilog_file(
+    verilog_filepath: &Path,
+    top_module_name: &str,
+    simcheck: bool,
+    let_bindings: bool,
+    port_to_expr_map: HashMap<String, String>,
+) -> String {
+    fn spaces_to_underscores(s: &str) -> String {
+        assert!(!s.contains('_'));
+        s.replace(' ', "_")
+    }
+    // Convert the port_to_expr_map into "-portunion key value".
+    let port_union_flags: String = port_to_expr_map
+        .iter()
+        // TODO(@gussmith23): qouting here is a problem...
+        .map(|(port_name, expr)| {
+            format!("-portunion {} {}", port_name, spaces_to_underscores(expr))
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let logfile = NamedTempFile::new().unwrap();
+    // TODO(@gussmith23): hardcoded .so will break on other systems.
+    let command_output = Command::new("yosys")
+        .arg("-m")
+        .arg(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("yosys-plugin")
+                .join("churchroad.so"),
+        )
+        // Quiet, so the only output is Churchroad egglog code.
+        .arg("-q")
+        // Log useful information to a file.
+        .arg("-l")
+        .arg(logfile.path())
+        .arg("-p")
+        .arg(format!(
+            "read_verilog -sv {path}; hierarchy {simcheck} -top {top_module_name}; prep; write_churchroad -salt {salt} {let_bindings_flag} {port_union_flags}",
+            path = verilog_filepath.to_str().unwrap(),
+            simcheck = if simcheck { "-simcheck" } else { "" },
+            salt = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos(),
+            let_bindings_flag = if let_bindings { "-letbindings" } else { "" },
+            port_union_flags = port_union_flags,
+        ))
+        .stdout(Stdio::piped())
+        .output()
+        .expect("Couldn't run Yosys.");
+
+    if !command_output.status.success() {
+        panic!(
+            "Yosys failed. Log:\n{}",
+            read_to_string(logfile.path()).unwrap()
+        );
+    }
+
+    String::from_utf8_lossy(&command_output.stdout).into_owned()
+}
 
 // The result of interpreting a Churchroad program.
 #[derive(Debug, PartialEq, Clone)]
@@ -27,7 +873,7 @@ pub enum InterpreterResult {
 /// use egraph_serialize::NodeId;
 /// let mut egraph = EGraph::default();
 /// import_churchroad(&mut egraph);
-/// egraph.parse_and_run_program(
+/// egraph.parse_and_run_program(None,
 /// r#"
 /// (let v0 (Wire "v0" 1))
 /// (let v1 (Wire "v1" 1))
@@ -63,7 +909,8 @@ pub enum InterpreterResult {
 ///     .unwrap();
 ///
 /// let result = interpret(&serialized, &output_node.eclass, 0,
-///     &[("a", vec![1]), ("b", vec![1])].into()
+///     &[("a", vec![1]), ("b", vec![1])].into(),
+///     None
 /// );
 ///
 /// assert_eq!(result, Ok(InterpreterResult::Bitvector(1, 1)));
@@ -74,9 +921,10 @@ pub fn interpret(
     class_id: &ClassId,
     time: usize,
     env: &HashMap<&str, Vec<u64>>,
+    choices: Option<&IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>>,
 ) -> Result<InterpreterResult, String> {
     let result = match egraph.classes().iter().find(|(id, _)| *id == class_id) {
-        Some((id, _)) => interpret_helper(egraph, id, time, env, &mut HashMap::default()),
+        Some((id, _)) => interpret_helper(egraph, id, time, env, &mut HashMap::default(), choices),
         None => return Err("No class with the given ID.".to_string()),
     };
 
@@ -87,11 +935,9 @@ pub fn get_bitwidth_for_node(
     egraph: &egraph_serialize::EGraph,
     id: &NodeId,
 ) -> Result<u64, String> {
-    match egraph
-        .nodes
-        .iter()
-        .find(|(_, node)| node.op.as_str() == "HasType" && node.children[0] == *id)
-    {
+    match egraph.nodes.iter().find(|(_, node)| {
+        node.op.as_str() == "HasType" && egraph[&node.children[0]].eclass == egraph[id].eclass
+    }) {
         Some((_, has_type_node)) => {
             let type_node = egraph.nodes.get(&has_type_node.children[1]).unwrap();
             assert!(type_node.op == "Bitvector");
@@ -105,7 +951,7 @@ pub fn get_bitwidth_for_node(
                 .unwrap();
             Ok(bw)
         }
-        None => return Err("No HasType node found for the given ID.".to_string()),
+        None => Err("No HasType node found for the given ID.".to_string()),
     }
 }
 
@@ -125,20 +971,40 @@ fn interpret_helper(
     time: usize,
     env: &HashMap<&str, Vec<u64>>,
     cache: &mut HashMap<(ClassId, usize), InterpreterResult>,
+    choices: Option<&IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>>,
 ) -> Result<InterpreterResult, String> {
     if cache.contains_key(&(id.clone(), time)) {
         return Ok(cache[&(id.clone(), time)].clone());
     }
-    let node_ids = &egraph.classes().get(id).unwrap().nodes;
-    if node_ids.len() != 1 {
-        return Err(format!(
-            "There should be exactly one node in the class, but there are {}.",
-            node_ids.len()
-        ));
-    }
 
-    let node_id = node_ids.first().unwrap();
-    let node = egraph.nodes.get(node_id).unwrap();
+    // Get node.
+    let node_id = if let Some(choices) = choices {
+        choices.get(id).unwrap().to_owned()
+    } else {
+        let node_ids = egraph
+            .classes()
+            .get(id)
+            .unwrap()
+            .nodes
+            .iter()
+            .filter(|&node_id| egraph.nodes.get(node_id).unwrap().op != "Wire")
+            .cloned()
+            .collect::<Vec<_>>();
+        if node_ids.len() != 1 {
+            warn!(
+                "There is more than one node in the eclass. Will choose the first. Nodes:\n{}",
+                node_ids
+                    .iter()
+                    .map(|node_id| egraph.nodes.get(node_id).unwrap().op.clone())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+        }
+
+        node_ids.first().unwrap().to_owned()
+    };
+
+    let node = egraph.nodes.get(&node_id).unwrap();
 
     let result = match node.op.as_str() {
         "Var" => {
@@ -169,7 +1035,7 @@ fn interpret_helper(
                 if time == 0 {
                     let clk = egraph.nodes.get(&node.children[1]).unwrap();
                     let InterpreterResult::Bitvector(curr_clk_val, _) =
-                        interpret_helper(egraph, &clk.eclass, time, env, cache).unwrap();
+                        interpret_helper(egraph, &clk.eclass, time, env, cache, choices).unwrap();
                     assert_eq!(
                         curr_clk_val, 0,
                         "We don't currently know what to do when clk=1 at time 0! See #88"
@@ -182,15 +1048,16 @@ fn interpret_helper(
                 } else {
                     let clk = egraph.nodes.get(&node.children[1]).unwrap();
                     let InterpreterResult::Bitvector(prev_clk_val, _) =
-                        interpret_helper(egraph, &clk.eclass, time - 1, env, cache).unwrap();
+                        interpret_helper(egraph, &clk.eclass, time - 1, env, cache, choices)
+                            .unwrap();
                     let InterpreterResult::Bitvector(curr_clk_val, _) =
-                        interpret_helper(egraph, &clk.eclass, time, env, cache).unwrap();
+                        interpret_helper(egraph, &clk.eclass, time, env, cache, choices).unwrap();
 
                     if prev_clk_val == 0 && curr_clk_val == 1 {
                         let d = egraph.nodes.get(&node.children[2]).unwrap();
-                        return interpret_helper(egraph, &d.eclass, time - 1, env, cache);
+                        return interpret_helper(egraph, &d.eclass, time - 1, env, cache, choices);
                     } else {
-                        return interpret_helper(egraph, id, time - 1, env, cache);
+                        return interpret_helper(egraph, id, time - 1, env, cache, choices);
                     }
                 }
             }
@@ -200,7 +1067,7 @@ fn interpret_helper(
                 .skip(1)
                 .map(|id| {
                     let child = egraph.nodes.get(id).unwrap();
-                    interpret_helper(egraph, &child.eclass, time, env, cache)
+                    interpret_helper(egraph, &child.eclass, time, env, cache, choices)
                 })
                 .collect();
 
@@ -463,15 +1330,22 @@ impl AnythingExtractor {
     }
 }
 
+/// - bottom_out_at: maps ClassIds to variable names. Any time we reach a node
+///   with a class ID in this map, we simply output a variable with the given
+///   name.
+/// - outputs: maps ClassIds to variable names. These classes will be taken as
+///   the outputs of the module. If not specified, we output all output ports.
 pub fn to_verilog_egraph_serialize(
     egraph: &egraph_serialize::EGraph,
     choices: &IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
     clk_name: &str,
+    bottom_out_at: HashMap<ClassId, String>,
+    outputs: Option<HashMap<ClassId, String>>,
 ) -> String {
     // let mut wires = HashMap::default();
 
     fn id_to_wire_name(id: &ClassId) -> String {
-        format!("wire_{}", id)
+        format!("wire_{}", id.to_string().replace('-', "_"))
     }
 
     struct ModuleInstance {
@@ -484,68 +1358,94 @@ pub fn to_verilog_egraph_serialize(
     // Maps EClass ID to the module instance at that class.
     let mut module_instantiations: HashMap<ClassId, ModuleInstance> = HashMap::new();
 
-    let mut inputs = String::new();
-    let mut outputs = String::new();
+    let mut inputs_str = String::new();
+    let mut outputs_str = String::new();
     let mut logic_declarations = String::new();
     let mut registers = String::new();
 
     // Collect all the outputs.
-    let mut queue: Vec<ClassId> = egraph
-        .nodes
-        .iter()
-        .filter_map(|(_id, node)| {
+    let mut queue: Vec<ClassId> = if let Some(outputs) = &outputs {
+        outputs.keys().cloned().collect()
+    } else {
+        egraph
+            .nodes
+            .iter()
+            .filter_map(|(_id, node)| {
+                // op should be IsPort
+                let op = &node.op;
+                if op != "IsPort" {
+                    return None;
+                }
+
+                assert_eq!(node.children.len(), 4);
+
+                if egraph[&node.children[2]].op != "Output" {
+                    return None;
+                }
+
+                Some(egraph[&node.children[3]].eclass.clone())
+            })
+            .collect()
+    };
+
+    // Generate outputs.
+    if let Some(outputs) = &outputs {
+        for (class_id, name) in outputs {
+            log::debug!("Outputting class {} as {}", class_id, name);
+            let node_id = &choices[class_id];
+            let term = &egraph[node_id];
+            let bw = get_bitwidth_for_node(egraph, node_id).unwrap();
+
+            outputs_str.push_str(&format!(
+                "output [{bw}-1:0] {name},\n",
+                bw = bw,
+                name = name
+            ));
+
+            logic_declarations.push_str(&format!(
+                "assign {name} = {wire};\n",
+                name = name,
+                wire = id_to_wire_name(&term.eclass)
+            ));
+        }
+    } else {
+        for (_, node) in egraph.nodes.iter() {
             // op should be IsPort
             let op = &node.op;
             if op != "IsPort" {
-                return None;
+                continue;
             }
 
             assert_eq!(node.children.len(), 4);
 
             if egraph[&node.children[2]].op != "Output" {
-                return None;
+                continue;
             }
 
-            Some(egraph[&node.children[3]].eclass.clone())
-        })
-        .collect();
+            outputs_str.push_str(&format!(
+                "output [{bw}-1:0] {name},\n",
+                bw = get_bitwidth_for_node(egraph, &node.children[3]).unwrap(),
+                name = egraph[&node.children[1]]
+                    .op
+                    .as_str()
+                    .strip_prefix('\"')
+                    .unwrap()
+                    .strip_suffix('\"')
+                    .unwrap()
+            ));
 
-    // Generate outputs.
-    for (_, node) in egraph.nodes.iter() {
-        // op should be IsPort
-        let op = &node.op;
-        if op != "IsPort" {
-            continue;
+            logic_declarations.push_str(&format!(
+                "assign {name} = {wire};\n",
+                name = egraph[&node.children[1]]
+                    .op
+                    .as_str()
+                    .strip_prefix('\"')
+                    .unwrap()
+                    .strip_suffix('\"')
+                    .unwrap(),
+                wire = id_to_wire_name(&egraph[&node.children[3]].eclass)
+            ))
         }
-
-        assert_eq!(node.children.len(), 4);
-
-        if egraph[&node.children[2]].op != "Output" {
-            continue;
-        }
-
-        outputs.push_str(&format!(
-            "output {name},\n",
-            name = egraph[&node.children[1]]
-                .op
-                .as_str()
-                .strip_prefix('\"')
-                .unwrap()
-                .strip_suffix('\"')
-                .unwrap()
-        ));
-
-        logic_declarations.push_str(&format!(
-            "logic {name} = {wire};\n",
-            name = egraph[&node.children[1]]
-                .op
-                .as_str()
-                .strip_prefix('\"')
-                .unwrap()
-                .strip_suffix('\"')
-                .unwrap(),
-            wire = id_to_wire_name(&egraph[&node.children[3]].eclass)
-        ))
     }
 
     let mut done = HashSet::new();
@@ -562,7 +1462,37 @@ pub fn to_verilog_egraph_serialize(
 
     while let Some(id) = queue.pop() {
         done.insert(id.clone());
-        let term = &egraph[&choices[&id]];
+        let node_id = &choices[&id];
+        // This can cause an infinite loop!
+        // log::debug!(
+        //     "just popped {:?}, expr {}, queue is {:?}",
+        //     id,
+        //     node_to_string(egraph, node_id, choices),
+        //     queue
+        // );
+        let term = &egraph[node_id];
+
+        // First, handle the case where we're supposed to "bottom out" at this
+        // node, i.e. output a variable name instead of the rest of the
+        // expression.
+        if let Some(name) = bottom_out_at.get(&id) {
+            log::debug!("Bottoming out at node with name {}", name);
+            let bw = get_bitwidth_for_node(egraph, node_id).unwrap();
+
+            inputs_str
+                .push_str(format!("input [{bw}-1:0] {name},\n", bw = bw, name = name).as_str());
+
+            logic_declarations.push_str(
+                format!(
+                    "logic [{bw}-1:0] {this_wire} = {name};\n",
+                    bw = bw,
+                    this_wire = id_to_wire_name(&term.eclass),
+                    name = name
+                )
+                .as_str(),
+            );
+            continue;
+        }
 
         let op = &term.op;
         match op.as_str() {
@@ -575,6 +1505,7 @@ pub fn to_verilog_egraph_serialize(
             "Input" |
             "Output" |
             // Ignore the nodes for the ops themselves.
+            "CRString" |
             "ZeroExtend" |
             "Concat" |
             "Extract" |
@@ -597,14 +1528,31 @@ pub fn to_verilog_egraph_serialize(
                         let bw = egraph[&op_node.children[0]].op.parse::<i64>().unwrap();
                     logic_declarations.push_str(
                         format!(
-                            "logic [{bw}-1:0] {this_wire} = {bw}'d{value};\n",
+                            "logic [{bw}-1:0] {this_wire} = {bw}'({value});\n",
                             this_wire = id_to_wire_name(&id),
                             value = id_to_wire_name(&egraph[&term.children[1]].eclass)
 
                         )
                         .as_str(),
                     );
+                    maybe_push_expr_on_queue(&mut queue, &done, &egraph[&term.children[1]].eclass);
 
+                    }
+                    "CRString" => {
+                        assert_eq!(op_node.children.len(), 1);
+                        let value = &egraph[&op_node.children[0]].op;
+                        logic_declarations.push_str(
+                            // The string already has quotes in it. This may not
+                            // always be the case. Should be careful here in the
+                            // future.
+                            format!(
+                                // Localparam so that it's a constant.
+                                "localparam [{}*8:0] {this_wire} = {value};\n",
+                                value.len()-2,
+                                this_wire = id_to_wire_name(&id),
+                            )
+                            .as_str(),
+                    );
                     }
                     "BV" => {
                         assert_eq!(op_node.children.len(), 2);
@@ -613,7 +1561,8 @@ pub fn to_verilog_egraph_serialize(
 
                     logic_declarations.push_str(
                         format!(
-                            "logic [{bw}-1:0] {this_wire} = {bw}'d{value};\n",
+                            // Localparam so that it's a constant.
+                            "localparam [{bw}-1:0] {this_wire} = {bw}'d{value};\n",
                             this_wire = id_to_wire_name(&id),
                         )
                         .as_str(),
@@ -626,7 +1575,8 @@ pub fn to_verilog_egraph_serialize(
 
                     logic_declarations.push_str(
                         format!(
-                            "logic {this_wire} = {default};\n",
+                            "logic [{bw}-1:0] {this_wire} = {default};\n",
+                            bw = get_bitwidth_for_node(egraph, node_id).unwrap(),
                             this_wire = id_to_wire_name(&id),
                             default = default_val
                         )
@@ -646,27 +1596,36 @@ pub fn to_verilog_egraph_serialize(
                         queue.push(d_id.clone());
                     }
                     },
-                    "Concat" | "Xor" |"And" | "Or" =>  {
-                            assert_eq!(term.children.len(), 3);
+                    "Concat" | "Xor" |"And" | "Or" | "Mul" | "Add" =>  {
+                            assert_eq!(term.children.len(), 3, "Found {} op with #children = {}", op_node.op, term.children.len());
                     let expr0_id = &egraph[&term.children[1]].eclass;
                     let  expr1_id = &egraph[&term.children[2]].eclass;
                     logic_declarations.push_str(&format!(
-                        "logic {this_wire} = {op};\n",
+                        "logic [{bw}-1:0] {this_wire} = {op};\n",
+                        bw = get_bitwidth_for_node(egraph, node_id).unwrap(),
                         op = match op_node.op.as_str() {
 
                             "Concat" => format!("{{ {expr0}, {expr1} }}",
                         expr0 = id_to_wire_name(expr0_id),
                         expr1 = id_to_wire_name(expr1_id),
                         ),
-                            "Xor" => format!("{expr0}^{expr1}",
+                            "Xor" => format!("({expr0}^{expr1})",
                         expr0 = id_to_wire_name(expr0_id),
                         expr1 = id_to_wire_name(expr1_id),
                         ),
-                            "And" => format!("{expr0}&{expr1}",
+                            "And" => format!("({expr0}&{expr1})",
                         expr0 = id_to_wire_name(expr0_id),
                         expr1 = id_to_wire_name(expr1_id),
                         ),
-                            "Or" => format!("{expr0}|{expr1}",
+                            "Or" => format!("({expr0}|{expr1})",
+                        expr0 = id_to_wire_name(expr0_id),
+                        expr1 = id_to_wire_name(expr1_id),
+                        ),
+                            "Mul" => format!("({expr0}*{expr1})",
+                        expr0 = id_to_wire_name(expr0_id),
+                        expr1 = id_to_wire_name(expr1_id),
+                        ),
+                            "Add" => format!("({expr0}+{expr1})",
                         expr0 = id_to_wire_name(expr0_id),
                         expr1 = id_to_wire_name(expr1_id),
                         ),
@@ -686,7 +1645,8 @@ pub fn to_verilog_egraph_serialize(
                     let id = &term.eclass;
                     let expr_id = &egraph[&term.children[1]].eclass;
                     logic_declarations.push_str(&format!(
-                        "logic {this_wire} = {expr}[{hi}:{lo}];\n",
+                        "logic [{bw}-1:0] {this_wire} = {expr}[{hi}:{lo}];\n",
+                        bw = get_bitwidth_for_node(egraph, node_id).unwrap(),
                         hi = hi,
                         lo = lo,
                         this_wire = id_to_wire_name(id),
@@ -694,6 +1654,31 @@ pub fn to_verilog_egraph_serialize(
                     ));
 
                     maybe_push_expr_on_queue(&mut queue, &done, expr_id);
+                }
+                "Shl" => {
+                    assert_eq!(term.children.len(), 3);
+
+                    // These only have to hold for structural verilog. These
+                    // checks should be removed in the future once I figure out
+                    // how to deal with shifts in structural Verilog. (namely,
+                    // do we want to allow shifts, or do we want to convert them
+                    // to something else using rewrites and constant
+                    // propagation?)
+                    assert!(egraph[&term.children[2]].op == "Op0");
+                    assert!(egraph[&egraph[&term.children[2]].children[0]].op == "BV");
+
+                    let id = &term.eclass;
+                    let e0_id = egraph.nid_to_cid(&term.children[1]);
+                    let e1_id = egraph.nid_to_cid(&term.children[2]);
+                    logic_declarations.push_str(&format!(
+                        "logic [{bw}-1:0] {this_wire} = {e0} << {e1};\n",
+                        bw = get_bitwidth_for_node(egraph, node_id).unwrap(),
+                        this_wire = id_to_wire_name(id),
+                        e0 = id_to_wire_name(e0_id),
+                        e1 = id_to_wire_name(e1_id)
+                    ));
+                    maybe_push_expr_on_queue(&mut queue, &done, e0_id);
+                    maybe_push_expr_on_queue(&mut queue, &done, e1_id);
                 }
 
                 v => todo!("{:?}", v),
@@ -708,7 +1693,7 @@ pub fn to_verilog_egraph_serialize(
                         let name = egraph[&term.children[0]].op.as_str().strip_prefix('\"').unwrap().strip_suffix('\"').unwrap();
                         let bw: i64 = egraph[&term.children[1]].op.parse().unwrap();
 
-                    inputs.push_str(
+                    inputs_str.push_str(
                         format!("input [{bw}-1:0] {name},\n", bw = bw, name = name).as_str(),
                     );
 
@@ -781,7 +1766,7 @@ pub fn to_verilog_egraph_serialize(
                 if !module_instantiations.contains_key(module_class) {
                     module_instantiations.insert(module_class.clone(), ModuleInstance {
                         module_class_name: module_class_name.to_owned(),
-                        instance_name: format!("module_{}", module_class),
+                        instance_name: format!("module_{}", module_class.to_string().replace('-', "_")),
                         parameters: parameter_names.into_iter().zip(parameter_exprs.into_iter()).collect(),
                         inputs: input_port_names.into_iter().zip(input_port_exprs.into_iter()).collect(),
                         outputs: [(output_name.to_owned(), term.eclass.clone())].into(),
@@ -794,7 +1779,8 @@ pub fn to_verilog_egraph_serialize(
 
                 logic_declarations.push_str(
                     format!(
-                        "logic {this_wire};\n",
+                        "logic [{bw}-1:0] {this_wire};\n",
+                        bw = get_bitwidth_for_node(egraph, node_id).unwrap(),
                         this_wire = id_to_wire_name(&term.eclass),
                     )
                     .as_str(),
@@ -972,7 +1958,7 @@ pub fn to_verilog_egraph_serialize(
     // For display purposes, we can clean this up later.
     // We sort to make the output stable.
     let inputs = {
-        let mut out = inputs
+        let mut out = inputs_str
             .split('\n')
             .map(|line| format!("  {}", line))
             .collect::<Vec<_>>();
@@ -981,7 +1967,7 @@ pub fn to_verilog_egraph_serialize(
         out.join("\n")
     };
     let outputs = {
-        let mut out = outputs
+        let mut out = outputs_str
             .split('\n')
             .map(|line| format!("  {}", line))
             .collect::<Vec<_>>();
@@ -1257,7 +2243,13 @@ pub fn to_verilog(term_dag: &TermDag, id: usize) -> String {
 pub fn import_churchroad(egraph: &mut EGraph) {
     // STEP 1: import primary language definitions.
     egraph
-        .parse_and_run_program(r#"(include "egglog_src/churchroad.egg")"#)
+        .parse_and_run_program(
+            None,
+            &format!(
+                r#"(include "{}/egglog_src/churchroad.egg")"#,
+                std::env::var("CARGO_MANIFEST_DIR").unwrap()
+            ),
+        )
         .unwrap();
 
     // STEP 2: add the `debruijnify` primitive to the egraph. This depends on
@@ -1268,7 +2260,13 @@ pub fn import_churchroad(egraph: &mut EGraph) {
     // STEP 3: import module enumeration rewrites. These depend on the
     // `debruijnify` primitive.
     egraph
-        .parse_and_run_program(r#"(include "egglog_src/module_enumeration_rewrites.egg")"#)
+        .parse_and_run_program(
+            None,
+            &format!(
+                r#"(include "{}/egglog_src/module_enumeration_rewrites.egg")"#,
+                std::env::var("CARGO_MANIFEST_DIR").unwrap()
+            ),
+        )
         .unwrap();
 }
 
@@ -1285,10 +2283,11 @@ fn add_debruijnify(egraph: &mut EGraph) {
             "debruijnify".into()
         }
 
-        fn get_type_constraints(&self) -> Box<dyn TypeConstraint> {
+        fn get_type_constraints(&self, span: &Span) -> Box<dyn TypeConstraint> {
             Box::new(SimpleTypeConstraint::new(
                 self.name(),
                 vec![self.in_sort.clone(), self.out_sort.clone()],
+                span.clone(),
             ))
         }
 
@@ -1507,6 +2506,7 @@ pub fn generate_module_enumeration_rewrite(
 pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
     for s in egraph
         .parse_and_run_program(
+            None,
             format!("(query-extract :variants {num_variants} (MakeModule mod args))").as_str(),
         )
         .unwrap()
@@ -1527,7 +2527,7 @@ type Ports = Vec<(String, ArcSort, Value)>;
 ///
 /// import_churchroad(&mut egraph);
 /// egraph
-///     .parse_and_run_program(
+///     .parse_and_run_program(None,
 ///         r#"
 /// ; wire declarations
 /// ; $and$<<EOF:2$1_Y
@@ -1627,10 +2627,17 @@ pub fn get_inputs_and_outputs(egraph: &mut EGraph) -> (Ports, Ports) {
 
         let churchroad_term = children[3];
 
+        let term_str = termdag.to_string(&termdag.get(churchroad_term));
         let (sort, value) = egraph
             .eval_expr(
                 &egglog::ast::parse::ExprParser::new()
-                    .parse(&termdag.to_string(&termdag.get(churchroad_term)))
+                    .parse(
+                        &Arc::new(SrcFile {
+                            name: "unused".to_owned(),
+                            contents: Some(term_str.clone()),
+                        }),
+                        &term_str,
+                    )
                     .unwrap(),
             )
             .unwrap();
@@ -1664,7 +2671,7 @@ type PortsFromSerialized = Vec<(String, ClassId)>;
 /// let mut egraph = EGraph::default();
 /// import_churchroad(&mut egraph);
 /// egraph
-///     .parse_and_run_program(
+///     .parse_and_run_program(None,
 ///         r#"
 ///     ; wire declarations
 ///     ; $and$<<EOF:2$1_Y
@@ -1790,6 +2797,7 @@ mod tests {
 
         egraph
             .parse_and_run_program(
+                None,
                 r#"
                 (let placeholder (Wire "placeholder" 8))
                 (let reg (Op1 (Reg 0) placeholder))
@@ -1807,7 +2815,17 @@ mod tests {
         // Extract reg from Egraph.
         let mut _termdag = TermDag::default();
         let (_sort, _value) = egraph
-            .eval_expr(&egglog::ast::Expr::Var((), "reg".into()))
+            .eval_expr(&egglog::ast::Expr::Var(
+                Span(
+                    Arc::new(SrcFile {
+                        name: "unused".to_owned(),
+                        contents: None,
+                    }),
+                    0,
+                    0,
+                ),
+                "reg".into(),
+            ))
             .unwrap();
         // This will panic, which is what we were trying to get to.
         // It panics with `No cost for Value { tag: "Expr", bits: 6 }`
@@ -1846,7 +2864,7 @@ mod tests {
             if std::env::var("DEMO_2024_02_06_WRITE_SVGS").is_err() {
                 return;
             }
-            let serialized = egraph.serialize_for_graphviz(true);
+            let serialized = egraph.serialize_for_graphviz(true, usize::MAX, usize::MAX);
             let svg_path = Path::new(path).with_extension("svg");
             serialized.to_svg_file(svg_path).unwrap();
         }
@@ -1861,6 +2879,7 @@ mod tests {
         // Churchroad programs can be very simple circuits, e.g. this one-bit and:
         egraph
             .parse_and_run_program(
+                None,
                 r#"
 
                 (let one-bit-and (Op2 (And) (Var "a" 1) (Var "b" 1)))
@@ -1888,6 +2907,7 @@ mod tests {
         // commands:
         egraph
             .parse_and_run_program(
+                None,
                 r#"
 
                 ; Instantiate a placeholder wire, which will be connected later.
@@ -1923,6 +2943,7 @@ mod tests {
         // applications of abstract modules to concrete inputs:
         egraph
             .parse_and_run_program(
+                None,
                 r#"
 
                 ; An abstract `and` module.
@@ -1945,6 +2966,7 @@ mod tests {
         // achieved simply with rewrites!
         egraph
             .parse_and_run_program(
+                None,
                 r#"
 
                 ; First, "direct" form.
@@ -1968,6 +2990,7 @@ mod tests {
         // discover that the two `and` gates are the same:
         egraph
             .parse_and_run_program(
+                None,
                 r#"
 
                 ; First, "direct" form.
@@ -1986,7 +3009,7 @@ mod tests {
     fn test_module_instance() {
         let mut egraph = EGraph::default();
         import_churchroad(&mut egraph);
-        egraph.parse_and_run_program(r#"
+        egraph.parse_and_run_program(None,r#"
             ; wire declarations
             ; a
             (let v0 (Wire "v0" 1))
@@ -2022,10 +3045,12 @@ mod tests {
 
         egraph
             .parse_and_run_program(
+                None,
                 r#"
                 (let placeholder (Wire "placeholder" 8))
                 (let reg (Op1 (Reg 0) placeholder))
                 (union placeholder reg)
+                (run-schedule (saturate typing))
                 (delete (Wire "placeholder" 8))
                 (IsPort "" "out" (Output) reg)
             "#,
@@ -2040,18 +3065,18 @@ mod tests {
             "module top(
   
   
-  output out,
+  output [8-1:0] out,
 );
-  logic out = wire_10;
-  logic wire_10 = 0;
+  assign out = wire_Expr_11;
+  logic [8-1:0] wire_Expr_11 = 0;
   
 always @(posedge clk) begin
-                            wire_10 <= wire_10;
+                            wire_Expr_11 <= wire_Expr_11;
                         end
 
 
 endmodule",
-            to_verilog_egraph_serialize(&serialized, &out, "clk")
+            to_verilog_egraph_serialize(&serialized, &out, "clk", [].into(), None)
         );
     }
 
@@ -2062,12 +3087,18 @@ endmodule",
 
         egraph
             .parse_and_run_program(
+                None,
                 r#"
                 (let a (Var "a" 8))
                 (IsPort "" "a" (Input) a)
                 (let b (Var "b" 8))
                 (IsPort "" "b" (Input) b)
                 (IsPort "" "out" (Output) (GetOutput (ModuleInstance "some_module" (StringCons "p" (StringNil)) (ExprCons (Op0 (BV 4 4)) (ExprNil)) (StringCons "a" (StringCons "b" (StringNil))) (ExprCons a (ExprCons b (ExprNil)))) "out"))
+
+                ; TODO(@gussmith23): Manually fixing #98 for now
+                (HasType (GetOutput (ModuleInstance "some_module" (StringCons "p" (StringNil)) (ExprCons (Op0 (BV 4 4)) (ExprNil)) (StringCons "a" (StringCons "b" (StringNil))) (ExprCons a (ExprCons b (ExprNil)))) "out")
+                         (Bitvector 8))
+
             "#,
             )
             .unwrap();
@@ -2081,23 +3112,23 @@ endmodule",
   input [8-1:0] a,
   input [8-1:0] b,
   
-  output out,
+  output [8-1:0] out,
 );
-  logic out = wire_27;
-  logic wire_27;
-  logic [4-1:0] wire_19 = 4'd4;
-  logic [8-1:0] wire_13 = b;
-  logic [8-1:0] wire_10 = a;
+  assign out = wire_Expr_28;
+  logic [8-1:0] wire_Expr_28;
+  localparam [4-1:0] wire_Expr_20 = 4'd4;
+  logic [8-1:0] wire_Expr_14 = b;
+  logic [8-1:0] wire_Expr_11 = a;
   
 
   some_module #(
-    .p(wire_19)
-) module_26 (
-    .a(wire_10),
-    .b(wire_13),
-    .out(wire_27));
+    .p(wire_Expr_20)
+) module_ModuleInstanceSort_27 (
+    .a(wire_Expr_11),
+    .b(wire_Expr_14),
+    .out(wire_Expr_28));
 endmodule",
-            to_verilog_egraph_serialize(&serialized, &out, "")
+            to_verilog_egraph_serialize(&serialized, &out, "", [].into(), None)
         );
     }
 
@@ -2108,6 +3139,7 @@ endmodule",
 
         egraph
             .parse_and_run_program(
+                None,
                 r#"
                 (let placeholder (Wire "placeholder" 8))
                 (let reg (Op1 (Reg 0) placeholder))
