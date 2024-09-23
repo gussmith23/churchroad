@@ -100,39 +100,15 @@ RUN apt install -y help2man && source /root/dependencies.sh \
   && make install \
   && cd .. \
   && rm -rf verilator
- 
-# Build Rust package. This should be as far down as it can be, as it'll change
-# frequently.
-WORKDIR /root/churchroad
-# ADD has weird behavior when it comes to directories. That's why we need so
-# many ADDs.
-ADD egglog_src egglog_src
-ADD src src
-ADD tests tests
-ADD Cargo.toml Cargo.toml
-ADD Cargo.lock Cargo.lock
-RUN cargo build
 
 # Build Yosys plugin.
 WORKDIR /root/churchroad/yosys-plugin
 ADD yosys-plugin .
 RUN make -j ${MAKE_JOBS}
 
-
-# Add other Churchroad files. It's useful to put this as far down as possible.
-# In general, only ADD files just before they're needed. This maximizes the
-# ability to cache intermediate containers and minimizes rebuilding.
-#
-# We use the git functionality of ADD (enabled in our case via the optional flag
-# --keep-git-dir) to add all of the checked-in files of the Churchroad repo (but
-# not including the .git directory itself). We could cut this down further if we
-# wanted, but I think this is a clean approach for now.
-WORKDIR /root/churchroad
-ADD --keep-git-dir=false . .
-
-# Add Lakeroad.
+# Add Lakeroad's dependencies.sh (later we add all of Lakeroad).
 WORKDIR /root
-ADD lakeroad lakeroad
+ADD lakeroad/dependencies.sh lakeroad/dependencies.sh
 ENV LAKEROAD_DIR=/root/lakeroad
 
 # Build Bitwuzla.
@@ -210,8 +186,35 @@ RUN source $LAKEROAD_DIR/dependencies.sh \
   && make -j ${MAKE_JOBS} install \
   && rm -rf /root/yices2
 
-# Build Racket bytecode; makes Lakeroad much faster.
+# Add Lakeroad and build Racket bytecode; makes Lakeroad much faster.
+WORKDIR /root
+ADD lakeroad lakeroad
+ENV LAKEROAD_DIR=/root/lakeroad
 RUN raco make $LAKEROAD_DIR/bin/main.rkt
+
+# Build Rust package. This should be as far down as it can be, as it'll change
+# frequently.
+WORKDIR /root/churchroad
+# ADD has weird behavior when it comes to directories. That's why we need so
+# many ADDs.
+ADD egglog_src egglog_src
+ADD src src
+ADD tests tests
+ADD Cargo.toml Cargo.toml
+ADD Cargo.lock Cargo.lock
+RUN cargo build
+
+# Add other Churchroad files. It's useful to put this as far down as possible.
+# In general, only ADD files just before they're needed. This maximizes the
+# ability to cache intermediate containers and minimizes rebuilding.
+#
+# We use the git functionality of ADD (enabled in our case via the optional flag
+# --keep-git-dir) to add all of the checked-in files of the Churchroad repo (but
+# not including the .git directory itself). We could cut this down further if we
+# wanted, but I think this is a clean approach for now.
+WORKDIR /root/churchroad
+ADD --keep-git-dir=false . .
+
 
 WORKDIR /root/churchroad
 ADD fmt.sh run-tests.sh ./

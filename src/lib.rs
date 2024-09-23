@@ -139,9 +139,9 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
         .arg("--verilog-module-out-signal")
         .arg(format!("out:{out_bw}"))
         .arg("--input-signal")
-        .arg(format!("a:{a_bw}"))
+        .arg(format!("a:(port a {a_bw}):{a_bw}"))
         .arg("--input-signal")
-        .arg(format!("b:{b_bw}"))
+        .arg(format!("b:(port b {b_bw}):{b_bw}"))
         .arg("--template")
         .arg("dsp")
         .arg("--pipeline-depth")
@@ -156,7 +156,9 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
             &serialized_egraph[sketch_template_node_id].children[2],
         )
         .unwrap();
-        command.arg("--input-signal").arg(format!("c:{c_bw}"));
+        command
+            .arg("--input-signal")
+            .arg(format!("c:(port c {c_bw}):{c_bw}"));
     }
     log::debug!(
         "Lakeroad command: {}",
