@@ -14,6 +14,10 @@ RUN apt update \
 # Install apt dependencies
 # `noninteractive` prevents the tzdata package from asking for a timezone on the
 # command line.
+# Note that, while z3 isn't needed, it avoids an issue in Rosette on
+# architectures for which Rosette doesn't have a prebuilt z3 binary. The z3
+# install can be removed once https://github.com/emina/rosette/pull/289 is
+# merged.
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt install -y \
   autoconf \
@@ -46,6 +50,7 @@ RUN apt install -y \
   tcl \
   tcl8.6-dev \
   wget \
+  z3 \
   zlib1g \
   zlib1g-dev
 
