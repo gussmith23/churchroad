@@ -68,6 +68,9 @@ RUN source /root/dependencies.sh \
   && cd abc \
   && wget -qO- https://github.com/YosysHQ/abc/archive/$ABC_COMMIT_HASH.tar.gz | tar xz --strip-components=1 \
   && cd .. \
+  && cd libs/cxxopts \
+  && wget -qO- https://github.com/jarro2783/cxxopts/archive/$CXXOPTS_COMMIT_HASH.tar.gz | tar xz --strip-components=1 \
+  && cd ../.. \
   && PREFIX="/root/.local" CPLUS_INCLUDE_PATH="/usr/include/tcl8.6/:$CPLUS_INCLUDE_PATH" make config-gcc \
   && PREFIX="/root/.local" CPLUS_INCLUDE_PATH="/usr/include/tcl8.6/:$CPLUS_INCLUDE_PATH" make -j ${MAKE_JOBS} install \
   && rm -rf /root/yosys

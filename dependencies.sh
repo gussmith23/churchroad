@@ -20,7 +20,9 @@
 # cloned on a `git clone --recursive`.
 
 export YOSYS_COMMIT_HASH="aa30589c123844bc576fc3c9938157b5db35a7c1"
-# This must match the submodule version in the above Yosys version.
+# ABC and CXXOPTS versions must match the submodule versions in the above Yosys
+# version.
 export ABC_COMMIT_HASH="e55d316cc9a7f72a84a76eda555aa6ec083c9d0d"
+export CXXOPTS_COMMIT_HASH="4bf61f08697b110d9e3991864650a405b3dd515d"
 
 export VERILATOR_COMMIT_HASH="522bead374d6b7b2adb316304126e5361b18bcf1"
