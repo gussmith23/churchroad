@@ -569,7 +569,7 @@ struct LakeroadWorker
 					}
 					else
 					{
-						return stringf("(Op0 (BV %d %zu))", c.as_int(false), c.bits.size());
+						return stringf("(Op0 (BV %d %zu))", c.as_int(false), c.bits().size());
 					}
 				};
 				for (auto parameter : cell->parameters)
