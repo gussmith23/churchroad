@@ -121,12 +121,12 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     spec_file.flush().unwrap();
     // spec_file.persist("tmp.v").unwrap();
 
-    let binding =
-        env::var("LAKEROAD_DIR").expect("LAKEROAD_DIR environment variable should be set.");
-    let lakeroad_dir = Path::new(&binding);
-    let mut command = Command::new("racket");
+    // If LAKEROAD is set, use that as the command. Otherwise, `lakeroad` should
+    // be in the PATH.
+    let lakeroad_cmd = env::var("LAKEROAD")
+        .unwrap_or_else(|_| "lakeroad".to_string());
+    let mut command = Command::new(lakeroad_cmd);
     command
-        .arg(lakeroad_dir.join("bin").join("main.rkt"))
         .arg("--architecture")
         .arg(architecture)
         .arg("--verilog-module-filepath")

@@ -1,3 +1,4 @@
+// RUN: LAKEROAD="$LAKEROAD_DIR/bin/main.rkt" \
 // RUN: cargo run -- \
 // RUN:   --filepath %s \
 // RUN:   --top-module-name mul \

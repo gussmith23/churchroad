@@ -1,4 +1,5 @@
 // RUN: [ -n "$CHURCHROAD_DIR" ] || { echo "CHURCHROAD_DIR is not set"; exit 1; }
+// RUN: LAKEROAD="$LAKEROAD_DIR/bin/main.rkt" \
 // RUN: CHURCHROAD="cargo run -- " \
 // RUN: yosys -m "$CHURCHROAD_DIR/yosys-plugin/churchroad.so" -p " \
 // RUN:  read_verilog %s; \
