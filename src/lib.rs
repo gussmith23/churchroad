@@ -29,10 +29,7 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     _spec_node_id: &NodeId,
     sketch_template_node_id: &NodeId,
     architecture: &str,
-    cvc5: bool,
-    yices: bool,
-    stp: bool,
-    bitwuzla: bool,
+    (cvc5, yices, stp, bitwuzla): (bool, bool, bool, bool),
 ) -> String {
     let eclass = &serialized_egraph[sketch_template_node_id].eclass;
     // Assert the two nodes are the same class.

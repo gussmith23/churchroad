@@ -316,10 +316,7 @@ fn main() {
             &spec_node_id,
             sketch_template_node_id,
             &args.architecture.to_string(),
-            args.cvc5,
-            args.yices,
-            args.stp,
-            args.bitwuzla,
+            (args.cvc5, args.yices, args.stp, args.bitwuzla),
         );
 
         log::debug!(
