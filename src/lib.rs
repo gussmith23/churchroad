@@ -2247,7 +2247,7 @@ pub fn import_churchroad(egraph: &mut EGraph) {
             None,
             &format!(
                 r#"(include "{}/egglog_src/churchroad.egg")"#,
-                std::env::var("CARGO_MANIFEST_DIR").unwrap()
+                env!("CARGO_MANIFEST_DIR")
             ),
         )
         .unwrap();
@@ -2264,7 +2264,7 @@ pub fn import_churchroad(egraph: &mut EGraph) {
             None,
             &format!(
                 r#"(include "{}/egglog_src/module_enumeration_rewrites.egg")"#,
-                std::env::var("CARGO_MANIFEST_DIR").unwrap()
+                env!("CARGO_MANIFEST_DIR")
             ),
         )
         .unwrap();
