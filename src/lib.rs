@@ -123,8 +123,7 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
 
     // If LAKEROAD is set, use that as the command. Otherwise, `lakeroad` should
     // be in the PATH.
-    let lakeroad_cmd = env::var("LAKEROAD")
-        .unwrap_or_else(|_| "lakeroad".to_string());
+    let lakeroad_cmd = env::var("LAKEROAD").unwrap_or_else(|_| "lakeroad".to_string());
     let mut command = Command::new(lakeroad_cmd);
     command
         .arg("--architecture")
