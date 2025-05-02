@@ -838,7 +838,11 @@ struct ChurchroadPass : public Pass
 									 [](Module *module)
 									 { return module->name; });
 		for (auto name : module_names)
-			compileWithChurchroad(design->module(name), design);
+		{
+			log_debug("Checking module %s for Churchroad compilation.\n", name.c_str());
+			if (std::find(args.begin(), args.end(), name.str().substr(1)) != args.end())
+				compileWithChurchroad(design->module(name), design);
+		}
 
 		log_pop();
 	}
