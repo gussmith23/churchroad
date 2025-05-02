@@ -19,6 +19,6 @@
 # the commit hashes of the dependencies we need, but nothing additional is
 # cloned on a `git clone --recursive`.
 
-export YOSYS_COMMIT_HASH="f8d4d7128cf72456cc03b0738a8651ac5dbe52e1"
+export YOSYS_COMMIT_HASH="aa30589c123844bc576fc3c9938157b5db35a7c1"
 
 export VERILATOR_COMMIT_HASH="522bead374d6b7b2adb316304126e5361b18bcf1"
