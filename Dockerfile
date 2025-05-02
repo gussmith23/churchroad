@@ -95,7 +95,8 @@ ENV LLVM_CONFIG=llvm-config-14
 # Python dependencies.
 WORKDIR /root/churchroad
 ADD requirements.txt .
-RUN pip install -r requirements.txt
+ADD lakeroad/requirements.txt lakeroad-requirements.txt
+RUN pip install -r requirements.txt && pip install -r lakeroad-requirements.txt
 
 ENV CHURCHROAD_DIR=/root/churchroad
 
