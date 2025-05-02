@@ -26,6 +26,7 @@
 #include "kernel/sigtools.h"
 #include "kernel/yw.h"
 #include "boost/filesystem.hpp"
+#include "boost/algorithm/string/join.hpp"
 #include <string>
 #include <cassert>
 
@@ -861,6 +862,34 @@ struct ChurchroadPass : public Pass
 
 		auto architecture = f("\\architecture").decode_string();
 
+		// Initialize solvers with "bitwuzla", "stp", "yices", "cvc5" as default.
+		std::vector<std::string> solvers = {"bitwuzla", "stp", "yices", "cvc5"};
+		if (!(module->attributes.count("\\solvers") == 1 || module->attributes.count("\\solvers") == 0))
+		{
+			log_error("solvers attribute should be specified 0 or 1 times.\n");
+		}
+		if (module->attributes.count("\\solvers") == 1)
+		{
+			auto attr = module->attributes["\\solvers"].decode_string();
+			if (attr.empty())
+				log_error("solvers attribute is empty.\n");
+			// Strip whitespace and commas from beginning and end, and split by commas.
+			attr.erase(0, attr.find_first_not_of(" ,"));
+			attr.erase(attr.find_last_not_of(" ,") + 1);
+			// Split by commas.
+			std::stringstream ss(attr);
+			std::string token;
+			solvers.clear();
+			while (std::getline(ss, token, ','))
+			{
+				token.erase(0, token.find_first_not_of(" ,"));
+				token.erase(token.find_last_not_of(" ,") + 1);
+				if (!token.empty())
+					solvers.push_back(token);
+			}
+			log_debug("Using solvers: %s\n", boost::algorithm::join(solvers, ", ").c_str());
+		}
+
 		auto top_module_name = module->name.substr(1);
 		// auto module_name = sprintf("%s_synthesized_by_lakeroad", top_module_name.c_str());
 
@@ -890,6 +919,10 @@ ss << churchroad_cmd
 		<< " --top-module-name " << top_module_name
 		<< " --out-filepath " << out_verilog_filename
 		<< " --architecture " << architecture;
+		for (auto &solver : solvers)
+		{
+			ss << " --" << solver << " ";
+		}
 
 		log("Executing Churchroad:\n%s\n", ss.str().c_str());
 		if (system(ss.str().c_str()) != 0)

@@ -29,6 +29,10 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     _spec_node_id: &NodeId,
     sketch_template_node_id: &NodeId,
     architecture: &str,
+    cvc5: bool,
+    yices: bool,
+    stp: bool,
+    bitwuzla: bool,
 ) -> String {
     let eclass = &serialized_egraph[sketch_template_node_id].eclass;
     // Assert the two nodes are the same class.
@@ -157,6 +161,18 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
         command
             .arg("--input-signal")
             .arg(format!("c:(port c {c_bw}):{c_bw}"));
+    }
+    if cvc5 {
+        command.arg("--cvc5");
+    }
+    if yices {
+        command.arg("--yices");
+    }
+    if stp {
+        command.arg("--stp");
+    }
+    if bitwuzla {
+        command.arg("--bitwuzla");
     }
     log::debug!(
         "Lakeroad command: {}",

@@ -38,6 +38,15 @@ struct Args {
     #[arg(long)]
     out_filepath: Option<PathBuf>,
 
+    #[arg(long)]
+    cvc5: bool,
+    #[arg(long)]
+    bitwuzla: bool,
+    #[arg(long)]
+    yices: bool,
+    #[arg(long)]
+    stp: bool,
+
     #[arg(long, action=ArgAction::Append)]
     simulate_with_verilator_arg: Vec<String>,
 }
@@ -307,6 +316,10 @@ fn main() {
             &spec_node_id,
             sketch_template_node_id,
             &args.architecture.to_string(),
+            args.cvc5,
+            args.yices,
+            args.stp,
+            args.bitwuzla,
         );
 
         log::debug!(
