@@ -12,6 +12,7 @@ use churchroad::{
     commands_from_verilog_file, get_bitwidth_for_node, global_greedy_dag::GlobalGreedyDagExtractor,
     import_churchroad, interpret, InterpreterResult,
 };
+use tempfile::TempDir;
 
 // Creates an EGraph from a Verilog file using Churchroad, and returns the serialized EGraph and the root node.
 fn prep_interpreter(
@@ -137,7 +138,7 @@ fn test_lut6_combinational_verilator() {
         inputs,
         outputs,
         include_dirs,
-        std::env::temp_dir(),
+        TempDir::new().unwrap().into_path(),
         churchroad_dir
             .join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus/LUT6-modified.v"),
         // Here we can use the choices produced by the extractor, as the design
@@ -176,7 +177,7 @@ fn test_counter_verilator() {
         inputs,
         outputs,
         include_dirs,
-        std::env::temp_dir(),
+        TempDir::new().unwrap().into_path(),
         churchroad_dir.join("tests/interpreter_tests/verilog/toy_examples/counter.sv"),
         // Must be false as the counter is cyclic. Here we just have to hope
         // that the interpreter makes a sane choice.
@@ -503,7 +504,7 @@ macro_rules! interpreter_test_verilog {
         fn $test_name() {
             let (serialized, _choices, root_node) = prep_interpreter(
                 PathBuf::from($verilog_path),
-                std::env::temp_dir(),
+                TempDir::new().unwrap().into_path(),
                 $module_name,
                 $out,
             );
@@ -1075,7 +1076,7 @@ fn test_run_verilator() {
             outputs.clone(),
             vec![vec![vec![0, 0, 0, 0, 0, 0, 0]]],
             include_dirs.clone(),
-            std::env::temp_dir(),
+            TempDir::new().unwrap().into_path(),
             churchroad_dir
                 .join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus/LUT6-modified.v"),
         ),
@@ -1090,7 +1091,7 @@ fn test_run_verilator() {
             outputs.clone(),
             vec![vec![vec![0xFFFFFFFFFFFFFFFF, 1, 0, 0, 0, 0, 0]]],
             include_dirs.clone(),
-            std::env::temp_dir(),
+            TempDir::new().unwrap().into_path(),
             churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
         ),
         vec![1]
@@ -1104,7 +1105,7 @@ fn test_run_verilator() {
             outputs.clone(),
             vec![vec![vec![0b10, 1, 0, 0, 0, 0, 0]]],
             include_dirs.clone(),
-            std::env::temp_dir(),
+            TempDir::new().unwrap().into_path(),
             churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
         ),
         vec![1]
@@ -1118,7 +1119,7 @@ fn test_run_verilator() {
             outputs.clone(),
             vec![vec![vec![0b000001000000000000, 0, 0, 1, 1, 0, 0]]],
             include_dirs.clone(),
-            std::env::temp_dir(),
+            TempDir::new().unwrap().into_path(),
             churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
         ),
         vec![1]
@@ -1132,7 +1133,7 @@ fn test_run_verilator() {
             outputs.clone(),
             vec![vec![vec![0b1000000000000, 1, 0, 1, 1, 0, 0]]],
             include_dirs.clone(),
-            std::env::temp_dir(),
+            TempDir::new().unwrap().into_path(),
             churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
         ),
         vec![0]
@@ -1150,7 +1151,7 @@ fn test_run_verilator() {
                 vec![0b0100000000000, 0, 0, 1, 1, 0, 0],
             ]],
             include_dirs.clone(),
-            std::env::temp_dir(),
+            TempDir::new().unwrap().into_path(),
             churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
         ),
         vec![0, 1, 0]

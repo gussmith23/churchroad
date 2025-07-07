@@ -19,6 +19,10 @@
 # the commit hashes of the dependencies we need, but nothing additional is
 # cloned on a `git clone --recursive`.
 
-export YOSYS_COMMIT_HASH="f8d4d7128cf72456cc03b0738a8651ac5dbe52e1"
+export YOSYS_COMMIT_HASH="aa30589c123844bc576fc3c9938157b5db35a7c1"
+# ABC and CXXOPTS versions must match the submodule versions in the above Yosys
+# version.
+export ABC_COMMIT_HASH="e55d316cc9a7f72a84a76eda555aa6ec083c9d0d"
+export CXXOPTS_COMMIT_HASH="4bf61f08697b110d9e3991864650a405b3dd515d"
 
 export VERILATOR_COMMIT_HASH="522bead374d6b7b2adb316304126e5361b18bcf1"

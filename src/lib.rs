@@ -115,7 +115,7 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     _spec_node_id: &NodeId,
     sketch_template_node_id: &NodeId,
     architecture: &str,
-    solver: &str,
+    (cvc5, yices, stp, bitwuzla): (bool, bool, bool, bool),
 ) -> String {
     let eclass = &serialized_egraph[sketch_template_node_id].eclass;
     // Assert the two nodes are the same class.
@@ -227,14 +227,11 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     spec_file.flush().unwrap();
     spec_file.keep().unwrap();
 
-    let binding =
-        env::var("LAKEROAD_DIR").expect("LAKEROAD_DIR environment variable should be set.");
-    let lakeroad_dir = Path::new(&binding);
-    let mut command = Command::new("racket");
+    // If LAKEROAD is set, use that as the command. Otherwise, `lakeroad` should
+    // be in the PATH.
+    let lakeroad_cmd = env::var("LAKEROAD").unwrap_or_else(|_| "lakeroad".to_string());
+    let mut command = Command::new(lakeroad_cmd);
     command
-        .arg(lakeroad_dir.join("bin").join("main.rkt"))
-        .arg("--solver")
-        .arg(solver)
         .arg("--architecture")
         .arg(architecture)
         .arg("--verilog-module-filepath")
@@ -332,6 +329,18 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
                 "(bvule (port c {c_bw}) (bv {max_val} {c_bw}))",
                 max_val = 2u64.pow(c_real_bw as u32) - 1
             ));
+    }
+    if cvc5 {
+        command.arg("--cvc5");
+    }
+    if yices {
+        command.arg("--yices");
+    }
+    if stp {
+        command.arg("--stp");
+    }
+    if bitwuzla {
+        command.arg("--bitwuzla");
     }
     log::debug!(
         "Lakeroad command: {}",
@@ -2680,7 +2689,7 @@ pub fn import_churchroad(egraph: &mut EGraph) {
             None,
             &format!(
                 r#"(include "{}/egglog_src/churchroad.egg")"#,
-                std::env::var("CARGO_MANIFEST_DIR").unwrap()
+                env!("CARGO_MANIFEST_DIR")
             ),
         )
         .unwrap();
@@ -2698,7 +2707,7 @@ pub fn import_churchroad(egraph: &mut EGraph) {
             None,
             &format!(
                 r#"(include "{}/egglog_src/module_enumeration_rewrites.egg")"#,
-                std::env::var("CARGO_MANIFEST_DIR").unwrap()
+                env!("CARGO_MANIFEST_DIR")
             ),
         )
         .unwrap();
