@@ -23,7 +23,7 @@ use util::display_enode_serialized;
 use egglog::{
     ast::{Literal, Parser, Span, Symbol},
     constraint::{SimpleTypeConstraint, TypeConstraint},
-    sort::{EqSort, FromSort, I64Sort, IntoSort, Sort, StringSort, UnitSort, VecSort},
+    sort::{EqSort, FromSort, I64Sort, IntoSort, Sort, StringSort, VecSort},
     ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
 };
 
@@ -3348,7 +3348,7 @@ mod tests {
             }
             let serialized = egraph.serialize(SerializeConfig::default());
             let svg_path = Path::new(path).with_extension("svg");
-            serialized.to_svg_file(svg_path, None).unwrap();
+            serialized.to_svg_file(svg_path).unwrap();
         }
 
         ///////////////////////////// BEGIN DEMO ///////////////////////////////

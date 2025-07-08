@@ -734,7 +734,7 @@ fn main() {
             })
             .collect::<Vec<_>>();
 
-        let (class_blame, node_blame) =
+        let (class_blame, _node_blame) =
             determine_extractable(&serialized_egraph, roots, extractable_predicate);
 
         let mut queue = vec![];
@@ -796,13 +796,12 @@ fn main() {
                                 egraph[class_id]
                                     .nodes
                                     .iter()
-                                    .filter(|node_id| {
+                                    .find(|node_id| {
                                         let node = &egraph.nodes[*node_id];
-                                        (node.op.starts_with("PrimitiveInterfaceDSP")
-                                            || node.op.starts_with("PrimitiveInterfaceDSP3"))
+                                        node.op.starts_with("PrimitiveInterfaceDSP")
+                                            || node.op.starts_with("PrimitiveInterfaceDSP3")
                                     })
-                                    .map(|node_id| node_id.clone())
-                                    .next()
+                                    .cloned()
                             })),
                         }
                         .extract(&serialized_egraph, roots);
@@ -825,7 +824,7 @@ fn main() {
             })
             .collect::<Vec<_>>();
 
-        let (class_blame, node_blame) =
+        let (_class_blame, node_blame) =
             determine_extractable(&serialized_egraph, roots, extractable_predicate);
 
         let mut keep_nodes = HashSet::new();
@@ -854,10 +853,10 @@ fn main() {
 
         // Generate labels before we do any pruning, so that all information is
         // available for use in generating labels.
-        let labels: HashMap<NodeId, String> = serialized_egraph
+        let _labels: HashMap<NodeId, String> = serialized_egraph
             .nodes
             .iter()
-            .map(|(node_id, node)| {
+            .map(|(node_id, _node)| {
                 // For Op0, Op1, Op2, and Op3, we want to display the actual operation
                 // in the node name.
                 let node = &serialized_egraph.nodes[node_id];
@@ -1226,7 +1225,7 @@ fn main() {
                     .skip(1)
                     .map(|child_id| {
                         let eclass = &serialized_egraph[child_id].eclass;
-                        return serialized_egraph[eclass]
+                        serialized_egraph[eclass]
                             .nodes
                             .iter()
                             .find(|node_id| {
@@ -1238,7 +1237,7 @@ fn main() {
                                 // centralized somewhere.
                                 node.op != "InputOutputMarker"
                             })
-                            .expect("there should be non-filtered nodes in here");
+                            .expect("there should be non-filtered nodes in here")
                     })
                     .cloned()
                     .collect()
@@ -1736,7 +1735,7 @@ fn structural_predicate(egraph: &egraph_serialize::EGraph, node_id: &NodeId) -> 
         return false;
     }
 
-    let op_whitelist = vec![
+    let op_whitelist = [
         "Op0".into(),
         "Op1".into(),
         "Op2".into(),
