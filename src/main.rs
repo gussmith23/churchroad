@@ -64,10 +64,6 @@ struct Args {
     /// Interact with the egraph on the command line after running rewrites
     #[arg(long)]
     interact: bool,
-
-    /// Choose what solver to use for Lakeroad
-    #[arg(long)]
-    solver: String,
 }
 
 #[derive(ValueEnum, Clone, Debug)]
@@ -274,7 +270,7 @@ fn main() {
              (union ?a (InputOutputMarker "a" ?id))
              (union ?b (InputOutputMarker "b" ?id))
              (union ?expr (InputOutputMarker "out" ?id))
-             (union ?expr (PrimitiveInterfaceDSP ?id ?a ?b)))
+             (union ?expr (PrimitiveInterfaceDSP 0 ?id ?a ?b)))
             :ruleset mapping)
         ;; TODO bitwidths are hardcoded here
         (rule 
@@ -291,7 +287,7 @@ fn main() {
              (union ?a (InputOutputMarker "a" ?id))
              (union ?b (InputOutputMarker "b" ?id))
              (union expr (InputOutputMarker "out" ?id))
-             (union expr (PrimitiveInterfaceDSP ?id ?a ?b)))
+             (union expr (PrimitiveInterfaceDSP 0 ?id ?a ?b)))
             :ruleset mapping)
         (rule 
             ((= expr (Op2 (Mul) ?a ?b))
@@ -306,7 +302,26 @@ fn main() {
              (union ?a (InputOutputMarker "a" ?id))
              (union ?b (InputOutputMarker "b" ?id))
              (union expr (InputOutputMarker "out" ?id))
-             (union expr (PrimitiveInterfaceDSP ?id ?a ?b)))
+             (union expr (PrimitiveInterfaceDSP 0 ?id ?a ?b)))
+            :ruleset mapping)
+        ; One stage DSP.
+        (rule 
+            ((= ?expr (Op2 (Reg ?init) ?clk (Op2 (Mul) ?a ?b)))
+             (RealBitwidth ?a ?a-bw)
+             (RealBitwidth ?b ?b-bw)
+             (RealBitwidth (Op2 (Mul) ?a ?b) ?mul-bw)
+             (HasType ?a (Bitvector ?a-bw-full))
+             (HasType ?b (Bitvector ?b-bw-full))
+             (<= ?a-bw 17)
+             (<= ?b-bw 17)
+             (<= ?mul-bw 48)
+             )
+            ((let ?id (random-string 64))
+             (union ?a (InputOutputMarker "a" ?id))
+             (union ?b (InputOutputMarker "b" ?id))
+             (union ?expr (InputOutputMarker "out" ?id))
+             (union ?expr 
+              (PrimitiveInterfaceDSP 1 ?id ?a ?b)))
             :ruleset mapping)
         (rule 
             ((= ?expr (Op2 (Add) (Op1 ?extract-or-zero-extend-TODO-kind-of-a-hack (Op2 (Mul) ?a ?b)) ?c))
@@ -331,7 +346,7 @@ fn main() {
              (union ?c (InputOutputMarker "c" ?id))
              (union ?expr (InputOutputMarker "out" ?id))
              (union ?expr 
-              (PrimitiveInterfaceDSP3 ?id ?a ?b ?c)))
+              (PrimitiveInterfaceDSP3 0 ?id ?a ?b ?c)))
             :ruleset mapping)
         (rule 
             ((= ?expr (Op2 (Add) (Op2 (Ashr) ?c (Op0 (BV 17 ?unused-bv-bw))) (Op1 (SignExtend ?unused-sign-extend-bw) (Op1 (Extract ?unused-extract-idx-hi ?unused-extract-idx-lo) (Op2 (Mul) ?a ?b)))))
@@ -356,7 +371,7 @@ fn main() {
              (union ?c (InputOutputMarker "c" ?id))
              (union ?expr (InputOutputMarker "out" ?id))
              (union ?expr 
-              (PrimitiveInterfaceDSP3 ?id ?a ?b ?c)))
+              (PrimitiveInterfaceDSP3 0 ?id ?a ?b ?c)))
             :ruleset mapping)
         (rule 
             ((= ?expr (Op2 (Add) (Op2 (Mul) (Op1 (ZeroExtend ?n) ?a) (Op1 (ZeroExtend ?n) ?b)) ?c))
@@ -375,7 +390,7 @@ fn main() {
              (union ?b (InputOutputMarker "b" ?id))
              (union ?c (InputOutputMarker "c" ?id))
              (union ?expr (InputOutputMarker "out" ?id))
-             (union ?expr (PrimitiveInterfaceDSP3 ?id ?a ?b ?c)))
+             (union ?expr (PrimitiveInterfaceDSP3 0 ?id ?a ?b ?c)))
             :ruleset mapping)
         ; Adder with DSP.
         (rule 
@@ -392,7 +407,7 @@ fn main() {
              (union ?a (InputOutputMarker "a" ?id))
              (union ?b (InputOutputMarker "b" ?id))
              (union ?expr (InputOutputMarker "out" ?id))
-             (union ?expr (PrimitiveInterfaceWideAddDSP ?id ?a ?b)))
+             (union ?expr (PrimitiveInterfaceWideAddDSP 0 ?id ?a ?b)))
             :ruleset mapping)
         
         (ruleset transform)
@@ -675,7 +690,7 @@ fn main() {
         .parse_and_run_program(
             None,
             //"(run-schedule (saturate (seq (saturate typing) transform (saturate typing) (saturate simplification) (saturate typing) (saturate mapping) )))",
-            "(run-schedule (saturate (seq (saturate typing) (saturate transform) (run mapping) (saturate typing))))",
+            "(run-schedule (saturate (seq (saturate typing) (saturate transform) (saturate retiming) (run mapping) (saturate typing))))",
         )
         .unwrap();
 
