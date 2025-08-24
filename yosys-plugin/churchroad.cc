@@ -737,6 +737,7 @@ struct ChurchroadBackend : public Backend
 	void execute(std::ostream *&f, std::string filename, std::vector<std::string> args, RTLIL::Design *design) override
 	{
 		log_header(design, "Executing Lakeroad egglog backend.\n");
+		log_push();
 
 		// These passes put the design in a form that is convenient for Churchroad
 		// conversion. Specifically, "piecewise" assignments like the following:
@@ -817,6 +818,8 @@ struct ChurchroadBackend : public Backend
 		LakeroadWorker(*f, topmod, salt, let_bindings, port_to_expr_map).run();
 
 		// *f << stringf("; end of yosys output\n");
+
+		log_pop();
 	}
 } ChurchroadBackend;
 
