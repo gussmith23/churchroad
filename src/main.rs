@@ -37,9 +37,13 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Interface for ORConf demo
+    #[command(name = "orconf-demo-2025")]
     ORConfDemo2025 {
-        #[arg(long="egglog_script", value_hint=FilePath, action=ArgAction::Append )]
+        #[arg(long="egglog-script", value_hint=FilePath, action=ArgAction::Append )]
         egglog_scripts: Vec<PathBuf>,
+
+        #[arg(long)]
+        output_module_name: String,
     },
 
     /// Old interface to Churchroad
@@ -150,10 +154,18 @@ fn orconf_demo_2025_main(commands: Commands) {
     // Variant as a type.
     struct ORConfDemo2025Args {
         egglog_scripts: Vec<PathBuf>,
+        output_module_name: String,
     }
 
-    let args = if let Commands::ORConfDemo2025 { egglog_scripts } = commands {
-        ORConfDemo2025Args { egglog_scripts }
+    let args = if let Commands::ORConfDemo2025 {
+        egglog_scripts,
+        output_module_name,
+    } = commands
+    {
+        ORConfDemo2025Args {
+            egglog_scripts,
+            output_module_name,
+        }
     } else {
         panic!("Should only be called with ORConfDemo2025 command.")
     };
@@ -178,11 +190,28 @@ fn orconf_demo_2025_main(commands: Commands) {
     let serialized = egraph.serialize(SerializeConfig::default());
     let choices = GlobalGreedyDagExtractor {
         fail_on_partial: false,
-        extractable_predicate: |_egraph, _class_id| true,
+        extractable_predicate: |egraph, node_id| {
+            // Don't extract wires.
+            if egraph[node_id].op == "Wire" {
+                return false;
+            }
+            true
+        },
     }
-    .extract(&serialized, &[]);
+    .extract(&serialized, &[])
+    .unwrap();
 
     // Convert to Verilog.
+    let out = to_verilog_egraph_serialize(
+        &serialized,
+        &choices,
+        "clk",
+        HashMap::default(),
+        None,
+        &args.output_module_name,
+    );
+
+    println!("{}", out);
 }
 
 fn main() {
@@ -1462,6 +1491,7 @@ fn main() {
                 })
                 .collect(),
         ),
+        "top",
     );
 
     debug!("Final extracted Verilog:\n{}", &verilog);

@@ -220,6 +220,7 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
         "clk",
         bottom_out_at,
         Some([(eclass.clone(), "out".to_string())].into()),
+        "top",
     );
     debug!("Verilog spec:\n{}", verilog);
     let spec_filepath = spec_file.path().to_owned();
@@ -1711,6 +1712,7 @@ pub fn to_verilog_egraph_serialize(
     clk_name: &str,
     bottom_out_at: HashMap<ClassId, String>,
     outputs: Option<HashMap<ClassId, String>>,
+    output_module_name: &str,
 ) -> String {
     // let mut wires = HashMap::default();
 
@@ -2461,7 +2463,7 @@ pub fn to_verilog_egraph_serialize(
         .join("\n");
 
     format!(
-        "module top(
+        "module {output_module_name}(
 {inputs}
 {outputs}
 );
