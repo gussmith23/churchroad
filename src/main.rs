@@ -10,11 +10,11 @@ use churchroad::global_greedy_dag::GlobalGreedyDagExtractor;
 use churchroad::{
     call_lakeroad_on_primitive_interface_and_spec, find_primitive_interfaces_serialized,
     find_spec_for_primitive_interface_including_nodes, from_verilog_file, get_bitwidth_for_node,
-    get_inputs_and_outputs_serialized, node_to_string, to_verilog_egraph_serialize, util,
-    RandomExtractor,
+    get_inputs_and_outputs_serialized, import_churchroad, node_to_string,
+    to_verilog_egraph_serialize, util, RandomExtractor,
 };
 use clap::ValueHint::FilePath;
-use clap::{ArgAction, Parser, Subcommand, ValueEnum};
+use clap::{arg, ArgAction, Parser, Subcommand, ValueEnum};
 use egglog::sort::EqSort;
 use egglog::{ArcSort, EGraph, SerializeConfig};
 use egraph_serialize::{ClassId, NodeId};
@@ -34,7 +34,7 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum Commands {
     /// Interface for ORConf demo
     ORConfDemo2025 {
@@ -73,6 +73,14 @@ enum Commands {
 
         #[arg(long, action=ArgAction::Append)]
         simulate_with_verilator_arg: Vec<String>,
+
+        /// Interact with the egraph on the command line after running rewrites
+        #[arg(long)]
+        interact: bool,
+
+        /// Choose what solver to use for Lakeroad
+        #[arg(long)]
+        solver: String,
     },
 }
 
@@ -96,12 +104,8 @@ struct Args {
 
     simulate_with_verilator_arg: Vec<String>,
 
-    /// Interact with the egraph on the command line after running rewrites
-    #[arg(long)]
     interact: bool,
 
-    /// Choose what solver to use for Lakeroad
-    #[arg(long)]
     solver: String,
 }
 
@@ -173,7 +177,8 @@ fn orconf_demo_2025_main(commands: Commands) {
     // For now, let's just use any extractor.
     let serialized = egraph.serialize(SerializeConfig::default());
     let choices = GlobalGreedyDagExtractor {
-        structural_only: false,
+        fail_on_partial: false,
+        extractable_predicate: |_egraph, _class_id| true,
     }
     .extract(&serialized, &[]);
 
@@ -190,7 +195,7 @@ fn main() {
     }
 
     let args = match command.command {
-        Commands::ORConfDemo2025 {} => panic!("Should have returned earlier."),
+        Commands::ORConfDemo2025 { .. } => panic!("Should have returned earlier."),
         Commands::Old {
             filepath,
             top_module_name,
@@ -203,6 +208,8 @@ fn main() {
             yices,
             stp,
             simulate_with_verilator_arg,
+            interact,
+            solver,
         } => Args {
             filepath,
             top_module_name,
@@ -215,6 +222,8 @@ fn main() {
             yices,
             stp,
             simulate_with_verilator_arg,
+            interact,
+            solver,
         },
     };
 
