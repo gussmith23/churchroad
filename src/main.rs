@@ -14,7 +14,7 @@ use churchroad::{
     RandomExtractor,
 };
 use clap::ValueHint::FilePath;
-use clap::{ArgAction, Parser, ValueEnum};
+use clap::{ArgAction, Parser, Subcommand, ValueEnum};
 use egglog::sort::EqSort;
 use egglog::{ArcSort, EGraph, SerializeConfig};
 use egraph_serialize::{ClassId, NodeId};
@@ -27,38 +27,73 @@ static EXPR_SORT: LazyLock<ArcSort> = std::sync::LazyLock::new(|| {
     })
 });
 
-/// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Interface for ORConf demo
+    ORConfDemo2025 {
+        #[arg(long="egglog_script", value_hint=FilePath, action=ArgAction::Append )]
+        egglog_scripts: Vec<PathBuf>,
+    },
+
+    /// Old interface to Churchroad
+    Old {
+        #[arg(long, value_hint=FilePath)]
+        filepath: PathBuf,
+
+        #[arg(long)]
+        top_module_name: String,
+
+        #[arg(long)]
+        svg_dirpath: Option<PathBuf>,
+
+        #[arg(long)]
+        architecture: Architecture,
+
+        #[arg(long)]
+        simulate: bool,
+
+        #[arg(long)]
+        out_filepath: Option<PathBuf>,
+
+        #[arg(long)]
+        cvc5: bool,
+        #[arg(long)]
+        bitwuzla: bool,
+        #[arg(long)]
+        yices: bool,
+        #[arg(long)]
+        stp: bool,
+
+        #[arg(long, action=ArgAction::Append)]
+        simulate_with_verilator_arg: Vec<String>,
+    },
+}
+
 struct Args {
-    #[arg(long, value_hint=FilePath)]
     filepath: PathBuf,
 
-    #[arg(long)]
     top_module_name: String,
 
-    #[arg(long)]
     svg_dirpath: Option<PathBuf>,
 
-    #[arg(long)]
     architecture: Architecture,
 
-    #[arg(long)]
     simulate: bool,
 
-    #[arg(long)]
     out_filepath: Option<PathBuf>,
 
-    #[arg(long)]
     cvc5: bool,
-    #[arg(long)]
     bitwuzla: bool,
-    #[arg(long)]
     yices: bool,
-    #[arg(long)]
     stp: bool,
 
-    #[arg(long, action=ArgAction::Append)]
     simulate_with_verilator_arg: Vec<String>,
 
     /// Interact with the egraph on the command line after running rewrites
@@ -105,9 +140,83 @@ impl Display for Architecture {
     }
 }
 
+fn orconf_demo_2025_main(commands: Commands) {
+    // This is a hack; we have to duplicate the args struct here because we're
+    // using clap's subcommand feature, which uses enums, and we can't use a
+    // Variant as a type.
+    struct ORConfDemo2025Args {
+        egglog_scripts: Vec<PathBuf>,
+    }
+
+    let args = if let Commands::ORConfDemo2025 { egglog_scripts } = commands {
+        ORConfDemo2025Args { egglog_scripts }
+    } else {
+        panic!("Should only be called with ORConfDemo2025 command.")
+    };
+
+    // Create or load egraph. If no serialized egraph is provided, create a new one.
+
+    // Load from serialized. TODO.
+
+    // Create new egraph, importing Churchroad IR.
+    let mut egraph = EGraph::default();
+    import_churchroad(&mut egraph);
+
+    // Run any additional egglog scripts provided.
+    for filepath in args.egglog_scripts {
+        egraph
+            .parse_and_run_program(None, &std::fs::read_to_string(&filepath).unwrap())
+            .unwrap();
+    }
+
+    // Extract.
+    // For now, let's just use any extractor.
+    let serialized = egraph.serialize(SerializeConfig::default());
+    let choices = GlobalGreedyDagExtractor {
+        structural_only: false,
+    }
+    .extract(&serialized, &[]);
+
+    // Convert to Verilog.
+}
+
 fn main() {
     env_logger::init();
-    let args = Args::parse();
+    let command = Cli::parse();
+
+    // Short circuit for ORConf demo.
+    if let Commands::ORConfDemo2025 { .. } = command.command {
+        return orconf_demo_2025_main(command.command);
+    }
+
+    let args = match command.command {
+        Commands::ORConfDemo2025 {} => panic!("Should have returned earlier."),
+        Commands::Old {
+            filepath,
+            top_module_name,
+            svg_dirpath,
+            architecture,
+            simulate,
+            out_filepath,
+            cvc5,
+            bitwuzla,
+            yices,
+            stp,
+            simulate_with_verilator_arg,
+        } => Args {
+            filepath,
+            top_module_name,
+            svg_dirpath,
+            architecture,
+            simulate,
+            out_filepath,
+            cvc5,
+            bitwuzla,
+            yices,
+            stp,
+            simulate_with_verilator_arg,
+        },
+    };
 
     // STEP 1: Read in design, put it in an egraph.
     // simcheck=true just runs some basic checks.
