@@ -1,7 +1,7 @@
 use core::panic;
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::fs::create_dir_all;
+use std::fs::{create_dir_all, File};
 use std::io::{stdin, stdout, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
@@ -44,6 +44,9 @@ enum Commands {
 
         #[arg(long)]
         output_module_name: String,
+
+        #[arg(long, value_hint=FilePath)]
+        extract_script_path: Option<PathBuf>,
     },
 
     /// Old interface to Churchroad
@@ -155,16 +158,19 @@ fn orconf_demo_2025_main(commands: Commands) {
     struct ORConfDemo2025Args {
         egglog_scripts: Vec<PathBuf>,
         output_module_name: String,
+        extract_script_path: Option<PathBuf>,
     }
 
     let args = if let Commands::ORConfDemo2025 {
         egglog_scripts,
         output_module_name,
+        extract_script_path,
     } = commands
     {
         ORConfDemo2025Args {
             egglog_scripts,
             output_module_name,
+            extract_script_path,
         }
     } else {
         panic!("Should only be called with ORConfDemo2025 command.")
@@ -188,18 +194,50 @@ fn orconf_demo_2025_main(commands: Commands) {
     // Extract.
     // For now, let's just use any extractor.
     let serialized = egraph.serialize(SerializeConfig::default());
-    let choices = GlobalGreedyDagExtractor {
-        fail_on_partial: false,
-        extractable_predicate: |egraph, node_id| {
-            // Don't extract wires.
-            if egraph[node_id].op == "Wire" {
-                return false;
-            }
-            true
-        },
-    }
-    .extract(&serialized, &[])
-    .unwrap();
+
+    // If there's an extract script, run it; otherwise default to
+    // GlobalGreedyDagExtractor.
+
+    let choices = if let Some(extract_script_path) = args.extract_script_path {
+        // Run extract_script_path, a python script. Pass -o <tempfile> as the output path argument, and the serialized egraph filepath as the first and only positional argument.
+        let temp_file = NamedTempFile::new().unwrap();
+        let output_path = temp_file.path().to_path_buf();
+        // Write serialized to another temp file.
+        let temp_serialized_file = NamedTempFile::new().unwrap();
+        serialized
+            .to_json_file(temp_serialized_file.path())
+            .unwrap();
+        info!("Running extract script: {:?}", extract_script_path);
+        info!("Serialized egraph path: {:?}", temp_serialized_file.path());
+        info!("Output path: {:?}", output_path);
+        let status = std::process::Command::new("python3")
+            .arg(&extract_script_path)
+            .arg("-o")
+            .arg(&output_path)
+            .arg(temp_serialized_file.path())
+            .status()
+            .unwrap();
+
+        if !status.success() {
+            panic!("Extract script failed with status: {:?}", status);
+        }
+
+        let out = serde_json::from_reader(File::open(&output_path).unwrap()).unwrap();
+        out
+    } else {
+        GlobalGreedyDagExtractor {
+            fail_on_partial: false,
+            extractable_predicate: |egraph, node_id| {
+                // Don't extract wires.
+                if egraph[node_id].op == "Wire" {
+                    return false;
+                }
+                true
+            },
+        }
+        .extract(&serialized, &[])
+        .unwrap()
+    };
 
     // Convert to Verilog.
     let out = to_verilog_egraph_serialize(
