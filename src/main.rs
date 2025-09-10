@@ -47,6 +47,9 @@ enum Commands {
 
         #[arg(long, value_hint=FilePath)]
         extract_script_path: Option<PathBuf>,
+
+        #[arg(long, value_hint=FilePath)]
+        output_egraph: Option<PathBuf>,
     },
 
     /// Old interface to Churchroad
@@ -159,18 +162,21 @@ fn orconf_demo_2025_main(commands: Commands) {
         egglog_scripts: Vec<PathBuf>,
         output_module_name: String,
         extract_script_path: Option<PathBuf>,
+        output_egraph: Option<PathBuf>,
     }
 
     let args = if let Commands::ORConfDemo2025 {
         egglog_scripts,
         output_module_name,
         extract_script_path,
+        output_egraph,
     } = commands
     {
         ORConfDemo2025Args {
             egglog_scripts,
             output_module_name,
             extract_script_path,
+            output_egraph,
         }
     } else {
         panic!("Should only be called with ORConfDemo2025 command.")
@@ -248,6 +254,11 @@ fn orconf_demo_2025_main(commands: Commands) {
         None,
         &args.output_module_name,
     );
+
+    // Write final egraph to file.
+    if let Some(path) = args.output_egraph {
+        serialized.to_json_file(path).unwrap();
+    }
 
     println!("{}", out);
 }
