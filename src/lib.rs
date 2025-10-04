@@ -164,48 +164,64 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
             || serialized_egraph[sketch_template_node_id].children.len() == 4
     );
 
-    // First child is the InputOutputMarker id (a string).
+    // First child is the pipeline stages id (an integer).
+    let pipeline_depth: i64 = serialized_egraph
+        [&serialized_egraph[sketch_template_node_id].children[0]]
+        .op
+        .parse()
+        .unwrap();
+    // Should always be >=0. <= 3 is just a sanity check for now and should
+    // later be deleted.
+    debug_assert!((0..=3).contains(&pipeline_depth));
+    let clock_name = if pipeline_depth > 0 {
+        warn!("Hardcoding clock name to 'clk'. This should be configurable in the future.");
+        Some("clk")
+    } else {
+        None
+    };
+
+    // Second child is the InputOutputMarker id (a string).
     let input_marker_id =
-        &serialized_egraph[&serialized_egraph[sketch_template_node_id].children[0]].op;
+        &serialized_egraph[&serialized_egraph[sketch_template_node_id].children[1]].op;
 
     let a_bw = get_bitwidth_for_node(
         serialized_egraph,
-        &serialized_egraph[sketch_template_node_id].children[1],
+        &serialized_egraph[sketch_template_node_id].children[2],
     )
     .unwrap();
     let a_real_bw = get_real_bitwidth_for_node(
         serialized_egraph,
-        &serialized_egraph[sketch_template_node_id].children[1],
+        &serialized_egraph[sketch_template_node_id].children[2],
     )
     .unwrap();
 
     let b_bw = get_bitwidth_for_node(
         serialized_egraph,
-        &serialized_egraph[sketch_template_node_id].children[2],
+        &serialized_egraph[sketch_template_node_id].children[3],
     )
     .unwrap();
     let b_real_bw = get_real_bitwidth_for_node(
         serialized_egraph,
-        &serialized_egraph[sketch_template_node_id].children[2],
+        &serialized_egraph[sketch_template_node_id].children[3],
     )
     .unwrap();
 
     let mut bottom_out_at = HashMap::new();
     bottom_out_at.insert(
-        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[1]]
+        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[2]]
             .eclass
             .clone(),
         "a".to_string(),
     );
     bottom_out_at.insert(
-        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[2]]
+        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[3]]
             .eclass
             .clone(),
         "b".to_string(),
     );
     if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
         bottom_out_at.insert(
-            serialized_egraph[&serialized_egraph[sketch_template_node_id].children[3]]
+            serialized_egraph[&serialized_egraph[sketch_template_node_id].children[4]]
                 .eclass
                 .clone(),
             "c".to_string(),
@@ -217,7 +233,7 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     let verilog = to_verilog_egraph_serialize(
         serialized_egraph,
         spec_choices,
-        "clk",
+        clock_name,
         bottom_out_at,
         Some([(eclass.clone(), "out".to_string())].into()),
     );
@@ -232,6 +248,8 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     let lakeroad_cmd = env::var("LAKEROAD").unwrap_or_else(|_| "lakeroad".to_string());
     let mut command = Command::new(lakeroad_cmd);
     command
+        .arg("--pipeline-depth")
+        .arg(pipeline_depth.to_string())
         .arg("--architecture")
         .arg(architecture)
         .arg("--verilog-module-filepath")
@@ -242,6 +260,12 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
         // TODO(@gussmith23): Determine this automatically somehow.
         .arg("--verilog-module-out-signal")
         .arg(format!("out:{out_bw}"));
+
+    if pipeline_depth > 0 {
+        command
+            .arg("--clock-name")
+            .arg(clock_name.as_ref().unwrap());
+    }
 
     if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceWideAddDSP" {
         // TODO wide add.
@@ -301,8 +325,6 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
             .arg("dsp");
     }
     command
-        .arg("--pipeline-depth")
-        .arg("0")
         .arg("--out-format")
         .arg("verilog")
         .arg("--timeout")
@@ -310,12 +332,12 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
         let c_bw = get_bitwidth_for_node(
             serialized_egraph,
-            &serialized_egraph[sketch_template_node_id].children[3],
+            &serialized_egraph[sketch_template_node_id].children[4],
         )
         .unwrap();
         let c_real_bw = get_real_bitwidth_for_node(
             serialized_egraph,
-            &serialized_egraph[sketch_template_node_id].children[3],
+            &serialized_egraph[sketch_template_node_id].children[4],
         )
         .unwrap();
         command
@@ -1253,7 +1275,7 @@ pub fn get_bitwidth_for_node(
                 .unwrap();
             Ok(bw)
         }
-        None => Err("No HasType node found for the given ID.".to_string()),
+        None => Err(format!("No HasType node found for the given ID: {}", id)),
     }
 }
 
@@ -1632,22 +1654,24 @@ impl AnythingExtractor {
     }
 }
 
+type FilterFn = Option<Box<dyn Fn(&egraph_serialize::EGraph, &egraph_serialize::NodeId) -> bool>>;
+type ExtractFn = Option<
+    Box<
+        dyn Fn(
+            &egraph_serialize::EGraph,
+            &egraph_serialize::ClassId,
+        ) -> Option<egraph_serialize::NodeId>,
+    >,
+>;
+
 #[derive(Default)]
 pub struct RandomExtractor {
     /// A function which allows the user to make an extraction decision, before
     /// we randomly choose.
-    pub extract_fn: Option<
-        Box<
-            dyn Fn(
-                &egraph_serialize::EGraph,
-                &egraph_serialize::ClassId,
-            ) -> Option<egraph_serialize::NodeId>,
-        >,
-    >,
+    pub extract_fn: ExtractFn,
     /// A filter function which allows the user to filter out nodes that should
     /// not be extracted.
-    pub filter_fn:
-        Option<Box<dyn Fn(&egraph_serialize::EGraph, &egraph_serialize::NodeId) -> bool>>,
+    pub filter_fn: FilterFn,
 }
 impl RandomExtractor {
     pub fn extract(
@@ -1708,7 +1732,7 @@ impl RandomExtractor {
 pub fn to_verilog_egraph_serialize(
     egraph: &egraph_serialize::EGraph,
     choices: &IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
-    clk_name: &str,
+    clk_name: Option<&str>,
     bottom_out_at: HashMap<ClassId, String>,
     outputs: Option<HashMap<ClassId, String>>,
 ) -> String {
@@ -1738,6 +1762,9 @@ pub fn to_verilog_egraph_serialize(
     //         );
     //     }
     // }
+
+    // Keeps track of register clocks.
+    let mut clks = HashSet::new();
 
     fn id_to_wire_name(id: &ClassId) -> String {
         format!("wire_{}", id.to_string().replace('-', "_"))
@@ -1987,8 +2014,13 @@ pub fn to_verilog_egraph_serialize(
                     }
                     "Reg" => {
                         let default_val = egraph[&op_node.children[0]].op.parse::<i64>().unwrap();
-                        let d_id = &egraph[&term.children[1]].eclass;
+                        let clk_id = &egraph[&term.children[1]].eclass;
+                        let d_id = &egraph[&term.children[2]].eclass;
 
+                    // For now, there should only be a single global clock.
+                    clks.insert(clk_id);
+                    assert_eq!(clks.len() , 1);
+                    let clk_name = clk_name.as_ref().expect("If registers are present, you must provide a clock name.");
 
                     logic_declarations.push_str(
                         format!(
@@ -1999,6 +2031,7 @@ pub fn to_verilog_egraph_serialize(
                         )
                         .as_str(),
                     );
+
 
                     registers.push_str(&format!(
                         "always @(posedge {clk_name}) begin
@@ -2404,6 +2437,15 @@ pub fn to_verilog_egraph_serialize(
             .split('\n')
             .map(|line| format!("  {}", line))
             .collect::<Vec<_>>();
+
+        if let Some(clk_name) = clk_name {
+            assert_eq!(
+                clks.len(),
+                1,
+                "If clk_name is provided, there should be exactly one clock in the design."
+            );
+            out.push(format!("  input {clk_name},", clk_name = clk_name));
+        }
 
         out.sort();
         out.join("\n")
@@ -3558,7 +3600,7 @@ always @(posedge clk) begin
 
 
 endmodule",
-            to_verilog_egraph_serialize(&serialized, &out, "clk", [].into(), None)
+            to_verilog_egraph_serialize(&serialized, &out, Some("clk"), [].into(), None)
         );
     }
 
@@ -3611,7 +3653,7 @@ endmodule",
     .b(wire_Expr_14),
     .out(wire_Expr_28));
 endmodule",
-            to_verilog_egraph_serialize(&serialized, &out, "", [].into(), None)
+            to_verilog_egraph_serialize(&serialized, &out, None, [].into(), None)
         );
     }
 

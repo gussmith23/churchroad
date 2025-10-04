@@ -44,7 +44,7 @@
   ; Concatenation of two bitvectors.
   (Concat)
   
-  ; (Op2 (Reg init-value) clock-expr data-expr)
+  ; (Op1 (Reg init-value) clk data-expr)
   (Reg i64)
 
   ; (Op0 (BV value bitwidth))
@@ -354,10 +354,36 @@
 ; construct InputOutputMarker nodes which will be unioned with the input expressions.
 ; This is so that we can later identify the eclasses corresponding to the
 ; inputs.
-(constructor PrimitiveInterfaceDSP (String Expr Expr) Expr)
-(constructor PrimitiveInterfaceWideAddDSP (String Expr Expr) Expr)
-(constructor PrimitiveInterfaceDSP3 (String Expr Expr Expr) Expr)
+; 
+; The i64 argument is the number of pipeline stages.
+(constructor PrimitiveInterfaceDSP (i64 String Expr Expr) Expr)
+(constructor PrimitiveInterfaceWideAddDSP (i64 String Expr Expr) Expr)
+(constructor PrimitiveInterfaceDSP3 (i64 String Expr Expr Expr) Expr)
 ; Used to mark the inputs of a PrimitiveInterfaceDSP. First string is the input
 ; name, second string is the random identifier string that will be in the 
 ; corresponding PrimitiveInterfaceDSP node.
 (constructor InputOutputMarker (String String) Expr)
+
+; Retiming rewrites.
+; TODO(@gussmith23): I think there might be bugs in here w/ init values?
+(ruleset retiming)
+(rewrite
+ (Op1 ?op (Op2 (Reg ?init) ?clk ?expr))
+ (Op2 (Reg ?init) ?clk (Op1 ?op ?expr))
+ :ruleset retiming
+)
+(rewrite
+ (Op2 ?op (Op2 (Reg ?init) ?clk ?expr0) 
+          (Op2 (Reg ?init) ?clk ?expr1))
+ (Op2 (Reg ?init) ?clk 
+  (Op2 ?op ?expr0 ?expr1))
+ :ruleset retiming
+)
+(rewrite
+ (Op3 ?op (Op2 (Reg ?init) ?clk ?expr0) 
+          (Op2 (Reg ?init) ?clk ?expr1)
+          (Op2 (Reg ?init) ?clk ?expr2))
+ (Op2 (Reg ?init) ?clk 
+  (Op3 ?op ?expr0 ?expr1 ?expr2))
+ :ruleset retiming
+)

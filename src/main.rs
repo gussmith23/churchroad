@@ -64,10 +64,6 @@ struct Args {
     /// Interact with the egraph on the command line after running rewrites
     #[arg(long)]
     interact: bool,
-
-    /// Choose what solver to use for Lakeroad
-    #[arg(long)]
-    solver: String,
 }
 
 #[derive(ValueEnum, Clone, Debug)]
@@ -274,7 +270,7 @@ fn main() {
              (union ?a (InputOutputMarker "a" ?id))
              (union ?b (InputOutputMarker "b" ?id))
              (union ?expr (InputOutputMarker "out" ?id))
-             (union ?expr (PrimitiveInterfaceDSP ?id ?a ?b)))
+             (union ?expr (PrimitiveInterfaceDSP 0 ?id ?a ?b)))
             :ruleset mapping)
         ;; TODO bitwidths are hardcoded here
         (rule 
@@ -291,7 +287,7 @@ fn main() {
              (union ?a (InputOutputMarker "a" ?id))
              (union ?b (InputOutputMarker "b" ?id))
              (union expr (InputOutputMarker "out" ?id))
-             (union expr (PrimitiveInterfaceDSP ?id ?a ?b)))
+             (union expr (PrimitiveInterfaceDSP 0 ?id ?a ?b)))
             :ruleset mapping)
         (rule 
             ((= expr (Op2 (Mul) ?a ?b))
@@ -306,7 +302,26 @@ fn main() {
              (union ?a (InputOutputMarker "a" ?id))
              (union ?b (InputOutputMarker "b" ?id))
              (union expr (InputOutputMarker "out" ?id))
-             (union expr (PrimitiveInterfaceDSP ?id ?a ?b)))
+             (union expr (PrimitiveInterfaceDSP 0 ?id ?a ?b)))
+            :ruleset mapping)
+        ; One stage DSP.
+        (rule 
+            ((= ?expr (Op2 (Reg ?init) ?clk (Op2 (Mul) ?a ?b)))
+             (RealBitwidth ?a ?a-bw)
+             (RealBitwidth ?b ?b-bw)
+             (RealBitwidth (Op2 (Mul) ?a ?b) ?mul-bw)
+             (HasType ?a (Bitvector ?a-bw-full))
+             (HasType ?b (Bitvector ?b-bw-full))
+             (<= ?a-bw 17)
+             (<= ?b-bw 17)
+             (<= ?mul-bw 48)
+             )
+            ((let ?id (random-string 64))
+             (union ?a (InputOutputMarker "a" ?id))
+             (union ?b (InputOutputMarker "b" ?id))
+             (union ?expr (InputOutputMarker "out" ?id))
+             (union ?expr 
+              (PrimitiveInterfaceDSP 1 ?id ?a ?b)))
             :ruleset mapping)
         (rule 
             ((= ?expr (Op2 (Add) (Op1 ?extract-or-zero-extend-TODO-kind-of-a-hack (Op2 (Mul) ?a ?b)) ?c))
@@ -331,7 +346,7 @@ fn main() {
              (union ?c (InputOutputMarker "c" ?id))
              (union ?expr (InputOutputMarker "out" ?id))
              (union ?expr 
-              (PrimitiveInterfaceDSP3 ?id ?a ?b ?c)))
+              (PrimitiveInterfaceDSP3 0 ?id ?a ?b ?c)))
             :ruleset mapping)
         (rule 
             ((= ?expr (Op2 (Add) (Op2 (Ashr) ?c (Op0 (BV 17 ?unused-bv-bw))) (Op1 (SignExtend ?unused-sign-extend-bw) (Op1 (Extract ?unused-extract-idx-hi ?unused-extract-idx-lo) (Op2 (Mul) ?a ?b)))))
@@ -356,7 +371,7 @@ fn main() {
              (union ?c (InputOutputMarker "c" ?id))
              (union ?expr (InputOutputMarker "out" ?id))
              (union ?expr 
-              (PrimitiveInterfaceDSP3 ?id ?a ?b ?c)))
+              (PrimitiveInterfaceDSP3 0 ?id ?a ?b ?c)))
             :ruleset mapping)
         (rule 
             ((= ?expr (Op2 (Add) (Op2 (Mul) (Op1 (ZeroExtend ?n) ?a) (Op1 (ZeroExtend ?n) ?b)) ?c))
@@ -375,7 +390,7 @@ fn main() {
              (union ?b (InputOutputMarker "b" ?id))
              (union ?c (InputOutputMarker "c" ?id))
              (union ?expr (InputOutputMarker "out" ?id))
-             (union ?expr (PrimitiveInterfaceDSP3 ?id ?a ?b ?c)))
+             (union ?expr (PrimitiveInterfaceDSP3 0 ?id ?a ?b ?c)))
             :ruleset mapping)
         ; Adder with DSP.
         (rule 
@@ -392,7 +407,7 @@ fn main() {
              (union ?a (InputOutputMarker "a" ?id))
              (union ?b (InputOutputMarker "b" ?id))
              (union ?expr (InputOutputMarker "out" ?id))
-             (union ?expr (PrimitiveInterfaceWideAddDSP ?id ?a ?b)))
+             (union ?expr (PrimitiveInterfaceWideAddDSP 0 ?id ?a ?b)))
             :ruleset mapping)
         
         (ruleset transform)
@@ -675,7 +690,7 @@ fn main() {
         .parse_and_run_program(
             None,
             //"(run-schedule (saturate (seq (saturate typing) transform (saturate typing) (saturate simplification) (saturate typing) (saturate mapping) )))",
-            "(run-schedule (saturate (seq (saturate typing) (saturate transform) (run mapping) (saturate typing))))",
+            "(run-schedule (saturate (seq (saturate typing) (saturate transform) (saturate retiming) (run mapping) (saturate typing))))",
         )
         .unwrap();
 
@@ -695,6 +710,10 @@ fn main() {
             "Egraph after rewrites: {}",
             svg_dirpath.join("after_rewrites.svg").to_string_lossy()
         );
+
+        serialized
+            .to_json_file(svg_dirpath.join("egraph.json"))
+            .unwrap();
 
         // Extracting random programs for debugging.
         // let mut set_of_exprs = HashSet::new();
@@ -734,6 +753,7 @@ fn main() {
             })
             .collect::<Vec<_>>();
 
+        warn!("Shift ops really should not be considered extractable, but they are for now.");
         let (class_blame, _node_blame) =
             determine_extractable(&serialized_egraph, roots, extractable_predicate);
 
@@ -813,7 +833,8 @@ fn main() {
         }
     }
 
-    {
+    let prune = false;
+    if prune {
         // Write out a pruned version of the SVG.
         let mut serialized_egraph = egraph.serialize(SerializeConfig::default());
 
@@ -824,6 +845,7 @@ fn main() {
             })
             .collect::<Vec<_>>();
 
+        warn!("Shift ops really should not be considered extractable, but they are for now.");
         let (_class_blame, node_blame) =
             determine_extractable(&serialized_egraph, roots, extractable_predicate);
 
@@ -1078,6 +1100,7 @@ fn main() {
         // implementation, there's no reason to run Lakeroad on potential DSPs that
         // aren't included in that implementation. (Previously, we ran Lakeroad on
         // all potential DSPs in the egraph, which was unnecessary.)
+        warn!("Shift ops really should not be considered extractable, but they are for now.");
         determine_extractable(
             &serialized_egraph,
             &outputs
@@ -1088,6 +1111,7 @@ fn main() {
                 .collect::<Vec<_>>(),
             extractable_predicate,
         );
+        warn!("Shift ops really should not be considered extractable, but they are for now.");
         let choices = GlobalGreedyDagExtractor {
             fail_on_partial: false,
             extractable_predicate,
@@ -1296,6 +1320,10 @@ fn main() {
             "Egraph after all calls to Lakeroad: {}",
             svg_dirpath.join("after_lakeroad.svg").to_string_lossy()
         );
+        // Write out the egraph as JSON too.
+        serialized
+            .to_json_file(svg_dirpath.join("egraph_after_lakeroad.json"))
+            .unwrap();
     }
 
     // STEP 6: Extract a lowered design.
@@ -1307,6 +1335,7 @@ fn main() {
     // which actually attempts to find an *optimal* design, not just *any*
     // design.
 
+    warn!("Shift ops really should not be considered extractable, but they are for now.");
     let serialized = egraph.serialize(SerializeConfig::default());
     let choices = GlobalGreedyDagExtractor {
         // This can be false as long as we set roots to a value in extract().
@@ -1329,7 +1358,7 @@ fn main() {
     let verilog = to_verilog_egraph_serialize(
         &serialized,
         &choices,
-        "clk",
+        Some("clk"),
         [].into(),
         // Use the original outputs as the outputs of the final design.
         Some(
@@ -1465,23 +1494,23 @@ fn determine_extractable(
     // is by the type of the node, which is currently embedded in the string id.
     // The easiest first pass is to just mark all non-exprs as extractable, I
     // think?
-    for (node_id, node) in &egraph.nodes {
-        let class_name = node.eclass.to_string();
-        let split: Vec<_> = class_name.split("-").collect();
-        assert_eq!(split.len(), 2);
-        let type_name = split[0];
-        // Match on the type.
-        match type_name {
-            "Op" | "Unit" | "i64" | "String" | "Type" | "PortDirection" => {
-                class_blame.insert(node.eclass.clone(), ClassBlame::Extractable);
-                node_blame.insert(node_id.clone(), NodeBlame::Extractable);
-            }
-            "Expr" => {
-                // Do nothing; we will analyze whether the Exprs are extractable below.
-            }
-            other => panic!("Unhandled type {other}"),
-        }
-    }
+    // for (node_id, node) in &egraph.nodes {
+    //     let class_name = node.eclass.to_string();
+    //     let split: Vec<_> = class_name.split("-").collect();
+    //     assert_eq!(split.len(), 2);
+    //     let type_name = split[0];
+    //     // Match on the type.
+    //     match type_name {
+    //         "Op" | "Unit" | "i64" | "String" | "Type" | "PortDirection" => {
+    //             class_blame.insert(node.eclass.clone(), ClassBlame::Extractable);
+    //             node_blame.insert(node_id.clone(), NodeBlame::Extractable);
+    //         }
+    //         "Expr" => {
+    //             // Do nothing; we will analyze whether the Exprs are extractable below.
+    //         }
+    //         other => panic!("Unhandled type {other}"),
+    //     }
+    // }
 
     let mut keep_going = true;
     while keep_going {
@@ -1693,6 +1722,7 @@ fn extractable_predicate(egraph: &egraph_serialize::EGraph, node_id: &NodeId) ->
         "PrimitiveInterfaceDSP3".into(),
         "PrimitiveInterfaceWideAddDSP".into(),
     ];
+    // TODO(@gussmith23): shift ops should not be extractable.
     let sub_op_whitelist = [
         "Extract".into(),
         "Concat".into(),
@@ -1704,7 +1734,6 @@ fn extractable_predicate(egraph: &egraph_serialize::EGraph, node_id: &NodeId) ->
         "Shl".into(),
         "Ashr".into(),
     ];
-    warn!("Shift ops really should not be considered extractable, but they are for now.");
     if !egraph[&egraph[node_id].eclass]
         .id
         .to_string()
@@ -1745,6 +1774,7 @@ fn structural_predicate(egraph: &egraph_serialize::EGraph, node_id: &NodeId) -> 
         "ExprConsList".into(),
         "GetOutput".into(),
     ];
+    // TODO(@gussmith23): shift ops should not be extractable.
     let sub_op_whitelist = [
         "Extract".into(),
         "Concat".into(),
@@ -1756,7 +1786,6 @@ fn structural_predicate(egraph: &egraph_serialize::EGraph, node_id: &NodeId) -> 
         "Shl".into(),
         "Ashr".into(),
     ];
-    warn!("Shift ops really should not be considered extractable, but they are for now.");
     if !egraph[&egraph[node_id].eclass]
         .id
         .to_string()
