@@ -44,7 +44,7 @@
   ; Concatenation of two bitvectors.
   (Concat)
   
-  ; (Op2 (Reg init-value) clock-expr data-expr)
+  ; (Op1 (Reg init-value) clk data-expr)
   (Reg i64)
 
   ; (Op0 (BV value bitwidth))

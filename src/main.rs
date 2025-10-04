@@ -711,6 +711,10 @@ fn main() {
             svg_dirpath.join("after_rewrites.svg").to_string_lossy()
         );
 
+        serialized
+            .to_json_file(svg_dirpath.join("egraph.json"))
+            .unwrap();
+
         // Extracting random programs for debugging.
         // let mut set_of_exprs = HashSet::new();
         // for _ in 0..100 {
@@ -749,6 +753,7 @@ fn main() {
             })
             .collect::<Vec<_>>();
 
+        warn!("Shift ops really should not be considered extractable, but they are for now.");
         let (class_blame, _node_blame) =
             determine_extractable(&serialized_egraph, roots, extractable_predicate);
 
@@ -828,7 +833,8 @@ fn main() {
         }
     }
 
-    {
+    let prune = false;
+    if prune {
         // Write out a pruned version of the SVG.
         let mut serialized_egraph = egraph.serialize(SerializeConfig::default());
 
@@ -839,6 +845,7 @@ fn main() {
             })
             .collect::<Vec<_>>();
 
+        warn!("Shift ops really should not be considered extractable, but they are for now.");
         let (_class_blame, node_blame) =
             determine_extractable(&serialized_egraph, roots, extractable_predicate);
 
@@ -1093,6 +1100,7 @@ fn main() {
         // implementation, there's no reason to run Lakeroad on potential DSPs that
         // aren't included in that implementation. (Previously, we ran Lakeroad on
         // all potential DSPs in the egraph, which was unnecessary.)
+        warn!("Shift ops really should not be considered extractable, but they are for now.");
         determine_extractable(
             &serialized_egraph,
             &outputs
@@ -1103,6 +1111,7 @@ fn main() {
                 .collect::<Vec<_>>(),
             extractable_predicate,
         );
+        warn!("Shift ops really should not be considered extractable, but they are for now.");
         let choices = GlobalGreedyDagExtractor {
             fail_on_partial: false,
             extractable_predicate,
@@ -1311,6 +1320,10 @@ fn main() {
             "Egraph after all calls to Lakeroad: {}",
             svg_dirpath.join("after_lakeroad.svg").to_string_lossy()
         );
+        // Write out the egraph as JSON too.
+        serialized
+            .to_json_file(svg_dirpath.join("egraph_after_lakeroad.json"))
+            .unwrap();
     }
 
     // STEP 6: Extract a lowered design.
@@ -1322,6 +1335,7 @@ fn main() {
     // which actually attempts to find an *optimal* design, not just *any*
     // design.
 
+    warn!("Shift ops really should not be considered extractable, but they are for now.");
     let serialized = egraph.serialize(SerializeConfig::default());
     let choices = GlobalGreedyDagExtractor {
         // This can be false as long as we set roots to a value in extract().
@@ -1344,7 +1358,7 @@ fn main() {
     let verilog = to_verilog_egraph_serialize(
         &serialized,
         &choices,
-        "clk",
+        Some("clk"),
         [].into(),
         // Use the original outputs as the outputs of the final design.
         Some(
@@ -1480,23 +1494,23 @@ fn determine_extractable(
     // is by the type of the node, which is currently embedded in the string id.
     // The easiest first pass is to just mark all non-exprs as extractable, I
     // think?
-    for (node_id, node) in &egraph.nodes {
-        let class_name = node.eclass.to_string();
-        let split: Vec<_> = class_name.split("-").collect();
-        assert_eq!(split.len(), 2);
-        let type_name = split[0];
-        // Match on the type.
-        match type_name {
-            "Op" | "Unit" | "i64" | "String" | "Type" | "PortDirection" => {
-                class_blame.insert(node.eclass.clone(), ClassBlame::Extractable);
-                node_blame.insert(node_id.clone(), NodeBlame::Extractable);
-            }
-            "Expr" => {
-                // Do nothing; we will analyze whether the Exprs are extractable below.
-            }
-            other => panic!("Unhandled type {other}"),
-        }
-    }
+    // for (node_id, node) in &egraph.nodes {
+    //     let class_name = node.eclass.to_string();
+    //     let split: Vec<_> = class_name.split("-").collect();
+    //     assert_eq!(split.len(), 2);
+    //     let type_name = split[0];
+    //     // Match on the type.
+    //     match type_name {
+    //         "Op" | "Unit" | "i64" | "String" | "Type" | "PortDirection" => {
+    //             class_blame.insert(node.eclass.clone(), ClassBlame::Extractable);
+    //             node_blame.insert(node_id.clone(), NodeBlame::Extractable);
+    //         }
+    //         "Expr" => {
+    //             // Do nothing; we will analyze whether the Exprs are extractable below.
+    //         }
+    //         other => panic!("Unhandled type {other}"),
+    //     }
+    // }
 
     let mut keep_going = true;
     while keep_going {
@@ -1708,6 +1722,7 @@ fn extractable_predicate(egraph: &egraph_serialize::EGraph, node_id: &NodeId) ->
         "PrimitiveInterfaceDSP3".into(),
         "PrimitiveInterfaceWideAddDSP".into(),
     ];
+    // TODO(@gussmith23): shift ops should not be extractable.
     let sub_op_whitelist = [
         "Extract".into(),
         "Concat".into(),
@@ -1719,7 +1734,6 @@ fn extractable_predicate(egraph: &egraph_serialize::EGraph, node_id: &NodeId) ->
         "Shl".into(),
         "Ashr".into(),
     ];
-    warn!("Shift ops really should not be considered extractable, but they are for now.");
     if !egraph[&egraph[node_id].eclass]
         .id
         .to_string()
@@ -1760,6 +1774,7 @@ fn structural_predicate(egraph: &egraph_serialize::EGraph, node_id: &NodeId) -> 
         "ExprConsList".into(),
         "GetOutput".into(),
     ];
+    // TODO(@gussmith23): shift ops should not be extractable.
     let sub_op_whitelist = [
         "Extract".into(),
         "Concat".into(),
@@ -1771,7 +1786,6 @@ fn structural_predicate(egraph: &egraph_serialize::EGraph, node_id: &NodeId) -> 
         "Shl".into(),
         "Ashr".into(),
     ];
-    warn!("Shift ops really should not be considered extractable, but they are for now.");
     if !egraph[&egraph[node_id].eclass]
         .id
         .to_string()

@@ -2,7 +2,6 @@
 use std::iter;
 
 use egraph_serialize::Cost;
-use log::debug;
 use ordered_float::NotNan;
 use rpds::HashTrieSet;
 
@@ -210,16 +209,16 @@ impl GlobalGreedyDagExtractor {
                     if let Some(best) = best_in_class.get(child_cid) {
                         children.push(*best);
                     } else {
-                        debug!(
-                            "Skipping {}{} because child {} is missing",
-                            if roots.contains(child_cid) {
-                                "root "
-                            } else {
-                                ""
-                            },
-                            node_summary(node_id, egraph, 2),
-                            class_summary(child_cid, egraph, 2)
-                        );
+                        // debug!(
+                        //     "Skipping {}{} because child {} is missing",
+                        //     if roots.contains(child_cid) {
+                        //         "root "
+                        //     } else {
+                        //         ""
+                        //     },
+                        //     node_summary(node_id, egraph, 2),
+                        //     class_summary(child_cid, egraph, 2)
+                        // );
                         continue 'node_loop;
                     }
                 }
@@ -235,10 +234,10 @@ impl GlobalGreedyDagExtractor {
                     if cadidate_cost < old_cost {
                         best_in_class.insert(node.eclass.clone(), candidate);
                         keep_going = true;
-                        debug!(
-                            "Node {} (class {}) cost {} -> {}",
-                            node_id, node.eclass, old_cost, cadidate_cost
-                        );
+                        // debug!(
+                        //     "Node {} (class {}) cost {} -> {}",
+                        //     node_id, node.eclass, old_cost, cadidate_cost
+                        // );
                     }
                 }
             }
