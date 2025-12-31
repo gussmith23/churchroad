@@ -160,7 +160,8 @@ fn main() {
     if let Some(svg_dirpath) = &args.svg_dirpath {
         create_dir_all(svg_dirpath).unwrap();
         let serialized = egraph.serialize(SerializeConfig::default());
-        serialized.egraph
+        serialized
+            .egraph
             .to_svg_file(svg_dirpath.join("initial_egraph.svg"))
             .unwrap();
         info!(
@@ -260,7 +261,8 @@ fn main() {
     if let Some(svg_dirpath) = &args.svg_dirpath {
         create_dir_all(svg_dirpath).unwrap();
         let serialized = egraph.serialize(SerializeConfig::default());
-        serialized.egraph
+        serialized
+            .egraph
             .to_svg_file(svg_dirpath.join("after_rewrites.svg"))
             .unwrap();
         info!(
@@ -358,7 +360,8 @@ fn main() {
         // Write out image if the user requested it.
         if let Some(svg_dirpath) = &args.svg_dirpath {
             let serialized = egraph.serialize(SerializeConfig::default());
-            serialized.egraph
+            serialized
+                .egraph
                 .to_svg_file(svg_dirpath.join("during_lakeroad.svg"))
                 .unwrap();
             info!(
@@ -371,7 +374,8 @@ fn main() {
     // Write out image if the user requested it.
     if let Some(svg_dirpath) = args.svg_dirpath {
         let serialized = egraph.serialize(SerializeConfig::default());
-        serialized.egraph
+        serialized
+            .egraph
             .to_svg_file(svg_dirpath.join("after_lakeroad.svg"))
             .unwrap();
         info!(

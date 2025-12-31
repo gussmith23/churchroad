@@ -736,9 +736,7 @@ pub fn find_spec_for_primitive_interface_including_nodes(
 }
 
 pub fn call_lakeroad_on_primitive_interface(term: &Term, term_dag: &TermDag) {
-    dbg!(term_dag
-        .term_to_expr(term, egglog::span!())
-        .to_string());
+    dbg!(term_dag.term_to_expr(term, egglog::span!()).to_string());
 
     dbg!(to_verilog(term_dag, term_dag.lookup(term)));
 }
@@ -2824,10 +2822,7 @@ mod tests {
         // Extract reg from Egraph.
         let mut _termdag = TermDag::default();
         let (_sort, _value) = egraph
-            .eval_expr(&egglog::ast::Expr::Var(
-                egglog::span!(),
-                "reg".into(),
-            ))
+            .eval_expr(&egglog::ast::Expr::Var(egglog::span!(), "reg".into()))
             .unwrap();
         // This will panic, which is what we were trying to get to.
         // It panics with `No cost for Value { tag: "Expr", bits: 6 }`
