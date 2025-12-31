@@ -11,16 +11,15 @@ use std::{
     io::Write,
     path::Path,
     process::{Command, Stdio},
-    sync::Arc,
     time::SystemTime,
 };
 use tempfile::NamedTempFile;
 
 use egglog::{
-    ast::{Literal, Span, SrcFile, Symbol},
+    ast::{Literal, RustSpan, Span},
     constraint::{SimpleTypeConstraint, TypeConstraint},
-    sort::{FromSort, I64Sort, IntoSort, Sort, VecSort},
-    ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
+    sort::VecContainer,
+    ArcSort, EGraph, Primitive, Term, TermDag, Value,
 };
 
 pub fn call_lakeroad_on_primitive_interface_and_spec(
@@ -421,9 +420,11 @@ pub fn node_to_string(
 // here.
 pub fn find_primitive_interface_values(egraph: &mut EGraph) -> Vec<(ArcSort, Value)> {
     const NUM_TO_GET: usize = 100;
-    let (results, termdag) = egraph
-        .function_to_dag("PrimitiveInterfaceDSP".into(), NUM_TO_GET)
+    let (inputs, outputs, termdag) = egraph
+        .function_to_dag("PrimitiveInterfaceDSP".into(), NUM_TO_GET, true)
         .unwrap();
+    let outputs = outputs.expect("PrimitiveInterfaceDSP should have outputs");
+    let results: Vec<_> = inputs.into_iter().zip(outputs).collect();
     assert!(results.len() < NUM_TO_GET);
 
     for (term, output) in &results {
@@ -439,7 +440,9 @@ pub fn find_primitive_interface_values(egraph: &mut EGraph) -> Vec<(ArcSort, Val
             // what it means when it's not the case.
             assert_eq!(term, output);
 
-            egraph.eval_expr(&termdag.term_to_expr(term)).unwrap()
+            egraph
+                .eval_expr(&termdag.term_to_expr(term, egglog::span!()))
+                .unwrap()
         })
         .collect();
 
@@ -733,7 +736,9 @@ pub fn find_spec_for_primitive_interface_including_nodes(
 }
 
 pub fn call_lakeroad_on_primitive_interface(term: &Term, term_dag: &TermDag) {
-    dbg!(term_dag.term_to_expr(term).to_string());
+    dbg!(term_dag
+        .term_to_expr(term, egglog::span!())
+        .to_string());
 
     dbg!(to_verilog(term_dag, term_dag.lookup(term)));
 }
@@ -909,18 +914,20 @@ pub enum InterpreterResult {
 ///
 /// // now, let's get the class ID of the output node
 /// let (_, is_output_node) = serialized
+///     .egraph
 ///     .nodes
 ///     .iter()
-///     .find(|(_, n)| n.op == "IsPort" && n.children[2] == NodeId::from("Output-0"))
+///     .find(|(_, n)| n.op == "IsPort" && serialized.egraph[&n.children[2]].op == "Output")
 ///     .unwrap();
 /// let output_id = is_output_node.children.last().unwrap();
 /// let (_, output_node) = serialized
+///     .egraph
 ///     .nodes
 ///     .iter()
 ///     .find(|(node_id, _)| **node_id == *output_id)
 ///     .unwrap();
 ///
-/// let result = interpret(&serialized, &output_node.eclass, 0,
+/// let result = interpret(&serialized.egraph, &output_node.eclass, 0,
 ///     &[("a", vec![1]), ("b", vec![1])].into(),
 ///     None
 /// );
@@ -2284,15 +2291,15 @@ pub fn import_churchroad(egraph: &mut EGraph) {
 
 /// Add the `debruijnify` primitive to an [`EGraph`].
 fn add_debruijnify(egraph: &mut EGraph) {
+    #[derive(Clone)]
     struct DeBruijnify {
-        in_sort: Arc<VecSort>,
-        out_sort: Arc<VecSort>,
-        i64_sort: Arc<I64Sort>,
+        in_sort: ArcSort,
+        out_sort: ArcSort,
     }
 
-    impl PrimitiveLike for DeBruijnify {
-        fn name(&self) -> Symbol {
-            "debruijnify".into()
+    impl Primitive for DeBruijnify {
+        fn name(&self) -> &str {
+            "debruijnify"
         }
 
         fn get_type_constraints(&self, span: &Span) -> Box<dyn TypeConstraint> {
@@ -2305,44 +2312,43 @@ fn add_debruijnify(egraph: &mut EGraph) {
 
         fn apply(
             &self,
-            values: &[crate::Value],
-            egraph: Option<&mut EGraph>,
+            exec_state: &mut egglog::sort::ExecutionState,
+            args: &[crate::Value],
         ) -> Option<crate::Value> {
-            let in_vec = Vec::<Value>::load(&self.in_sort, &values[0]);
+            let [in_vec] = args else {
+                panic!("debruijnify expects 1 argument");
+            };
+
+            let in_vec = exec_state
+                .container_values()
+                .get_val::<VecContainer>(*in_vec)?
+                .clone();
 
             let mut seen_values: HashMap<Value, i64> = HashMap::new();
             let mut next_id = 0;
             let mut out = vec![];
 
-            let egraph = egraph.unwrap();
-
-            for value in in_vec {
-                // Get representative value.
-                let value = egraph.find(value);
-
-                // If we haven't assinged it a number yet, give it the next one.
-                seen_values.entry(value).or_insert_with(|| {
+            for value in in_vec.data {
+                // Assign ids in first-seen order.
+                let id = *seen_values.entry(value).or_insert_with(|| {
                     let id = next_id;
                     next_id += 1;
                     id
                 });
-
-                // Add the number to the output vector.
-                out.push(seen_values[&value].store(&self.i64_sort).unwrap());
+                out.push(exec_state.base_values().get(id));
             }
 
-            out.store(&self.out_sort)
+            let out = VecContainer {
+                do_rebuild: self.out_sort.is_eq_container_sort(),
+                data: out,
+            };
+            Some(exec_state.container_values().register_val(out, exec_state))
         }
     }
 
     egraph.add_primitive(DeBruijnify {
-        i64_sort: egraph.get_sort().unwrap(),
-        in_sort: egraph
-            .get_sort_by(|s: &Arc<VecSort>| s.name() == "ExprVec".into())
-            .unwrap(),
-        out_sort: egraph
-            .get_sort_by(|s: &Arc<VecSort>| s.name() == "IVec".into())
-            .unwrap(),
+        in_sort: egraph.get_sort_by_name("ExprVec").unwrap().clone(),
+        out_sort: egraph.get_sort_by_name("IVec").unwrap().clone(),
     });
 }
 
@@ -2516,14 +2522,11 @@ pub fn generate_module_enumeration_rewrite(
 
 /// List all modules present in the egraph.
 pub fn list_modules(egraph: &mut EGraph, num_variants: usize) {
-    for s in egraph
-        .parse_and_run_program(
-            None,
-            format!("(query-extract :variants {num_variants} (MakeModule mod args))").as_str(),
-        )
-        .unwrap()
-    {
-        println!("{}", s);
+    let (terms, _outputs, termdag) = egraph
+        .function_to_dag("MakeModule", num_variants, false)
+        .unwrap();
+    for term in terms {
+        println!("{}", termdag.to_string(&term));
     }
 }
 
@@ -2582,8 +2585,7 @@ type Ports = Vec<(String, ArcSort, Value)>;
 /// assert_eq!(inputs.len(), 2);
 ///
 /// fn value_to_string(value: &Value, sort: ArcSort, egraph: &EGraph) -> String {
-///     let mut termdag = TermDag::default();
-///     let (_, term) = egraph.extract(value.clone(), &mut termdag, &sort);
+///     let (termdag, term, _cost) = egraph.extract_value(&sort, value.clone()).unwrap();
 ///     termdag.to_string(&term)
 /// }
 ///
@@ -2604,7 +2606,11 @@ pub fn get_inputs_and_outputs(egraph: &mut EGraph) -> (Ports, Ports) {
     let mut inputs = vec![];
     let mut outputs = vec![];
     const NUM_TO_GET: usize = 100;
-    let (results, termdag) = egraph.function_to_dag("IsPort".into(), NUM_TO_GET).unwrap();
+    let (in_terms, out_terms, termdag) = egraph
+        .function_to_dag("IsPort".into(), NUM_TO_GET, true)
+        .unwrap();
+    let out_terms = out_terms.expect("IsPort should have outputs");
+    let results: Vec<_> = in_terms.into_iter().zip(out_terms).collect();
     assert!(results.len() < NUM_TO_GET);
     for (term, output) in &results {
         assert!(
@@ -2626,9 +2632,9 @@ pub fn get_inputs_and_outputs(egraph: &mut EGraph) -> (Ports, Ports) {
         let in_or_out = match termdag.get(inout_term) {
             Term::App(in_or_out, v) => {
                 assert_eq!(v.len(), 0);
-                if in_or_out == "Input".into() {
+                if in_or_out == "Input" {
                     InOut::Input
-                } else if in_or_out == "Output".into() {
+                } else if in_or_out == "Output" {
                     InOut::Output
                 } else {
                     panic!()
@@ -2640,19 +2646,10 @@ pub fn get_inputs_and_outputs(egraph: &mut EGraph) -> (Ports, Ports) {
         let churchroad_term = children[3];
 
         let term_str = termdag.to_string(&termdag.get(churchroad_term));
-        let (sort, value) = egraph
-            .eval_expr(
-                &egglog::ast::parse::ExprParser::new()
-                    .parse(
-                        &Arc::new(SrcFile {
-                            name: "unused".to_owned(),
-                            contents: Some(term_str.clone()),
-                        }),
-                        &term_str,
-                    )
-                    .unwrap(),
-            )
+        let expr = egglog::ast::Parser::default()
+            .get_expr_from_string(None, &term_str)
             .unwrap();
+        let (sort, value) = egraph.eval_expr(&expr).unwrap();
 
         let port_name = children[1];
         let port_name_str = match termdag.get(port_name) {
@@ -2721,7 +2718,7 @@ type PortsFromSerialized = Vec<(String, ClassId)>;
 ///     .unwrap();
 ///
 /// let serialized = egraph.serialize(SerializeConfig::default());
-/// let (inputs, outputs) = get_inputs_and_outputs_serialized(&serialized);
+/// let (inputs, outputs) = get_inputs_and_outputs_serialized(&serialized.egraph);
 ///
 /// // We should have found two inputs, a and b.
 /// assert_eq!(inputs.len(), 2);
@@ -2828,14 +2825,7 @@ mod tests {
         let mut _termdag = TermDag::default();
         let (_sort, _value) = egraph
             .eval_expr(&egglog::ast::Expr::Var(
-                Span(
-                    Arc::new(SrcFile {
-                        name: "unused".to_owned(),
-                        contents: None,
-                    }),
-                    0,
-                    0,
-                ),
+                egglog::span!(),
                 "reg".into(),
             ))
             .unwrap();
@@ -2876,9 +2866,9 @@ mod tests {
             if std::env::var("DEMO_2024_02_06_WRITE_SVGS").is_err() {
                 return;
             }
-            let serialized = egraph.serialize_for_graphviz(true, usize::MAX, usize::MAX);
+            let serialized = egraph.serialize(SerializeConfig::default());
             let svg_path = Path::new(path).with_extension("svg");
-            serialized.to_svg_file(svg_path).unwrap();
+            serialized.egraph.to_svg_file(svg_path).unwrap();
         }
 
         ///////////////////////////// BEGIN DEMO ///////////////////////////////
@@ -3070,7 +3060,7 @@ mod tests {
             .unwrap();
 
         let serialized = egraph.serialize(SerializeConfig::default());
-        let out = AnythingExtractor.extract(&serialized, &[]);
+        let out = AnythingExtractor.extract(&serialized.egraph, &[]);
 
         // TODO(@gussmith23) terrible assertion, but it's a start.
         assert_eq!(
@@ -3088,7 +3078,7 @@ always @(posedge clk) begin
 
 
 endmodule",
-            to_verilog_egraph_serialize(&serialized, &out, "clk", [].into(), None)
+            to_verilog_egraph_serialize(&serialized.egraph, &out, "clk", [].into(), None)
         );
     }
 
@@ -3116,7 +3106,7 @@ endmodule",
             .unwrap();
 
         let serialized = egraph.serialize(SerializeConfig::default());
-        let out = AnythingExtractor.extract(&serialized, &[]);
+        let out = AnythingExtractor.extract(&serialized.egraph, &[]);
 
         assert_eq!(
             "module top(
@@ -3126,21 +3116,21 @@ endmodule",
   
   output [8-1:0] out,
 );
-  assign out = wire_Expr_28;
-  logic [8-1:0] wire_Expr_28;
-  localparam [4-1:0] wire_Expr_20 = 4'd4;
-  logic [8-1:0] wire_Expr_14 = b;
+  assign out = wire_Expr_26;
+  logic [8-1:0] wire_Expr_26;
+  localparam [4-1:0] wire_Expr_18 = 4'd4;
+  logic [8-1:0] wire_Expr_13 = b;
   logic [8-1:0] wire_Expr_11 = a;
   
 
   some_module #(
-    .p(wire_Expr_20)
-) module_ModuleInstanceSort_27 (
+    .p(wire_Expr_18)
+) module_ModuleInstanceSort_25 (
     .a(wire_Expr_11),
-    .b(wire_Expr_14),
-    .out(wire_Expr_28));
+    .b(wire_Expr_13),
+    .out(wire_Expr_26));
 endmodule",
-            to_verilog_egraph_serialize(&serialized, &out, "", [].into(), None)
+            to_verilog_egraph_serialize(&serialized.egraph, &out, "", [].into(), None)
         );
     }
 
@@ -3162,6 +3152,7 @@ endmodule",
             )
             .unwrap();
 
-        get_inputs_and_outputs_serialized(&egraph.serialize(SerializeConfig::default()));
+        let serialized = egraph.serialize(SerializeConfig::default());
+        get_inputs_and_outputs_serialized(&serialized.egraph);
     }
 }

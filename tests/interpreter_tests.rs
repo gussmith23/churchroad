@@ -57,21 +57,34 @@ fn prep_interpreter(
         // constructs when interpreting.
         structural_only: false,
     }
-    .extract(&serialized, &[]);
+    .extract(&serialized.egraph, &[]);
 
     let (_, is_output_node) = serialized
+        .egraph
         .nodes
         .iter()
         .find(|(_, n)| {
             n.op == "IsPort"
-                && n.children[2] == NodeId::from("Output-0")
-                && serialized.nodes.get(&n.children[1]).unwrap().op.as_str()
+                && serialized
+                    .egraph
+                    .nodes
+                    .get(&n.children[2])
+                    .map(|node| node.op.as_str())
+                    == Some("Output")
+                && serialized
+                    .egraph
+                    .nodes
+                    .get(&n.children[1])
+                    .unwrap()
+                    .op
+                    .as_str()
                     == format!("\"{}\"", out)
         })
         .unwrap();
 
     // output the serialized egraph to "DSP48E2.json"
     serialized
+        .egraph
         .to_json_file(test_output_dir.join("serialized.json"))
         .unwrap();
 
@@ -81,17 +94,18 @@ fn prep_interpreter(
     );
 
     // Each node should have a HasType node associated with it.
-    for (node_id, node) in serialized.nodes.iter() {
+    for (node_id, node) in serialized.egraph.nodes.iter() {
         // if the node has op in the list, don't care
         let list = ["Var", "Op1"];
         if !list.contains(&node.op.as_str()) {
             continue;
         }
-        let _ = get_bitwidth_for_node(&serialized, node_id);
+        let _ = get_bitwidth_for_node(&serialized.egraph, node_id);
     }
 
     let output_id = is_output_node.children.last().unwrap();
     let output_node = serialized
+        .egraph
         .nodes
         .iter()
         .find(|(node_id, _)| **node_id == *output_id)
@@ -99,7 +113,7 @@ fn prep_interpreter(
         .1
         .clone();
 
-    (serialized, choices, output_node)
+    (serialized.egraph, choices, output_node)
 }
 
 // TODO(@ninehusky): macroify this
@@ -135,7 +149,7 @@ fn test_lut6_combinational_verilator() {
         inputs,
         outputs,
         include_dirs,
-        TempDir::new().unwrap().into_path(),
+        TempDir::new().unwrap().keep(),
         churchroad_dir
             .join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus/LUT6-modified.v"),
         // Here we can use the choices produced by the extractor, as the design
@@ -174,7 +188,7 @@ fn test_counter_verilator() {
         inputs,
         outputs,
         include_dirs,
-        TempDir::new().unwrap().into_path(),
+        TempDir::new().unwrap().keep(),
         churchroad_dir.join("tests/interpreter_tests/verilog/toy_examples/counter.sv"),
         // Must be false as the counter is cyclic. Here we just have to hope
         // that the interpreter makes a sane choice.
@@ -501,7 +515,7 @@ macro_rules! interpreter_test_verilog {
         fn $test_name() {
             let (serialized, _choices, root_node) = prep_interpreter(
                 PathBuf::from($verilog_path),
-                TempDir::new().unwrap().into_path(),
+                TempDir::new().unwrap().keep(),
                 $module_name,
                 $out,
             );
@@ -535,25 +549,38 @@ macro_rules! interpreter_test_churchroad {
             let serialized = egraph.serialize(SerializeConfig::default());
 
             let (_, is_output_node) = serialized
+                .egraph
                 .nodes
                 .iter()
                 .find(|(_, n)| {
                     n.op == "IsPort"
-                        && n.children[2] == NodeId::from("Output-0")
-                        && serialized.nodes.get(&n.children[1]).unwrap().op.as_str()
+                        && serialized
+                            .egraph
+                            .nodes
+                            .get(&n.children[2])
+                            .map(|node| node.op.as_str())
+                            == Some("Output")
+                        && serialized
+                            .egraph
+                            .nodes
+                            .get(&n.children[1])
+                            .unwrap()
+                            .op
+                            .as_str()
                             == format!("\"{}\"", $out)
                 })
                 .unwrap();
 
             let output_id = is_output_node.children.last().unwrap();
             let (_, output_node) = serialized
+                .egraph
                 .nodes
                 .iter()
                 .find(|(node_id, _)| **node_id == *output_id)
                 .unwrap();
 
             let interpreter_result =
-                interpret(&serialized, &output_node.eclass, $time, $env, None).unwrap();
+                interpret(&serialized.egraph, &output_node.eclass, $time, $env, None).unwrap();
             assert_eq!(
                 $expected, interpreter_result,
                 "(left: expected, right: interpreter_result)"
@@ -1073,7 +1100,7 @@ fn test_run_verilator() {
             outputs.clone(),
             vec![vec![vec![0, 0, 0, 0, 0, 0, 0]]],
             include_dirs.clone(),
-            TempDir::new().unwrap().into_path(),
+            TempDir::new().unwrap().keep(),
             churchroad_dir
                 .join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus/LUT6-modified.v"),
         ),
@@ -1088,7 +1115,7 @@ fn test_run_verilator() {
             outputs.clone(),
             vec![vec![vec![0xFFFFFFFFFFFFFFFF, 1, 0, 0, 0, 0, 0]]],
             include_dirs.clone(),
-            TempDir::new().unwrap().into_path(),
+            TempDir::new().unwrap().keep(),
             churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
         ),
         vec![1]
@@ -1102,7 +1129,7 @@ fn test_run_verilator() {
             outputs.clone(),
             vec![vec![vec![0b10, 1, 0, 0, 0, 0, 0]]],
             include_dirs.clone(),
-            TempDir::new().unwrap().into_path(),
+            TempDir::new().unwrap().keep(),
             churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
         ),
         vec![1]
@@ -1116,7 +1143,7 @@ fn test_run_verilator() {
             outputs.clone(),
             vec![vec![vec![0b000001000000000000, 0, 0, 1, 1, 0, 0]]],
             include_dirs.clone(),
-            TempDir::new().unwrap().into_path(),
+            TempDir::new().unwrap().keep(),
             churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
         ),
         vec![1]
@@ -1130,7 +1157,7 @@ fn test_run_verilator() {
             outputs.clone(),
             vec![vec![vec![0b1000000000000, 1, 0, 1, 1, 0, 0]]],
             include_dirs.clone(),
-            TempDir::new().unwrap().into_path(),
+            TempDir::new().unwrap().keep(),
             churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
         ),
         vec![0]
@@ -1148,7 +1175,7 @@ fn test_run_verilator() {
                 vec![0b0100000000000, 0, 0, 1, 1, 0, 0],
             ]],
             include_dirs.clone(),
-            TempDir::new().unwrap().into_path(),
+            TempDir::new().unwrap().keep(),
             churchroad_dir.join("tests/interpreter_tests/verilog/LUT6-modified.v"),
         ),
         vec![0, 1, 0]
