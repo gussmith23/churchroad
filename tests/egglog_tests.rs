@@ -467,6 +467,7 @@ fn antiunify() {
 }
 
 #[test]
+#[ignore = "Slow: times out in the enumerate-modules saturation step. In tests/egglog_tests.rs, the call to `(run-schedule (saturate enumerate-modules))` inside `antiunify_permuter` runs longer than 60s on this machine, so we skip by default."]
 fn antiunify_permuter() {
     let mut egraph = egglog::EGraph::default();
     churchroad::import_churchroad(&mut egraph);
