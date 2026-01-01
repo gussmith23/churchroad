@@ -1409,7 +1409,12 @@ pub fn to_verilog_egraph_serialize(
     if let Some(outputs) = &outputs {
         for (class_id, name) in outputs {
             log::debug!("Outputting class {} as {}", class_id, name);
-            let node_id = &choices[class_id];
+            let node_id = choices.get(class_id).unwrap_or_else(|| {
+                panic!(
+                    "No node found in choices for output class ID {:?}. Was the class properly extracted?",
+                    class_id
+                )
+            });
             let term = &egraph[node_id];
             let bw = get_bitwidth_for_node(egraph, node_id).unwrap();
 
