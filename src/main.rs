@@ -65,7 +65,12 @@ fn _egraph_interact(egraph: &mut EGraph) {
         stdin().read_line(&mut buf).unwrap();
         let out = egraph.parse_and_run_program(None, &buf);
         if let Ok(out) = out {
-            println!("{}", out.join("\n"));
+            let rendered = out
+                .iter()
+                .map(|line| line.to_string())
+                .collect::<Vec<_>>()
+                .join("\n");
+            println!("{}", rendered);
         } else {
             println!("Error: {:?}", out);
         }
@@ -100,35 +105,53 @@ fn main() {
     // Get initial input and output ports.
     let outputs: Vec<_> = {
         let serialized = egraph.serialize(SerializeConfig::default());
-        get_inputs_and_outputs_serialized(&serialized)
+        get_inputs_and_outputs_serialized(&serialized.egraph)
             .1
             .drain(..)
-            .map(|(output_name, class_id)| (egraph.class_id_to_value(&class_id), output_name))
+            .map(|(output_name, class_id)| {
+                let class_id_str = class_id.to_string();
+                let (sort_name, _) = class_id_str
+                    .split_once('-')
+                    .expect("serialized class id should contain '-'");
+                (
+                    sort_name.to_string(),
+                    egraph.class_id_to_value(&class_id),
+                    output_name,
+                )
+            })
             .collect()
     };
 
     let output_names_and_bws: Vec<_> = {
         let serialized = egraph.serialize(SerializeConfig::default());
-        get_inputs_and_outputs_serialized(&serialized)
+        get_inputs_and_outputs_serialized(&serialized.egraph)
             .1
             .drain(..)
             .map(|(output_name, class_id)| {
                 (
                     output_name,
-                    get_bitwidth_for_node(&serialized, &serialized[&class_id].nodes[0]).unwrap(),
+                    get_bitwidth_for_node(
+                        &serialized.egraph,
+                        &serialized.egraph[&class_id].nodes[0],
+                    )
+                    .unwrap(),
                 )
             })
             .collect()
     };
     let input_names_and_bws: Vec<_> = {
         let serialized = egraph.serialize(SerializeConfig::default());
-        get_inputs_and_outputs_serialized(&serialized)
+        get_inputs_and_outputs_serialized(&serialized.egraph)
             .0
             .drain(..)
             .map(|(input_name, class_id)| {
                 (
                     input_name,
-                    get_bitwidth_for_node(&serialized, &serialized[&class_id].nodes[0]).unwrap(),
+                    get_bitwidth_for_node(
+                        &serialized.egraph,
+                        &serialized.egraph[&class_id].nodes[0],
+                    )
+                    .unwrap(),
                 )
             })
             .collect()
@@ -136,8 +159,9 @@ fn main() {
 
     if let Some(svg_dirpath) = &args.svg_dirpath {
         create_dir_all(svg_dirpath).unwrap();
-        let serialized = egraph.serialize_for_graphviz(true, usize::MAX, usize::MAX);
+        let serialized = egraph.serialize(SerializeConfig::default());
         serialized
+            .egraph
             .to_svg_file(svg_dirpath.join("initial_egraph.svg"))
             .unwrap();
         info!(
@@ -236,8 +260,9 @@ fn main() {
 
     if let Some(svg_dirpath) = &args.svg_dirpath {
         create_dir_all(svg_dirpath).unwrap();
-        let serialized = egraph.serialize_for_graphviz(true, usize::MAX, usize::MAX);
+        let serialized = egraph.serialize(SerializeConfig::default());
         serialized
+            .egraph
             .to_svg_file(svg_dirpath.join("after_rewrites.svg"))
             .unwrap();
         info!(
@@ -262,7 +287,7 @@ fn main() {
     // Basically it can have the same API as the spec finding function. They're
     // both doing very similar things: basically, an extraction. They're just
     // extracting different things for the same classes.
-    let node_ids = find_primitive_interfaces_serialized(&serialized_egraph);
+    let node_ids = find_primitive_interfaces_serialized(&serialized_egraph.egraph);
 
     info!(
         "Found {} potential mappings; running Lakeroad on each.",
@@ -293,10 +318,10 @@ fn main() {
         // from running in a portfolio, having many equivalent specs might
         // increase chances at synthesis termination.
         let (spec_choices, spec_node_id) = find_spec_for_primitive_interface_including_nodes(
-            &serialized_egraph[sketch_template_node_id].eclass,
-            &serialized_egraph,
+            &serialized_egraph.egraph[sketch_template_node_id].eclass,
+            &serialized_egraph.egraph,
             // Use the children of the sketch template node as the required-to-be-extracted nodes.
-            serialized_egraph[sketch_template_node_id]
+            serialized_egraph.egraph[sketch_template_node_id]
                 .children
                 .iter()
                 .cloned()
@@ -305,13 +330,13 @@ fn main() {
 
         log::info!(
             "Calling Lakeroad with spec:\n{}\nand sketch:\n{}",
-            node_to_string(&serialized_egraph, &spec_node_id, &spec_choices),
-            serialized_egraph[sketch_template_node_id].op
+            node_to_string(&serialized_egraph.egraph, &spec_node_id, &spec_choices),
+            serialized_egraph.egraph[sketch_template_node_id].op
         );
 
         // STEP 5.2: Call Lakeroad.
         let commands = call_lakeroad_on_primitive_interface_and_spec(
-            &serialized_egraph,
+            &serialized_egraph.egraph,
             &spec_choices,
             &spec_node_id,
             sketch_template_node_id,
@@ -334,8 +359,9 @@ fn main() {
 
         // Write out image if the user requested it.
         if let Some(svg_dirpath) = &args.svg_dirpath {
-            let serialized = egraph.serialize_for_graphviz(true, usize::MAX, usize::MAX);
+            let serialized = egraph.serialize(SerializeConfig::default());
             serialized
+                .egraph
                 .to_svg_file(svg_dirpath.join("during_lakeroad.svg"))
                 .unwrap();
             info!(
@@ -347,8 +373,9 @@ fn main() {
 
     // Write out image if the user requested it.
     if let Some(svg_dirpath) = args.svg_dirpath {
-        let serialized = egraph.serialize_for_graphviz(true, usize::MAX, usize::MAX);
+        let serialized = egraph.serialize(SerializeConfig::default());
         serialized
+            .egraph
             .to_svg_file(svg_dirpath.join("after_lakeroad.svg"))
             .unwrap();
         info!(
@@ -370,9 +397,9 @@ fn main() {
     let choices = GlobalGreedyDagExtractor {
         structural_only: true,
     }
-    .extract(&serialized, &[]);
+    .extract(&serialized.egraph, &[]);
     let verilog = to_verilog_egraph_serialize(
-        &serialized,
+        &serialized.egraph,
         &choices,
         "clk",
         [].into(),
@@ -381,8 +408,12 @@ fn main() {
             outputs
                 .iter()
                 .cloned()
-                .map(|(value, output_name)| {
-                    (egraph.value_to_class_id(&egraph.find(value)), output_name)
+                .map(|(sort_name, value, output_name)| {
+                    let sort = egraph
+                        .get_sort_by_name(&sort_name)
+                        .expect("output sort should exist")
+                        .clone();
+                    (egraph.value_to_class_id(&sort, value), output_name)
                 })
                 .collect(),
         ),

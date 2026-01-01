@@ -18,7 +18,7 @@ macro_rules! type_inference_test {
             // assert that everything has a type
             let serialized = egraph.serialize(SerializeConfig::default());
 
-            for (id, node) in serialized.nodes.iter() {
+            for (id, node) in serialized.egraph.nodes.iter() {
                 let typed_ops = vec![
                     String::from("Op1"),
                     String::from("Op2"),
@@ -26,7 +26,7 @@ macro_rules! type_inference_test {
                 ];
                 let mut untyped_nodes: Vec<&NodeId> = vec![];
                 if typed_ops.contains(&node.op) {
-                    match get_bitwidth_for_node(&serialized, id) {
+                    match get_bitwidth_for_node(&serialized.egraph, id) {
                         Ok(bw) => {
                             println!("Node {:?} has bw {}", id, bw);
                         }

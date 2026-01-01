@@ -36,4 +36,4 @@
          (saturate typing)))
 
 (extract o_sum)
-(query-extract (HasType o_sum (Bitvector 1)))
+(check (HasType o_sum (Bitvector 1)))
