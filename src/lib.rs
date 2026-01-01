@@ -3597,19 +3597,19 @@ endmodule",
   
   output [8-1:0] out,
 );
-  assign out = wire_Expr_28;
-  logic [8-1:0] wire_Expr_28;
-  localparam [4-1:0] wire_Expr_20 = 4'd4;
+  assign out = wire_Expr_27;
+  logic [8-1:0] wire_Expr_27;
+  localparam [4-1:0] wire_Expr_19 = 4'd4;
   logic [8-1:0] wire_Expr_14 = b;
-  logic [8-1:0] wire_Expr_11 = a;
+  logic [8-1:0] wire_Expr_12 = a;
   
 
   some_module #(
-    .p(wire_Expr_20)
-) module_ModuleInstanceSort_27 (
-    .a(wire_Expr_11),
+    .p(wire_Expr_19)
+) module_ModuleInstanceSort_26 (
+    .a(wire_Expr_12),
     .b(wire_Expr_14),
-    .out(wire_Expr_28));
+    .out(wire_Expr_27));
 endmodule",
             to_verilog_egraph_serialize(&serialized, &out, "", [].into(), None)
         );
