@@ -1152,7 +1152,6 @@ pub enum InterpreterResult {
 /// ```
 /// use churchroad::*;
 /// use egglog::{EGraph, SerializeConfig};
-/// use egraph_serialize::NodeId;
 /// let mut egraph = EGraph::default();
 /// import_churchroad(&mut egraph);
 /// egraph.parse_and_run_program(None,
@@ -1181,7 +1180,7 @@ pub enum InterpreterResult {
 /// let (_, is_output_node) = serialized
 ///     .nodes
 ///     .iter()
-///     .find(|(_, n)| n.op == "IsPort" && n.children[2] == NodeId::from("Output-0"))
+///     .find(|(_, n)| n.op == "IsPort" && serialized[&n.children[2]].op == "Output")
 ///     .unwrap();
 /// let output_id = is_output_node.children.last().unwrap();
 /// let (_, output_node) = serialized
@@ -3062,7 +3061,7 @@ type Ports = Vec<(String, ArcSort, Value)>;
 
 /// ```
 /// use churchroad::*;
-/// use egglog::{ArcSort, EGraph, Term, TermDag, Value};
+/// use egglog::{ArcSort, EGraph, Value};
 ///
 /// // Get an egraph, load in a simple design.
 /// let mut egraph = EGraph::default();
@@ -3112,8 +3111,7 @@ type Ports = Vec<(String, ArcSort, Value)>;
 /// assert_eq!(inputs.len(), 2);
 ///
 /// fn value_to_string(value: &Value, sort: ArcSort, egraph: &EGraph) -> String {
-///     let mut termdag = TermDag::default();
-///     let (_, term) = egraph.extract(value.clone(), &mut termdag, &sort);
+///     let (termdag, term) = egraph.extract_value(&sort, value.clone()).unwrap();
 ///     termdag.to_string(&term)
 /// }
 ///
