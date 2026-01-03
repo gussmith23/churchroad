@@ -2,15 +2,13 @@
 
 use std::{fmt::Write, fs, io::Write as IOWrite, path::PathBuf, vec};
 
-use egraph_serialize::{ClassId, NodeId};
-use indexmap::IndexMap;
 use rand::{rngs::StdRng, RngCore, SeedableRng};
 
 use egglog::{EGraph, SerializeConfig};
 
 use churchroad::{
-    commands_from_verilog_file, get_bitwidth_for_node, global_greedy_dag::GlobalGreedyDagExtractor,
-    import_churchroad, interpret, InterpreterResult,
+    commands_from_verilog_file, get_bitwidth_for_node, import_churchroad, interpret,
+    InterpreterResult,
 };
 use tempfile::TempDir;
 
