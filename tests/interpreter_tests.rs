@@ -51,7 +51,11 @@ fn prep_interpreter(
         .iter()
         .find(|(_, n)| {
             n.op == "IsPort"
-                && n.children[2] == NodeId::from("Output-0")
+                && serialized
+                    .nodes
+                    .get(&n.children[2])
+                    .map(|node| node.op.as_str() == "Output")
+                    .unwrap_or(false)
                 && serialized.nodes.get(&n.children[1]).unwrap().op.as_str()
                     == format!("\"{}\"", out)
         })
@@ -503,7 +507,11 @@ macro_rules! interpreter_test_churchroad {
                 .iter()
                 .find(|(_, n)| {
                     n.op == "IsPort"
-                        && n.children[2] == NodeId::from("Output-0")
+                        && serialized
+                            .nodes
+                            .get(&n.children[2])
+                            .map(|node| node.op.as_str() == "Output")
+                            .unwrap_or(false)
                         && serialized.nodes.get(&n.children[1]).unwrap().op.as_str()
                             == format!("\"{}\"", $out)
                 })
