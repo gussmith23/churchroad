@@ -1205,8 +1205,17 @@ pub fn interpret(
     env: &HashMap<&str, Vec<u64>>,
     choices: Option<&IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>>,
 ) -> Result<InterpreterResult, String> {
+    let mut visiting: HashSet<(ClassId, usize)> = HashSet::new();
     let result = match egraph.classes().iter().find(|(id, _)| *id == class_id) {
-        Some((id, _)) => interpret_helper(egraph, id, time, env, &mut HashMap::default(), choices),
+        Some((id, _)) => interpret_helper(
+            egraph,
+            id,
+            time,
+            env,
+            &mut HashMap::default(),
+            choices,
+            &mut visiting,
+        ),
         None => return Err("No class with the given ID.".to_string()),
     };
 
@@ -1274,10 +1283,20 @@ fn interpret_helper(
     env: &HashMap<&str, Vec<u64>>,
     cache: &mut HashMap<(ClassId, usize), InterpreterResult>,
     choices: Option<&IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>>,
+    visiting: &mut HashSet<(ClassId, usize)>,
 ) -> Result<InterpreterResult, String> {
     if cache.contains_key(&(id.clone(), time)) {
         return Ok(cache[&(id.clone(), time)].clone());
     }
+    // Track active (eclass, time) pairs so we can break cycles when the interpreter
+    // walks a cyclic e-graph without explicit extraction choices.
+    let visit_key = (id.clone(), time);
+    if visiting.contains(&visit_key) {
+        return Err(format!(
+            "Cycle detected while interpreting class {id} at time {time}"
+        ));
+    }
+    visiting.insert(visit_key.clone());
 
     // Get node.
     let node_id = if let Some(choices) = choices {
@@ -1303,7 +1322,21 @@ fn interpret_helper(
             );
         }
 
-        node_ids.first().unwrap().to_owned()
+        // Prefer a node whose children don't immediately re-enter an active eclass.
+        // This avoids infinite recursion when an eclass contains cyclic variants.
+        let mut selected = None;
+        for candidate in &node_ids {
+            let cand_node = egraph.nodes.get(candidate).unwrap();
+            let has_visited_child = cand_node.children.iter().any(|child_id| {
+                let child_eclass = &egraph[child_id].eclass;
+                visiting.contains(&(child_eclass.clone(), time))
+            });
+            if !has_visited_child {
+                selected = Some(candidate.clone());
+                break;
+            }
+        }
+        selected.unwrap_or_else(|| node_ids.first().unwrap().to_owned())
     };
 
     let node = egraph.nodes.get(&node_id).unwrap();
@@ -1337,262 +1370,272 @@ fn interpret_helper(
                 if time == 0 {
                     let clk = egraph.nodes.get(&node.children[1]).unwrap();
                     let InterpreterResult::Bitvector(curr_clk_val, _) =
-                        interpret_helper(egraph, &clk.eclass, time, env, cache, choices).unwrap();
+                        interpret_helper(egraph, &clk.eclass, time, env, cache, choices, visiting)
+                            .unwrap();
                     assert_eq!(
                         curr_clk_val, 0,
                         "We don't currently know what to do when clk=1 at time 0! See #88"
                     );
                     let initial_value = egraph.nodes.get(&op.children[0]).unwrap();
-                    return Ok(InterpreterResult::Bitvector(
+                    Ok(InterpreterResult::Bitvector(
                         initial_value.op.parse().unwrap(),
                         get_bitwidth_for_node(egraph, &node.children[2]).unwrap(),
-                    ));
+                    ))
                 } else {
                     let clk = egraph.nodes.get(&node.children[1]).unwrap();
-                    let InterpreterResult::Bitvector(prev_clk_val, _) =
-                        interpret_helper(egraph, &clk.eclass, time - 1, env, cache, choices)
-                            .unwrap();
+                    let InterpreterResult::Bitvector(prev_clk_val, _) = interpret_helper(
+                        egraph,
+                        &clk.eclass,
+                        time - 1,
+                        env,
+                        cache,
+                        choices,
+                        visiting,
+                    )
+                    .unwrap();
                     let InterpreterResult::Bitvector(curr_clk_val, _) =
-                        interpret_helper(egraph, &clk.eclass, time, env, cache, choices).unwrap();
+                        interpret_helper(egraph, &clk.eclass, time, env, cache, choices, visiting)
+                            .unwrap();
 
                     if prev_clk_val == 0 && curr_clk_val == 1 {
                         let d = egraph.nodes.get(&node.children[2]).unwrap();
-                        return interpret_helper(egraph, &d.eclass, time - 1, env, cache, choices);
+                        interpret_helper(egraph, &d.eclass, time - 1, env, cache, choices, visiting)
                     } else {
-                        return interpret_helper(egraph, id, time - 1, env, cache, choices);
+                        interpret_helper(egraph, id, time - 1, env, cache, choices, visiting)
                     }
                 }
-            }
-            let children: Vec<_> = node
-                .children
-                .iter()
-                .skip(1)
-                .map(|id| {
-                    let child = egraph.nodes.get(id).unwrap();
-                    interpret_helper(egraph, &child.eclass, time, env, cache, choices)
-                })
-                .collect();
+            } else {
+                let children: Vec<_> = node
+                    .children
+                    .iter()
+                    .skip(1)
+                    .map(|id| {
+                        let child = egraph.nodes.get(id).unwrap();
+                        interpret_helper(egraph, &child.eclass, time, env, cache, choices, visiting)
+                    })
+                    .collect();
 
-            match op.op.as_str() {
-                // Binary operations that condense to a single bit.
-                "Eq" | "LogicOr" | "LogicAnd" | "Ne" => {
-                    assert_eq!(children.len(), 2);
-                    let result = match op.op.as_str() {
-                        "Eq" => {
-                            let a = match &children[0] {
-                                Ok(InterpreterResult::Bitvector(val, _)) => *val,
-                                _ => todo!(),
-                            };
-                            let b = match &children[1] {
-                                Ok(InterpreterResult::Bitvector(val, _)) => *val,
-                                _ => todo!(),
-                            };
-                            a == b
-                        }
-                        "Ne" => {
-                            let a = match &children[0] {
-                                Ok(InterpreterResult::Bitvector(val, _)) => *val,
-                                _ => todo!(),
-                            };
-                            let b = match &children[1] {
-                                Ok(InterpreterResult::Bitvector(val, _)) => *val,
-                                _ => todo!(),
-                            };
-                            a != b
-                        }
-                        "LogicOr" => {
-                            let result = children.iter().any(|child| match child {
-                                Ok(InterpreterResult::Bitvector(val, _)) => *val != 0,
-                                _ => todo!(),
-                            });
-                            result
-                        }
-                        "LogicAnd" => {
-                            // if any of the children are false, the result is false
-                            let result = children.iter().all(|child| match child {
-                                Ok(InterpreterResult::Bitvector(val, _)) => *val != 0,
-                                _ => todo!(),
-                            });
-                            result
-                        }
-                        _ => todo!(),
-                    };
-                    Ok(InterpreterResult::Bitvector(result as u64, 1))
-                }
-                // Unary operations that condense to a single bit.
-                "ReduceOr" | "ReduceAnd" | "LogicNot" => {
-                    assert_eq!(children.len(), 1);
-                    match op.op.as_str() {
-                        "ReduceOr" => {
-                            let value = match children[0] {
-                                Ok(InterpreterResult::Bitvector(val, _)) => val,
-                                _ => todo!(),
-                            };
-                            let result = value != 0;
-                            Ok(InterpreterResult::Bitvector(result as u64, 1))
-                        }
-                        "ReduceAnd" => {
-                            // if any bit of children[0] is 0, the result is 0
-                            match children[0] {
-                                Ok(InterpreterResult::Bitvector(val, bw)) => {
-                                    let result = val == (1 << bw) - 1;
-                                    Ok(InterpreterResult::Bitvector(result as u64, 1))
-                                }
-                                _ => todo!(),
+                match op.op.as_str() {
+                    // Binary operations that condense to a single bit.
+                    "Eq" | "LogicOr" | "LogicAnd" | "Ne" => {
+                        assert_eq!(children.len(), 2);
+                        let result = match op.op.as_str() {
+                            "Eq" => {
+                                let a = match &children[0] {
+                                    Ok(InterpreterResult::Bitvector(val, _)) => *val,
+                                    _ => todo!(),
+                                };
+                                let b = match &children[1] {
+                                    Ok(InterpreterResult::Bitvector(val, _)) => *val,
+                                    _ => todo!(),
+                                };
+                                a == b
                             }
-                        }
-                        "LogicNot" => match children[0] {
-                            Ok(InterpreterResult::Bitvector(val, _)) => {
-                                let new_val = if val == 0 { 1 } else { 0 };
-                                Ok(InterpreterResult::Bitvector(new_val, 1))
+                            "Ne" => {
+                                let a = match &children[0] {
+                                    Ok(InterpreterResult::Bitvector(val, _)) => *val,
+                                    _ => todo!(),
+                                };
+                                let b = match &children[1] {
+                                    Ok(InterpreterResult::Bitvector(val, _)) => *val,
+                                    _ => todo!(),
+                                };
+                                a != b
+                            }
+                            "LogicOr" => {
+                                let result = children.iter().any(|child| match child {
+                                    Ok(InterpreterResult::Bitvector(val, _)) => *val != 0,
+                                    _ => todo!(),
+                                });
+                                result
+                            }
+                            "LogicAnd" => {
+                                // if any of the children are false, the result is false
+                                let result = children.iter().all(|child| match child {
+                                    Ok(InterpreterResult::Bitvector(val, _)) => *val != 0,
+                                    _ => todo!(),
+                                });
+                                result
                             }
                             _ => todo!(),
-                        },
-                        _ => todo!(),
+                        };
+                        Ok(InterpreterResult::Bitvector(result as u64, 1))
                     }
-                }
-                // Unary operations that preserve bitwidth.
-                "Not" => {
-                    assert_eq!(children.len(), 1);
-                    match children[0] {
-                        Ok(InterpreterResult::Bitvector(val, bw)) => {
-                            let result = !val & ((1 << bw) - 1);
-                            Ok(InterpreterResult::Bitvector(result, bw))
+                    // Unary operations that condense to a single bit.
+                    "ReduceOr" | "ReduceAnd" | "LogicNot" => {
+                        assert_eq!(children.len(), 1);
+                        match op.op.as_str() {
+                            "ReduceOr" => {
+                                let value = match children[0] {
+                                    Ok(InterpreterResult::Bitvector(val, _)) => val,
+                                    _ => todo!(),
+                                };
+                                let result = value != 0;
+                                Ok(InterpreterResult::Bitvector(result as u64, 1))
+                            }
+                            "ReduceAnd" => {
+                                // if any bit of children[0] is 0, the result is 0
+                                match children[0] {
+                                    Ok(InterpreterResult::Bitvector(val, bw)) => {
+                                        let result = val == (1 << bw) - 1;
+                                        Ok(InterpreterResult::Bitvector(result as u64, 1))
+                                    }
+                                    _ => todo!(),
+                                }
+                            }
+                            "LogicNot" => match children[0] {
+                                Ok(InterpreterResult::Bitvector(val, _)) => {
+                                    let new_val = if val == 0 { 1 } else { 0 };
+                                    Ok(InterpreterResult::Bitvector(new_val, 1))
+                                }
+                                _ => todo!(),
+                            },
+                            _ => todo!(),
                         }
-                        _ => todo!(),
                     }
-                }
-                // Binary operations that preserve bitwidth.
-                "And" | "Or" | "Shr" | "Xor" | "Add" | "Sub" | "Mul" => {
-                    assert_eq!(children.len(), 2);
-                    match (&children[0], &children[1]) {
+                    // Unary operations that preserve bitwidth.
+                    "Not" => {
+                        assert_eq!(children.len(), 1);
+                        match children[0] {
+                            Ok(InterpreterResult::Bitvector(val, bw)) => {
+                                let result = !val & ((1 << bw) - 1);
+                                Ok(InterpreterResult::Bitvector(result, bw))
+                            }
+                            _ => todo!(),
+                        }
+                    }
+                    // Binary operations that preserve bitwidth.
+                    "And" | "Or" | "Shr" | "Xor" | "Add" | "Sub" | "Mul" => {
+                        assert_eq!(children.len(), 2);
+                        match (&children[0], &children[1]) {
+                            (
+                                Ok(InterpreterResult::Bitvector(a, a_bw)),
+                                Ok(InterpreterResult::Bitvector(b, b_bw)),
+                            ) => {
+                                assert_eq!(a_bw, b_bw);
+                                let result = match op.op.as_str() {
+                                    "And" => a & b,
+                                    "Or" => a | b,
+                                    "Shr" => a >> b,
+                                    "Xor" => a ^ b,
+                                    // TODO(@gussmith23): These might not work -- do we need to simulate lower bitwidths?
+                                    "Add" => (a.overflowing_add(*b).0) & ((1 << a_bw) - 1),
+                                    "Sub" => (a.overflowing_sub(*b).0) & ((1 << a_bw) - 1),
+                                    "Mul" => (a.overflowing_mul(*b).0) & ((1 << a_bw) - 1),
+                                    _ => unreachable!(),
+                                };
+                                Ok(InterpreterResult::Bitvector(result, *a_bw))
+                            }
+                            _ => todo!(),
+                        }
+                    }
+                    "Mux" => {
+                        assert_eq!(children.len(), 3);
+
+                        match children[0] {
+                            Ok(InterpreterResult::Bitvector(cond, _)) => {
+                                if cond == 0 {
+                                    children[1].clone()
+                                } else {
+                                    children[2].clone()
+                                }
+                            }
+                            _ => todo!(),
+                        }
+                    }
+                    "BV" => {
+                        assert_eq!(op.children.len(), 2);
+                        let args = &op
+                            .children
+                            .iter()
+                            .map(|id| {
+                                let (_, node) = egraph
+                                    .nodes
+                                    .iter()
+                                    .find(|(node_id, _)| **node_id == *id)
+                                    .unwrap();
+                                assert_eq!(node.children.len(), 0);
+                                // TODO(@ninehusky): here, reading node.op.parse() as i64, then convert to u64
+                                let val: i64 = node.op.parse().unwrap();
+                                val as u64
+                            })
+                            .collect::<Vec<_>>()[..];
+
+                        assert!(args[1] <= 64);
+                        Ok(InterpreterResult::Bitvector(args[0], args[1]))
+                    }
+                    "Extract" => {
+                        assert_eq!(op.children.len(), 2);
+                        let args = &op
+                            .children
+                            .iter()
+                            .map(|id| {
+                                let (_, node) = egraph
+                                    .nodes
+                                    .iter()
+                                    .find(|(node_id, _)| **node_id == *id)
+                                    .unwrap();
+                                assert_eq!(node.children.len(), 0);
+                                let val: u64 = node.op.parse().unwrap();
+                                val
+                            })
+                            .collect::<Vec<_>>()[..];
+
+                        let i = args[0];
+                        let j = args[1];
+
+                        let val = match children[0].as_ref().unwrap() {
+                            InterpreterResult::Bitvector(val, bw) => {
+                                // from Rosette docs:
+                                // https://docs.racket-lang.org/rosette-guide/sec_bitvectors.html#%28def._%28%28lib._rosette%2Fbase%2Fbase..rkt%29._extract%29%29
+                                // TODO(@ninehusky): here, we should also assert that j >= 0 if churchroad handles signed numbers
+                                assert!(
+                                    *bw > i && i >= j,
+                                    "i is {}, j is {} node has bw {}, has node_id {:?}",
+                                    i,
+                                    j,
+                                    bw,
+                                    node.children[1]
+                                );
+
+                                let mask = (1 << (i - j + 1)) - 1;
+                                (val >> j) & mask
+                            }
+                        };
+                        assert!(i - j < 64);
+                        Ok(InterpreterResult::Bitvector(val, i - j + 1))
+                    }
+                    "Concat" => match (&children[0], &children[1]) {
                         (
                             Ok(InterpreterResult::Bitvector(a, a_bw)),
                             Ok(InterpreterResult::Bitvector(b, b_bw)),
                         ) => {
-                            assert_eq!(a_bw, b_bw);
-                            let result = match op.op.as_str() {
-                                "And" => a & b,
-                                "Or" => a | b,
-                                "Shr" => a >> b,
-                                "Xor" => a ^ b,
-                                // TODO(@gussmith23): These might not work -- do we need to simulate lower bitwidths?
-                                "Add" => (a.overflowing_add(*b).0) & ((1 << a_bw) - 1),
-                                "Sub" => (a.overflowing_sub(*b).0) & ((1 << a_bw) - 1),
-                                "Mul" => (a.overflowing_mul(*b).0) & ((1 << a_bw) - 1),
-                                _ => unreachable!(),
-                            };
-                            Ok(InterpreterResult::Bitvector(result, *a_bw))
+                            let result = (a << b_bw) | b;
+                            assert!(a_bw + b_bw <= 64);
+                            Ok(InterpreterResult::Bitvector(result, a_bw + b_bw))
                         }
                         _ => todo!(),
-                    }
-                }
-                "Mux" => {
-                    assert_eq!(children.len(), 3);
-
-                    match children[0] {
-                        Ok(InterpreterResult::Bitvector(cond, _)) => {
-                            if cond == 0 {
-                                children[1].clone()
-                            } else {
-                                children[2].clone()
+                    },
+                    "ZeroExtend" => {
+                        let extension_bw: u64 = egraph
+                            .nodes
+                            .iter()
+                            .find(|(id, _)| *id == &op.children[0])
+                            .unwrap()
+                            .1
+                            .op
+                            .parse()
+                            .unwrap();
+                        assert!(extension_bw <= 64);
+                        match children[0] {
+                            Ok(InterpreterResult::Bitvector(val, _)) => {
+                                Ok(InterpreterResult::Bitvector(val, extension_bw))
                             }
+                            _ => todo!(),
                         }
-                        _ => todo!(),
                     }
+                    _ => todo!("unimplemented op: {:?}", op.op),
                 }
-                "BV" => {
-                    assert_eq!(op.children.len(), 2);
-                    let args = &op
-                        .children
-                        .iter()
-                        .map(|id| {
-                            let (_, node) = egraph
-                                .nodes
-                                .iter()
-                                .find(|(node_id, _)| **node_id == *id)
-                                .unwrap();
-                            assert_eq!(node.children.len(), 0);
-                            // TODO(@ninehusky): here, reading node.op.parse() as i64, then convert to u64
-                            let val: i64 = node.op.parse().unwrap();
-                            val as u64
-                        })
-                        .collect::<Vec<_>>()[..];
-
-                    assert!(args[1] <= 64);
-                    Ok(InterpreterResult::Bitvector(args[0], args[1]))
-                }
-                "Extract" => {
-                    assert_eq!(op.children.len(), 2);
-                    let args = &op
-                        .children
-                        .iter()
-                        .map(|id| {
-                            let (_, node) = egraph
-                                .nodes
-                                .iter()
-                                .find(|(node_id, _)| **node_id == *id)
-                                .unwrap();
-                            assert_eq!(node.children.len(), 0);
-                            let val: u64 = node.op.parse().unwrap();
-                            val
-                        })
-                        .collect::<Vec<_>>()[..];
-
-                    let i = args[0];
-                    let j = args[1];
-
-                    let val = match children[0].as_ref().unwrap() {
-                        InterpreterResult::Bitvector(val, bw) => {
-                            // from Rosette docs:
-                            // https://docs.racket-lang.org/rosette-guide/sec_bitvectors.html#%28def._%28%28lib._rosette%2Fbase%2Fbase..rkt%29._extract%29%29
-                            // TODO(@ninehusky): here, we should also assert that j >= 0 if churchroad handles signed numbers
-                            assert!(
-                                *bw > i && i >= j,
-                                "i is {}, j is {} node has bw {}, has node_id {:?}",
-                                i,
-                                j,
-                                bw,
-                                node.children[1]
-                            );
-
-                            let mask = (1 << (i - j + 1)) - 1;
-                            (val >> j) & mask
-                        }
-                    };
-                    assert!(i - j < 64);
-                    Ok(InterpreterResult::Bitvector(val, i - j + 1))
-                }
-                "Concat" => match (&children[0], &children[1]) {
-                    (
-                        Ok(InterpreterResult::Bitvector(a, a_bw)),
-                        Ok(InterpreterResult::Bitvector(b, b_bw)),
-                    ) => {
-                        let result = (a << b_bw) | b;
-                        assert!(a_bw + b_bw <= 64);
-                        Ok(InterpreterResult::Bitvector(result, a_bw + b_bw))
-                    }
-                    _ => todo!(),
-                },
-                "ZeroExtend" => {
-                    let extension_bw: u64 = egraph
-                        .nodes
-                        .iter()
-                        .find(|(id, _)| *id == &op.children[0])
-                        .unwrap()
-                        .1
-                        .op
-                        .parse()
-                        .unwrap();
-                    assert!(extension_bw <= 64);
-                    match children[0] {
-                        Ok(InterpreterResult::Bitvector(val, _)) => {
-                            Ok(InterpreterResult::Bitvector(val, extension_bw))
-                        }
-                        _ => todo!(),
-                    }
-                }
-                _ => todo!("unimplemented op: {:?}", op.op),
             }
         }
         _ => todo!("unimplemented node type: {:?}", node.op),
@@ -1610,6 +1653,7 @@ fn interpret_helper(
     if result.is_ok() {
         cache.insert((id.clone(), time), result.clone().unwrap());
     }
+    visiting.remove(&visit_key);
     result
 }
 
