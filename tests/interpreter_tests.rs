@@ -20,11 +20,7 @@ fn prep_interpreter(
     test_output_dir: PathBuf,
     top_module_name: &str,
     out: &str,
-) -> (
-    egraph_serialize::EGraph,
-    IndexMap<ClassId, NodeId>,
-    egraph_serialize::Node,
-) {
+) -> (egraph_serialize::EGraph, egraph_serialize::Node) {
     if std::env::var("CHURCHROAD_DIR").is_err() {
         panic!("Please set the CHURCHROAD_DIR environment variable!");
     }
@@ -51,14 +47,6 @@ fn prep_interpreter(
         .unwrap();
 
     let serialized = egraph.serialize(SerializeConfig::default());
-
-    let choices = GlobalGreedyDagExtractor {
-        // Extract anything, when interpreting.
-        extractable_predicate: |_, _| true,
-        fail_on_partial: false,
-    }
-    .extract(&serialized, &[])
-    .unwrap();
 
     let (_, is_output_node) = serialized
         .nodes
@@ -100,7 +88,7 @@ fn prep_interpreter(
         .1
         .clone();
 
-    (serialized, choices, output_node)
+    (serialized, output_node)
 }
 
 // TODO(@ninehusky): macroify this
@@ -139,11 +127,6 @@ fn test_lut6_combinational_verilator() {
         TempDir::new().unwrap().into_path(),
         churchroad_dir
             .join("tests/interpreter_tests/verilog/xilinx_ultrascale_plus/LUT6-modified.v"),
-        // Here we can use the choices produced by the extractor, as the design
-        // is acyclic. Furthermore, this test loops forever without using the
-        // extractor, as the interpreter makes a bad choice for one of the
-        // eclasses.
-        true,
     );
 }
 
@@ -177,17 +160,9 @@ fn test_counter_verilator() {
         include_dirs,
         TempDir::new().unwrap().into_path(),
         churchroad_dir.join("tests/interpreter_tests/verilog/toy_examples/counter.sv"),
-        // Must be false as the counter is cyclic. Here we just have to hope
-        // that the interpreter makes a sane choice.
-        false,
     );
 }
 
-/// - use_choices: whether to use the choices produced by our extractor when
-///   running the interpreter. The choices determine what node of each eclass
-///   should be interpreted. If false, the interpreter will make its own choice.
-///   NOTE: you should only set this to true if the design is not cyclic, as the
-///   extractor does not currently support cyclic designs.
 fn verilator_vs_interpreter(
     num_test_cases: usize,
     num_clock_cycles: usize,
@@ -198,7 +173,6 @@ fn verilator_vs_interpreter(
     include_dirs: Vec<PathBuf>,
     test_output_dir: PathBuf,
     verilog_module_path: PathBuf,
-    use_choices: bool,
 ) {
     // create seeded rng
     let mut rng = StdRng::seed_from_u64(0xb0bacafe);
@@ -221,7 +195,7 @@ fn verilator_vs_interpreter(
         })
         .collect();
 
-    let (serialized, choices, root_node) = prep_interpreter(
+    let (serialized, root_node) = prep_interpreter(
         verilog_module_path.clone(),
         test_output_dir.clone(),
         top_module_name,
@@ -248,14 +222,7 @@ fn verilator_vs_interpreter(
         // return streams, or we should be able to memoize some way. This just
         // redoes a bunch of work each call.
         for timestep in 0..num_clock_cycles {
-            let result = interpret(
-                &serialized,
-                &root_node.eclass,
-                timestep,
-                &env,
-                if use_choices { Some(&choices) } else { None },
-            )
-            .unwrap();
+            let result = interpret(&serialized, &root_node.eclass, timestep, &env, None).unwrap();
             interpreter_results.push(result);
         }
     }
@@ -500,7 +467,7 @@ macro_rules! interpreter_test_verilog {
         $(#[$meta])*
         #[test]
         fn $test_name() {
-            let (serialized, _choices, root_node) = prep_interpreter(
+            let (serialized, root_node) = prep_interpreter(
                 PathBuf::from($verilog_path),
                 TempDir::new().unwrap().into_path(),
                 $module_name,
@@ -509,11 +476,9 @@ macro_rules! interpreter_test_verilog {
 
             assert_eq!(
                 $expected,
-                // Note that we *may* need to start using _choices here, if we
-                // start hitting infinite loops because of bad choices of enode
-                // from eclass in the interpreter. However, in that case, we can
-                // only use choices if the design is acyclic. See the comment in
-                // the `verilator_vs_interpreter` function for more details.
+                // Note that we *may* need to provide a choices argument here if
+                // we start hitting infinite loops because of bad choices of
+                // enode from eclass in the interpreter.
                 interpret(&serialized, &root_node.eclass, $time, $env, None).unwrap()
             );
         }
