@@ -1,5 +1,6 @@
+// RUN: LAKEROAD="$LAKEROAD_DIR/bin/lakeroad-portfolio.py" \
 // RUN: cargo run -- \
-// RUN:   --solver cvc5 \
+// RUN:   --yices \
 // RUN:   --filepath %s \
 // RUN:   --top-module-name mul \
 // RUN:   --architecture xilinx-ultrascale-plus \
