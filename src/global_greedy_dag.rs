@@ -2,6 +2,7 @@
 use std::iter;
 
 use egraph_serialize::Cost;
+use log::debug;
 use ordered_float::NotNan;
 use rpds::HashTrieSet;
 
@@ -63,7 +64,19 @@ impl TermDag {
             return Some(*id);
         }
 
+        // NOTE: This is the only modification we made to make this work with
+        // churchroad. Could find a different way to do this.
         let node_cost = node.cost;
+        // let node_cost = match node.op.as_str() {
+        // "Wire" => INFINITY,
+        // "Shr" | "Shl" => {
+        //     warn!("Shr and Shl probably shouldn't be extractable");
+        //     10000.into()
+        // }
+        // "And" | "Add" | "Sub" | "Mul" | "Or" | "Xor" | "Eq" | "Ne" | "Not" | "ReduceOr"
+        // | "ReduceAnd" | "ReduceXor" | "LogicNot" | "LogicAnd" | "LogicOr" | "Mux" => 10000.into(),
+        //     _ => node.cost,
+        // };
 
         if children.is_empty() {
             let next_id = self.nodes.len();
@@ -157,14 +170,25 @@ impl TermDag {
 }
 
 pub struct GlobalGreedyDagExtractor {
-    pub structural_only: bool,
+    /// Whether or not to fail on partial extraction, ie. if not all classes
+    /// are extracted.
+    pub fail_on_partial: bool,
+    /// Predicate determining whether a node is extractable.
+    pub extractable_predicate: fn(&egraph_serialize::EGraph, &NodeId) -> bool,
 }
 impl GlobalGreedyDagExtractor {
+    /// - roots: apparently, roots is not necessary for running global greedy
+    ///   extraction. Thus, this  can be empty. If roots is not empty, this
+    ///   function will perform a check to see if complete expressions are
+    ///   extracted for all roots. Note that this is different from
+    ///   fail_on_partial. This is a more precise check that ensures that all
+    ///   roots are extracted, while fail_on_partial checks that all classes are
+    ///   extracted.
     pub fn extract(
         &self,
         egraph: &egraph_serialize::EGraph,
-        _roots: &[ClassId],
-    ) -> IndexMap<ClassId, NodeId> {
+        roots: &[ClassId],
+    ) -> Result<IndexMap<ClassId, NodeId>, String> {
         let mut keep_going = true;
 
         let nodes = egraph.nodes.clone();
@@ -175,36 +199,7 @@ impl GlobalGreedyDagExtractor {
             keep_going = false;
 
             'node_loop: for (node_id, node) in &nodes {
-                // NOTE: This is the only modification we made to make this work
-                // with churchroad. Could find a different way to do this.
-                //
-                // Always exclude certain nodes that are always unwanted.
-                if node.op == "Wire"
-                    || node.op == "PrimitiveInterfaceDSP"
-                    || node.op == "PrimitiveInterfaceDSP3"
-                {
-                    continue 'node_loop;
-                }
-                // Sometimes exclude nodes that are only structural, if the user wants.
-                if self.structural_only
-                    && match node.op.as_str() {
-                        "Op0" | "Op1" | "Op2" | "Op3" => {
-                            let op_name = &egraph[node_id].children[0];
-                            !matches!(
-                                egraph[op_name].op.as_str(),
-                                "Extract"
-                                    | "Concat"
-                                    | "BV"
-                                    | "CRString"
-                                    | "ZeroExtend"
-                                    | "SignExtend"
-                                    | "Shr"
-                                    | "Shl"
-                            )
-                        }
-                        _ => false,
-                    }
-                {
+                if !(self.extractable_predicate)(egraph, node_id) {
                     continue 'node_loop;
                 }
 
@@ -215,6 +210,16 @@ impl GlobalGreedyDagExtractor {
                     if let Some(best) = best_in_class.get(child_cid) {
                         children.push(*best);
                     } else {
+                        debug!(
+                            "Skipping {}{} because child {} is missing",
+                            if roots.contains(child_cid) {
+                                "root "
+                            } else {
+                                ""
+                            },
+                            node_summary(node_id, egraph, 2),
+                            class_summary(child_cid, egraph, 2)
+                        );
                         continue 'node_loop;
                     }
                 }
@@ -230,6 +235,10 @@ impl GlobalGreedyDagExtractor {
                     if cadidate_cost < old_cost {
                         best_in_class.insert(node.eclass.clone(), candidate);
                         keep_going = true;
+                        debug!(
+                            "Node {} (class {}) cost {} -> {}",
+                            node_id, node.eclass, old_cost, cadidate_cost
+                        );
                     }
                 }
             }
@@ -239,6 +248,77 @@ impl GlobalGreedyDagExtractor {
         for (class, term) in best_in_class {
             result.insert(class, termdag.info[term].node.clone());
         }
-        result
+
+        let missing = egraph
+            .classes()
+            .iter()
+            .filter(|&(cid, _)| !result.contains_key(cid))
+            .collect::<Vec<_>>();
+
+        fn display_node(node: &Node, egraph: &egraph_serialize::EGraph) -> String {
+            match node.op.as_str() {
+                "Op0" | "Op1" | "Op2" | "Op3" => {
+                    format!("{} {}", node.op, egraph[&node.children[0]].op)
+                }
+                _ => node.op.clone(),
+            }
+        }
+
+        fn display_eclass(cid: &ClassId, egraph: &egraph_serialize::EGraph) -> String {
+            egraph[cid]
+                .nodes
+                .iter()
+                .map(|nid| display_node(&egraph[nid], egraph))
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+
+        if !Vec::from(roots).is_empty() {
+            let mut seen_classes: HashSet<_> = HashSet::new();
+            let mut queue: Vec<_> = roots.iter().collect::<Vec<_>>();
+            let mut needed_classes = HashSet::new();
+
+            while let Some(cid) = queue.pop() {
+                if seen_classes.contains(cid) {
+                    continue;
+                }
+                seen_classes.insert(cid);
+
+                if let Some(node) = &result.get(cid) {
+                    for child in &egraph[*node].children {
+                        let child_cid = egraph.nid_to_cid(child);
+                        if !seen_classes.contains(child_cid) {
+                            queue.push(child_cid);
+                        }
+                    }
+                } else {
+                    needed_classes.insert(cid);
+                }
+            }
+
+            if !needed_classes.is_empty() {
+                return Err(
+                    "Not all roots were able to be extracted. Missing classes:\n".to_string()
+                        + &needed_classes
+                            .iter()
+                            .map(|cid| format!("{}: {}", cid, display_eclass(cid, egraph)))
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                );
+            }
+        }
+
+        if self.fail_on_partial && !missing.is_empty() {
+            Err(
+                "Not all classes were able to be extracted. Missing classes:\n".to_string()
+                    + &missing
+                        .iter()
+                        .map(|(cid, _)| format!("{}: {}", cid, display_eclass(cid, egraph)))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+            )
+        } else {
+            Ok(result)
+        }
     }
 }

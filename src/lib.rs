@@ -1,8 +1,11 @@
 pub mod global_greedy_dag;
+pub mod util;
 
+use core::panic;
 use egraph_serialize::{ClassId, Node, NodeId};
 use indexmap::IndexMap;
-use log::{info, warn};
+use log::{debug, error, info, warn};
+use rand::{seq::SliceRandom, Rng};
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -11,17 +14,100 @@ use std::{
     io::Write,
     path::Path,
     process::{Command, Stdio},
-    sync::Arc,
+    sync::{Arc, LazyLock},
     time::SystemTime,
 };
 use tempfile::NamedTempFile;
+use util::display_enode_serialized;
 
 use egglog::{
-    ast::{Literal, Span, SrcFile, Symbol},
+    ast::{Literal, Parser, Span, Symbol},
     constraint::{SimpleTypeConstraint, TypeConstraint},
-    sort::{FromSort, I64Sort, IntoSort, Sort, VecSort},
+    sort::{EqSort, FromSort, I64Sort, IntoSort, Sort, StringSort, VecSort},
     ArcSort, EGraph, PrimitiveLike, Term, TermDag, Value,
 };
+
+static EXPR_SORT: LazyLock<ArcSort> = std::sync::LazyLock::new(|| {
+    Arc::new(EqSort {
+        name: "Expr".into(),
+    })
+});
+
+fn node_summary(node_id: &NodeId, egraph: &egraph_serialize::EGraph, depth: usize) -> String {
+    let node = &egraph[node_id];
+    let is_op = matches!(node.op.as_str(), "Op0" | "Op1" | "Op2" | "Op3");
+    let op_str = if is_op {
+        format!("{} {}", node.op, egraph[&node.children[0]].op)
+    } else {
+        node.op.clone()
+    };
+    let children_str = if depth > 0 {
+        node.children
+            .iter()
+            .skip(if is_op { 1 } else { 0 })
+            .map(|child_id| class_summary(&egraph[child_id].eclass.clone(), egraph, depth - 1))
+            .collect::<Vec<_>>()
+            .join(", ")
+    } else {
+        "".to_string()
+    };
+    let class_str = if depth > 0 {
+        format!(" ({})", class_summary(&node.eclass, egraph, depth - 1))
+    } else {
+        "".to_string()
+    };
+
+    format!(
+        "node {} with op {} and children [ {} ]{}",
+        node_id, op_str, children_str, class_str
+    )
+}
+
+fn class_summary(class_id: &ClassId, egraph: &egraph_serialize::EGraph, depth: usize) -> String {
+    let class = &egraph[class_id];
+    let nodes_str = if depth > 0 {
+        format!(
+            " (nodes: {})",
+            class
+                .nodes
+                .iter()
+                .map(|nid| node_summary(nid, egraph, depth - 1))
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
+    } else {
+        "".to_string()
+    };
+    format!("class {}{}", class_id, nodes_str)
+}
+
+/// Find instances of the `Bad` marker and print them. Would be better if we
+/// could do this just using egglog commands e.g. `(extract-variants (Bad))`,
+/// but when there's a cycle in the egraph, `extract-variants` fails.
+pub fn find_bad(egraph: &egraph_serialize::EGraph) {
+    let bad_node: Vec<_> = egraph
+        .nodes
+        .iter()
+        .filter(|(_node_id, node)| node.op == "Bad")
+        .collect();
+    assert!(bad_node.is_empty() || bad_node.len() == 1);
+    if bad_node.is_empty() {
+        return;
+    }
+
+    let (bad_node_id, _) = bad_node[0];
+
+    println!("Things unioned with (Bad):");
+
+    for node_id in &egraph[&egraph[bad_node_id].eclass].nodes {
+        let node = &egraph[node_id];
+        if node.op == "Bad" {
+            continue;
+        }
+
+        println!("{}", display_enode_serialized(egraph, node_id, 3));
+    }
+}
 
 pub fn call_lakeroad_on_primitive_interface_and_spec(
     serialized_egraph: &egraph_serialize::EGraph,
@@ -39,65 +125,87 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     assert!(
         serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP"
             || serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3"
+            || serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceWideAddDSP"
     );
 
     let out_bw = get_bitwidth_for_node(serialized_egraph, sketch_template_node_id).unwrap();
 
-    log::debug!(
-        "a expr: {}",
-        node_to_string(
-            serialized_egraph,
-            &serialized_egraph[sketch_template_node_id].children[0],
-            spec_choices
-        )
-    );
-    log::debug!(
-        "b expr: {}",
-        node_to_string(
-            serialized_egraph,
-            &serialized_egraph[sketch_template_node_id].children[1],
-            spec_choices
-        )
-    );
+    // log::debug!(
+    //     "a expr: {}",
+    //     node_to_string(
+    //         serialized_egraph,
+    //         &serialized_egraph[sketch_template_node_id].children[0],
+    //         spec_choices
+    //     )
+    // );
+    // log::debug!(
+    //     "b expr: {}",
+    //     node_to_string(
+    //         serialized_egraph,
+    //         &serialized_egraph[sketch_template_node_id].children[1],
+    //         spec_choices
+    //     )
+    // );
 
     if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
-        log::debug!(
-            "c expr: {}",
-            node_to_string(
-                serialized_egraph,
-                &serialized_egraph[sketch_template_node_id].children[2],
-                spec_choices
-            )
-        );
+        // log::debug!(
+        //     "c expr: {}",
+        //     node_to_string(
+        //         serialized_egraph,
+        //         &serialized_egraph[sketch_template_node_id].children[2],
+        //         spec_choices
+        //     )
+        // );
     }
+
+    // Node should have 3 or 4 children.
+    assert!(
+        serialized_egraph[sketch_template_node_id].children.len() == 3
+            || serialized_egraph[sketch_template_node_id].children.len() == 4
+    );
+
+    // First child is the InputOutputMarker id (a string).
+    let input_marker_id =
+        &serialized_egraph[&serialized_egraph[sketch_template_node_id].children[0]].op;
 
     let a_bw = get_bitwidth_for_node(
         serialized_egraph,
-        &serialized_egraph[sketch_template_node_id].children[0],
+        &serialized_egraph[sketch_template_node_id].children[1],
     )
     .unwrap();
-    let b_bw = get_bitwidth_for_node(
+    let a_real_bw = get_real_bitwidth_for_node(
         serialized_egraph,
         &serialized_egraph[sketch_template_node_id].children[1],
     )
     .unwrap();
 
+    let b_bw = get_bitwidth_for_node(
+        serialized_egraph,
+        &serialized_egraph[sketch_template_node_id].children[2],
+    )
+    .unwrap();
+    let b_real_bw = get_real_bitwidth_for_node(
+        serialized_egraph,
+        &serialized_egraph[sketch_template_node_id].children[2],
+    )
+    .unwrap();
+
     let mut bottom_out_at = HashMap::new();
     bottom_out_at.insert(
-        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[0]]
+        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[1]]
             .eclass
             .clone(),
         "a".to_string(),
     );
     bottom_out_at.insert(
-        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[1]]
+        serialized_egraph[&serialized_egraph[sketch_template_node_id].children[2]]
             .eclass
             .clone(),
         "b".to_string(),
     );
     if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
         bottom_out_at.insert(
-            serialized_egraph[&serialized_egraph[sketch_template_node_id].children[2]]
+            serialized_egraph[&serialized_egraph[sketch_template_node_id].children[3]]
                 .eclass
                 .clone(),
             "c".to_string(),
@@ -106,21 +214,18 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
 
     // Put the spec in a tempfile.
     let mut spec_file = NamedTempFile::new().unwrap();
+    let verilog = to_verilog_egraph_serialize(
+        serialized_egraph,
+        spec_choices,
+        "clk",
+        bottom_out_at,
+        Some([(eclass.clone(), "out".to_string())].into()),
+    );
+    debug!("Verilog spec:\n{}", verilog);
     let spec_filepath = spec_file.path().to_owned();
-    spec_file
-        .write_all(
-            to_verilog_egraph_serialize(
-                serialized_egraph,
-                spec_choices,
-                "clk",
-                bottom_out_at,
-                Some([(eclass.clone(), "out".to_string())].into()),
-            )
-            .as_bytes(),
-        )
-        .unwrap();
+    spec_file.write_all(verilog.as_bytes()).unwrap();
     spec_file.flush().unwrap();
-    // spec_file.persist("tmp.v").unwrap();
+    spec_file.keep().unwrap();
 
     // If LAKEROAD is set, use that as the command. Otherwise, `lakeroad` should
     // be in the PATH.
@@ -136,13 +241,73 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
         .arg("top")
         // TODO(@gussmith23): Determine this automatically somehow.
         .arg("--verilog-module-out-signal")
-        .arg(format!("out:{out_bw}"))
-        .arg("--input-signal")
-        .arg(format!("a:(port a {a_bw}):{a_bw}"))
-        .arg("--input-signal")
-        .arg(format!("b:(port b {b_bw}):{b_bw}"))
-        .arg("--template")
-        .arg("dsp")
+        .arg(format!("out:{out_bw}"));
+
+    let assume_arg = |port: &str, full_bw: u64, real_bw: u64| {
+        if full_bw == real_bw {
+            None
+        } else {
+            Some(format!(
+                "(bvule (port {port} {full_bw}) (bv {max_val} {full_bw}))",
+                max_val = 2u64.pow(real_bw as u32) - 1
+            ))
+        }
+    };
+
+    if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceWideAddDSP" {
+        // TODO wide add.
+        // RUN:  --input-signal 'a:(extract 47 18 (port a 48)):30' \
+        // RUN:  --input-signal 'b:(extract 17 0 (port a 48)):18' \
+        // RUN:  --input-signal 'c:(port b 48):48' \
+        assert!(a_real_bw > 18);
+        command
+            .arg("--input-signal")
+            .arg(format!(
+                "a:(extract {h} 18 (port a {a_bw})):{h_minus_l}",
+                h = a_real_bw - 1,
+                h_minus_l = a_real_bw - 18,
+            ));
+        if let Some(assume) = assume_arg("a", a_bw, a_real_bw) {
+            command.arg("--assume").arg(assume);
+        }
+        command
+            .arg("--input-signal")
+            .arg(format!("b:(extract 17 0 (port a {a_bw})):18",))
+            .arg("--input-signal")
+            .arg(format!(
+                "c:(extract {b_real_bw_sub_1} 0 (port b {b_bw})):{b_bw}",
+                b_real_bw_sub_1 = b_real_bw - 1,
+            ));
+        if let Some(assume) = assume_arg("b", b_bw, b_real_bw) {
+            command.arg("--assume").arg(assume);
+        }
+        command
+            .arg("--template")
+            .arg("dsp");
+    } else {
+        command
+            .arg("--input-signal")
+            .arg(format!(
+                "a:(extract {a_real_bw_sub_1} 0 (port a {a_bw})):{a_real_bw}",
+                a_real_bw_sub_1 = a_real_bw - 1,
+            ));
+        if let Some(assume) = assume_arg("a", a_bw, a_real_bw) {
+            command.arg("--assume").arg(assume);
+        }
+        command
+            .arg("--input-signal")
+            .arg(format!(
+                "b:(extract {b_real_bw_sub_1} 0 (port b {b_bw})):{b_real_bw}",
+                b_real_bw_sub_1 = b_real_bw - 1,
+            ));
+        if let Some(assume) = assume_arg("b", b_bw, b_real_bw) {
+            command.arg("--assume").arg(assume);
+        }
+        command
+            .arg("--template")
+            .arg("dsp");
+    }
+    command
         .arg("--pipeline-depth")
         .arg("0")
         .arg("--out-format")
@@ -152,12 +317,23 @@ pub fn call_lakeroad_on_primitive_interface_and_spec(
     if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
         let c_bw = get_bitwidth_for_node(
             serialized_egraph,
-            &serialized_egraph[sketch_template_node_id].children[2],
+            &serialized_egraph[sketch_template_node_id].children[3],
+        )
+        .unwrap();
+        let c_real_bw = get_real_bitwidth_for_node(
+            serialized_egraph,
+            &serialized_egraph[sketch_template_node_id].children[3],
         )
         .unwrap();
         command
             .arg("--input-signal")
-            .arg(format!("c:(port c {c_bw}):{c_bw}"));
+            .arg(format!(
+                "c:(extract {c_real_bw_sub_1} 0 (port c {c_bw})):{c_real_bw}",
+                c_real_bw_sub_1 = c_real_bw - 1,
+            ));
+        if let Some(assume) = assume_arg("c", c_bw, c_real_bw) {
+            command.arg("--assume").arg(assume);
+        }
     }
     if cvc5 {
         command.arg("--cvc5");
@@ -346,39 +522,50 @@ endmodule
 "#,
     );
 
-    let choices = AnythingExtractor.extract(serialized_egraph, &[]);
+    // let _choices = PrivilegeWiresExtractor.extract(serialized_egraph, &[]);
 
     // Generate port bindings.
     let mut port_to_expr_map = HashMap::new();
     port_to_expr_map.insert(
         "a".to_string(),
-        node_to_string(
-            serialized_egraph,
-            &serialized_egraph[sketch_template_node_id].children[0],
-            &choices,
-        ),
+        // New solution to hooking up inputs via unioning w/ existing
+        // expressions: Add in InputOutputMarker placeholders, and use an id that's
+        // also in the PrimitiveInterface node. Then we can quickly generate the
+        // expression as we do below. This wouldn't be necessary if we could
+        // reference eclasses in the text format.
+        // node_to_string(
+        //     serialized_egraph,
+        //     &serialized_egraph[sketch_template_node_id].children[0],
+        //     &choices,
+        // ),
+        format!("(InputOutputMarker \"a\" {input_marker_id})"),
     );
     port_to_expr_map.insert(
         "b".to_string(),
-        node_to_string(
-            serialized_egraph,
-            &serialized_egraph[sketch_template_node_id].children[1],
-            &choices,
-        ),
+        // node_to_string(
+        //     serialized_egraph,
+        //     &serialized_egraph[sketch_template_node_id].children[1],
+        //     &choices,
+        // ),
+        format!("(InputOutputMarker \"b\" {input_marker_id})"),
     );
     if serialized_egraph[sketch_template_node_id].op == "PrimitiveInterfaceDSP3" {
         port_to_expr_map.insert(
             "c".to_string(),
-            node_to_string(
-                serialized_egraph,
-                &serialized_egraph[sketch_template_node_id].children[2],
-                &choices,
-            ),
+            // node_to_string(
+            //     serialized_egraph,
+            //     &serialized_egraph[sketch_template_node_id].children[2],
+            //     &choices,
+            // ),
+            format!("(InputOutputMarker \"c\" {input_marker_id})"),
         );
     }
+    // TODO(@gussmith23): Should add checks to ensure the InputOutputMarker
+    // nodes actually exist.
     port_to_expr_map.insert(
         "out".to_string(),
-        node_to_string(serialized_egraph, sketch_template_node_id, &choices),
+        // node_to_string(serialized_egraph, sketch_template_node_id, &choices),
+        format!("(InputOutputMarker \"out\" {input_marker_id})"),
     );
 
     // TODO(@gussmith23): hardcoded module name
@@ -395,26 +582,46 @@ pub fn node_to_string(
     node_id: &NodeId,
     choices: &indexmap::IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
 ) -> String {
-    let node = &egraph.nodes[node_id];
-    let mut out = String::new();
-    // Don't wrap in parens when op begins with a quote or a number.
-    // TODO(@gussmith23): this is very rough.
-    let wrap_in_parens = node.op.chars().next().unwrap().is_ascii_alphabetic();
+    // This is a quick hack to ensure we don't overflow the stack. This could be
+    // made into a parameter.
+    const DEPTH: i64 = 100;
+    fn _impl(
+        egraph: &egraph_serialize::EGraph,
+        node_id: &NodeId,
+        choices: &indexmap::IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
+        depth_track: i64,
+    ) -> String {
+        if depth_track < 0 {
+            return "...".to_string();
+        }
+        let node = &egraph.nodes[node_id];
+        let mut out = String::new();
+        // Don't wrap in parens when op begins with a quote or a number.
+        // TODO(@gussmith23): this is very rough.
+        let wrap_in_parens = node.op.chars().next().unwrap().is_ascii_alphabetic();
 
-    if wrap_in_parens {
-        out += "(";
-    }
-    out += node.op.as_str();
-    for child_id in &node.children {
-        out += " ";
-        out += &node_to_string(egraph, &choices[&egraph[child_id].eclass], choices);
+        if wrap_in_parens {
+            out += "(";
+        }
+        out += node.op.as_str();
+        for child_id in &node.children {
+            out += " ";
+            out += &_impl(
+                egraph,
+                &choices[&egraph[child_id].eclass],
+                choices,
+                depth_track - 1,
+            );
+        }
+
+        if wrap_in_parens {
+            out += ")";
+        }
+
+        out
     }
 
-    if wrap_in_parens {
-        out += ")";
-    }
-
-    out
+    _impl(egraph, node_id, choices, DEPTH)
 }
 
 // TODO(@gussmith23): It would be nice to not have to use a mutable reference
@@ -439,7 +646,9 @@ pub fn find_primitive_interface_values(egraph: &mut EGraph) -> Vec<(ArcSort, Val
             // what it means when it's not the case.
             assert_eq!(term, output);
 
-            egraph.eval_expr(&termdag.term_to_expr(term)).unwrap()
+            egraph
+                .eval_expr(&termdag.term_to_expr(term, Span::Panic))
+                .unwrap()
         })
         .collect();
 
@@ -452,7 +661,10 @@ pub fn find_primitive_interfaces_serialized(egraph: &egraph_serialize::EGraph) -
         .nodes
         .iter()
         .filter_map(|(node_id, node)| {
-            if node.op == "PrimitiveInterfaceDSP" || node.op == "PrimitiveInterfaceDSP3" {
+            if node.op == "PrimitiveInterfaceDSP"
+                || node.op == "PrimitiveInterfaceDSP3"
+                || node.op == "PrimitiveInterfaceWideAddDSP"
+            {
                 Some(node_id.to_owned())
             } else {
                 None
@@ -541,6 +753,16 @@ pub struct EnsureExtractSpecExtractor {
     pub ensure_extract: HashSet<egraph_serialize::NodeId>,
 }
 impl EnsureExtractSpecExtractor {
+    /// The algorithm is fairly simple: alternate between updating costs and
+    /// updating node choices based on those costs until no changes occur.
+    ///
+    /// The "costs" are HashSets associated with each eclass. The set represents
+    /// the set of desired-to-be-extracted nodes that can currently be extracted
+    /// by extracting the currently-chosen node at this eclass.
+    ///
+    /// HashSets may be inefficient. If we need to make this more efficient in
+    /// the future, we can use bitvectors to represent our sets, where 0 or 1
+    /// represents whether a specific desired node is included.
     pub fn extract(
         &self,
         egraph: &egraph_serialize::EGraph,
@@ -555,9 +777,9 @@ impl EnsureExtractSpecExtractor {
             .iter()
             .map(|(node_id, _)| {
                 if self.ensure_extract.contains(node_id) {
-                    (node_id.clone(), 1)
+                    (node_id.clone(), HashSet::from([node_id.clone()]))
                 } else {
-                    (node_id.clone(), 0)
+                    (node_id.clone(), HashSet::new())
                 }
             })
             .collect();
@@ -573,8 +795,13 @@ impl EnsureExtractSpecExtractor {
                         let op = &egraph[*node_id].op;
 
                         // Filter certain op types.
-                        !(["PrimitiveInterfaceDSP", "PrimitiveInterfaceDSP3", "Wire"]
-                            .contains(&op.as_str()))
+                        !([
+                            "PrimitiveInterfaceDSP",
+                            "PrimitiveInterfaceDSP3",
+                            "Wire",
+                            "InputOutputMarker",
+                        ]
+                        .contains(&op.as_str()))
                     })
                     .unwrap()
                     .clone();
@@ -586,7 +813,7 @@ impl EnsureExtractSpecExtractor {
         // desired-to-be-extracted nodes under it.
         fn update_choices(
             egraph: &egraph_serialize::EGraph,
-            ensure_extract_tracker: &HashMap<NodeId, i32>,
+            ensure_extract_tracker: &HashMap<NodeId, HashSet<NodeId>>,
             choices: &mut IndexMap<ClassId, NodeId>,
         ) {
             for (id, class) in egraph.classes() {
@@ -601,18 +828,40 @@ impl EnsureExtractSpecExtractor {
                     })
                     .cloned()
                     .collect();
-                sorted_nodes.sort_by_key(|node_id| ensure_extract_tracker[node_id]);
+                sorted_nodes.sort_by_key(|node_id| ensure_extract_tracker[node_id].len());
                 sorted_nodes.reverse();
-                let new_choice = sorted_nodes[0].clone();
-                let old_choice = choices
-                    .insert(id.clone(), new_choice.clone())
-                    .expect("Class should have already been in choices.");
+                // debug!(
+                //     "Class {} has nodes {:?} with ensure_extract_tracker {:?}",
+                //     id,
+                //     sorted_nodes,
+                //     sorted_nodes
+                //         .iter()
+                //         .map(|node_id| ensure_extract_tracker[node_id])
+                //         .collect::<Vec<_>>()
+                // );
+                // Update new choice only if it's increased
+                let new_choice = if ensure_extract_tracker[&sorted_nodes[0]].len()
+                    > ensure_extract_tracker[&choices[id]].len()
+                {
+                    sorted_nodes[0].clone()
+                } else {
+                    choices[id].clone()
+                };
+                let old_choice = if new_choice != choices[id] {
+                    choices
+                        .insert(id.clone(), new_choice.clone())
+                        .expect("Class should have already been in choices.")
+                } else {
+                    choices[id].clone()
+                };
                 if new_choice != old_choice {
                     log::debug!(
-                        "Changed choice for class {} from {} to {}",
+                        "Changed choice for class {} from {} to {} (value {:?} -> {:?}).",
                         id,
                         egraph[&old_choice].op,
-                        egraph[&new_choice].op
+                        egraph[&new_choice].op,
+                        ensure_extract_tracker[&old_choice],
+                        ensure_extract_tracker[&new_choice]
                     );
                 }
             }
@@ -621,8 +870,9 @@ impl EnsureExtractSpecExtractor {
         // Returns whether any updates were made.
         fn update_node_tracker(
             egraph: &egraph_serialize::EGraph,
-            ensure_extract_tracker: &mut HashMap<NodeId, i32>,
+            ensure_extract_tracker: &mut HashMap<NodeId, HashSet<NodeId>>,
             choices: &IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>,
+            ensure_extract: &HashSet<NodeId>,
         ) -> bool {
             let mut update_occurred = false;
             for (node_id, node) in egraph.nodes.iter() {
@@ -632,6 +882,13 @@ impl EnsureExtractSpecExtractor {
                     continue;
                 }
 
+                // We don't need to update the nodes we're trying to ensure
+                // extraction of.
+                if ensure_extract.contains(node_id) {
+                    continue;
+                }
+
+                // debug!("Updating node {}.", egraph[node_id].op);
                 let new_value = node
                     .children
                     .iter()
@@ -642,16 +899,29 @@ impl EnsureExtractSpecExtractor {
                         // that that node might not actually be the current
                         // choice for the eclass.
                         let node_choice = &choices[&egraph[child_id].eclass];
-                        ensure_extract_tracker[node_choice]
+                        // debug!(
+                        //     "Child ID: {} with value {}",
+                        //     node_choice, ensure_extract_tracker[node_choice]
+                        // );
+                        ensure_extract_tracker[node_choice].clone()
                     })
-                    .sum();
-                let old_value = ensure_extract_tracker.insert(node_id.clone(), new_value);
+                    .reduce(|acc, e| acc.union(&e).cloned().collect::<HashSet<_>>())
+                    .expect("There should be children.");
+                let old_value = ensure_extract_tracker
+                    .insert(node_id.clone(), new_value.clone())
+                    .expect("Node should have already been in the tracker.");
                 assert!(
-                    old_value.is_some(),
-                    "Node should have already been in ensure_extract_tracker."
+                    new_value.len() >= old_value.len(),
+                    "New value {} should be >= old value {}.",
+                    new_value.len(),
+                    old_value.len()
                 );
 
-                if old_value.unwrap() != new_value {
+                if old_value != new_value {
+                    debug!(
+                        "Node {} has new value {:?} (was {:?}).",
+                        egraph[node_id].op, new_value, old_value
+                    );
                     update_occurred = true;
                 }
             }
@@ -664,7 +934,12 @@ impl EnsureExtractSpecExtractor {
         // Keep updating until no more updates are made.
         while updates_occurred {
             update_choices(egraph, &ensure_extract_tracker, &mut choices);
-            updates_occurred = update_node_tracker(egraph, &mut ensure_extract_tracker, &choices);
+            updates_occurred = update_node_tracker(
+                egraph,
+                &mut ensure_extract_tracker,
+                &choices,
+                &self.ensure_extract,
+            );
         }
 
         choices
@@ -733,7 +1008,7 @@ pub fn find_spec_for_primitive_interface_including_nodes(
 }
 
 pub fn call_lakeroad_on_primitive_interface(term: &Term, term_dag: &TermDag) {
-    dbg!(term_dag.term_to_expr(term).to_string());
+    dbg!(term_dag.term_to_expr(term, Span::Panic).to_string());
 
     dbg!(to_verilog(term_dag, term_dag.lookup(term)));
 }
@@ -882,7 +1157,6 @@ pub enum InterpreterResult {
 /// ```
 /// use churchroad::*;
 /// use egglog::{EGraph, SerializeConfig};
-/// use egraph_serialize::NodeId;
 /// let mut egraph = EGraph::default();
 /// import_churchroad(&mut egraph);
 /// egraph.parse_and_run_program(None,
@@ -911,7 +1185,7 @@ pub enum InterpreterResult {
 /// let (_, is_output_node) = serialized
 ///     .nodes
 ///     .iter()
-///     .find(|(_, n)| n.op == "IsPort" && n.children[2] == NodeId::from("Output-0"))
+///     .find(|(_, n)| n.op == "IsPort" && serialized[&n.children[2]].op == "Output")
 ///     .unwrap();
 /// let output_id = is_output_node.children.last().unwrap();
 /// let (_, output_node) = serialized
@@ -935,12 +1209,41 @@ pub fn interpret(
     env: &HashMap<&str, Vec<u64>>,
     choices: Option<&IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>>,
 ) -> Result<InterpreterResult, String> {
+    let mut visiting: HashSet<(ClassId, usize)> = HashSet::new();
     let result = match egraph.classes().iter().find(|(id, _)| *id == class_id) {
-        Some((id, _)) => interpret_helper(egraph, id, time, env, &mut HashMap::default(), choices),
+        Some((id, _)) => interpret_helper(
+            egraph,
+            id,
+            time,
+            env,
+            &mut HashMap::default(),
+            choices,
+            &mut visiting,
+        ),
         None => return Err("No class with the given ID.".to_string()),
     };
 
     result
+}
+
+pub fn get_real_bitwidth_for_node(
+    egraph: &egraph_serialize::EGraph,
+    id: &NodeId,
+) -> Result<u64, String> {
+    match egraph.nodes.iter().find(|(_, node)| {
+        node.op.as_str() == "RealBitwidth" && egraph[&node.children[0]].eclass == egraph[id].eclass
+    }) {
+        Some((_node_id, has_type_node)) => {
+            assert!(has_type_node.children[1]
+                .to_string()
+                .starts_with("primitive-i64-"));
+
+            let bw: u64 = egraph[&has_type_node.children[1]].op.parse().unwrap();
+
+            Ok(bw)
+        }
+        None => Err("No RealBitwidth node found for the given ID.".to_string()),
+    }
 }
 
 pub fn get_bitwidth_for_node(
@@ -984,10 +1287,20 @@ fn interpret_helper(
     env: &HashMap<&str, Vec<u64>>,
     cache: &mut HashMap<(ClassId, usize), InterpreterResult>,
     choices: Option<&IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId>>,
+    visiting: &mut HashSet<(ClassId, usize)>,
 ) -> Result<InterpreterResult, String> {
     if cache.contains_key(&(id.clone(), time)) {
         return Ok(cache[&(id.clone(), time)].clone());
     }
+    // Track active (eclass, time) pairs so we can break cycles when the interpreter
+    // walks a cyclic e-graph without explicit extraction choices.
+    let visit_key = (id.clone(), time);
+    if visiting.contains(&visit_key) {
+        return Err(format!(
+            "Cycle detected while interpreting class {id} at time {time}"
+        ));
+    }
+    visiting.insert(visit_key.clone());
 
     // Get node.
     let node_id = if let Some(choices) = choices {
@@ -1013,7 +1326,21 @@ fn interpret_helper(
             );
         }
 
-        node_ids.first().unwrap().to_owned()
+        // Prefer a node whose children don't immediately re-enter an active eclass.
+        // This avoids infinite recursion when an eclass contains cyclic variants.
+        let mut selected = None;
+        for candidate in &node_ids {
+            let cand_node = egraph.nodes.get(candidate).unwrap();
+            let has_visited_child = cand_node.children.iter().any(|child_id| {
+                let child_eclass = &egraph[child_id].eclass;
+                visiting.contains(&(child_eclass.clone(), time))
+            });
+            if !has_visited_child {
+                selected = Some(candidate.clone());
+                break;
+            }
+        }
+        selected.unwrap_or_else(|| node_ids.first().unwrap().to_owned())
     };
 
     let node = egraph.nodes.get(&node_id).unwrap();
@@ -1047,262 +1374,272 @@ fn interpret_helper(
                 if time == 0 {
                     let clk = egraph.nodes.get(&node.children[1]).unwrap();
                     let InterpreterResult::Bitvector(curr_clk_val, _) =
-                        interpret_helper(egraph, &clk.eclass, time, env, cache, choices).unwrap();
+                        interpret_helper(egraph, &clk.eclass, time, env, cache, choices, visiting)
+                            .unwrap();
                     assert_eq!(
                         curr_clk_val, 0,
                         "We don't currently know what to do when clk=1 at time 0! See #88"
                     );
                     let initial_value = egraph.nodes.get(&op.children[0]).unwrap();
-                    return Ok(InterpreterResult::Bitvector(
+                    Ok(InterpreterResult::Bitvector(
                         initial_value.op.parse().unwrap(),
                         get_bitwidth_for_node(egraph, &node.children[2]).unwrap(),
-                    ));
+                    ))
                 } else {
                     let clk = egraph.nodes.get(&node.children[1]).unwrap();
-                    let InterpreterResult::Bitvector(prev_clk_val, _) =
-                        interpret_helper(egraph, &clk.eclass, time - 1, env, cache, choices)
-                            .unwrap();
+                    let InterpreterResult::Bitvector(prev_clk_val, _) = interpret_helper(
+                        egraph,
+                        &clk.eclass,
+                        time - 1,
+                        env,
+                        cache,
+                        choices,
+                        visiting,
+                    )
+                    .unwrap();
                     let InterpreterResult::Bitvector(curr_clk_val, _) =
-                        interpret_helper(egraph, &clk.eclass, time, env, cache, choices).unwrap();
+                        interpret_helper(egraph, &clk.eclass, time, env, cache, choices, visiting)
+                            .unwrap();
 
                     if prev_clk_val == 0 && curr_clk_val == 1 {
                         let d = egraph.nodes.get(&node.children[2]).unwrap();
-                        return interpret_helper(egraph, &d.eclass, time - 1, env, cache, choices);
+                        interpret_helper(egraph, &d.eclass, time - 1, env, cache, choices, visiting)
                     } else {
-                        return interpret_helper(egraph, id, time - 1, env, cache, choices);
+                        interpret_helper(egraph, id, time - 1, env, cache, choices, visiting)
                     }
                 }
-            }
-            let children: Vec<_> = node
-                .children
-                .iter()
-                .skip(1)
-                .map(|id| {
-                    let child = egraph.nodes.get(id).unwrap();
-                    interpret_helper(egraph, &child.eclass, time, env, cache, choices)
-                })
-                .collect();
+            } else {
+                let children: Vec<_> = node
+                    .children
+                    .iter()
+                    .skip(1)
+                    .map(|id| {
+                        let child = egraph.nodes.get(id).unwrap();
+                        interpret_helper(egraph, &child.eclass, time, env, cache, choices, visiting)
+                    })
+                    .collect();
 
-            match op.op.as_str() {
-                // Binary operations that condense to a single bit.
-                "Eq" | "LogicOr" | "LogicAnd" | "Ne" => {
-                    assert_eq!(children.len(), 2);
-                    let result = match op.op.as_str() {
-                        "Eq" => {
-                            let a = match &children[0] {
-                                Ok(InterpreterResult::Bitvector(val, _)) => *val,
-                                _ => todo!(),
-                            };
-                            let b = match &children[1] {
-                                Ok(InterpreterResult::Bitvector(val, _)) => *val,
-                                _ => todo!(),
-                            };
-                            a == b
-                        }
-                        "Ne" => {
-                            let a = match &children[0] {
-                                Ok(InterpreterResult::Bitvector(val, _)) => *val,
-                                _ => todo!(),
-                            };
-                            let b = match &children[1] {
-                                Ok(InterpreterResult::Bitvector(val, _)) => *val,
-                                _ => todo!(),
-                            };
-                            a != b
-                        }
-                        "LogicOr" => {
-                            let result = children.iter().any(|child| match child {
-                                Ok(InterpreterResult::Bitvector(val, _)) => *val != 0,
-                                _ => todo!(),
-                            });
-                            result
-                        }
-                        "LogicAnd" => {
-                            // if any of the children are false, the result is false
-                            let result = children.iter().all(|child| match child {
-                                Ok(InterpreterResult::Bitvector(val, _)) => *val != 0,
-                                _ => todo!(),
-                            });
-                            result
-                        }
-                        _ => todo!(),
-                    };
-                    Ok(InterpreterResult::Bitvector(result as u64, 1))
-                }
-                // Unary operations that condense to a single bit.
-                "ReduceOr" | "ReduceAnd" | "LogicNot" => {
-                    assert_eq!(children.len(), 1);
-                    match op.op.as_str() {
-                        "ReduceOr" => {
-                            let value = match children[0] {
-                                Ok(InterpreterResult::Bitvector(val, _)) => val,
-                                _ => todo!(),
-                            };
-                            let result = value != 0;
-                            Ok(InterpreterResult::Bitvector(result as u64, 1))
-                        }
-                        "ReduceAnd" => {
-                            // if any bit of children[0] is 0, the result is 0
-                            match children[0] {
-                                Ok(InterpreterResult::Bitvector(val, bw)) => {
-                                    let result = val == (1 << bw) - 1;
-                                    Ok(InterpreterResult::Bitvector(result as u64, 1))
-                                }
-                                _ => todo!(),
+                match op.op.as_str() {
+                    // Binary operations that condense to a single bit.
+                    "Eq" | "LogicOr" | "LogicAnd" | "Ne" => {
+                        assert_eq!(children.len(), 2);
+                        let result = match op.op.as_str() {
+                            "Eq" => {
+                                let a = match &children[0] {
+                                    Ok(InterpreterResult::Bitvector(val, _)) => *val,
+                                    _ => todo!(),
+                                };
+                                let b = match &children[1] {
+                                    Ok(InterpreterResult::Bitvector(val, _)) => *val,
+                                    _ => todo!(),
+                                };
+                                a == b
                             }
-                        }
-                        "LogicNot" => match children[0] {
-                            Ok(InterpreterResult::Bitvector(val, _)) => {
-                                let new_val = if val == 0 { 1 } else { 0 };
-                                Ok(InterpreterResult::Bitvector(new_val, 1))
+                            "Ne" => {
+                                let a = match &children[0] {
+                                    Ok(InterpreterResult::Bitvector(val, _)) => *val,
+                                    _ => todo!(),
+                                };
+                                let b = match &children[1] {
+                                    Ok(InterpreterResult::Bitvector(val, _)) => *val,
+                                    _ => todo!(),
+                                };
+                                a != b
+                            }
+                            "LogicOr" => {
+                                let result = children.iter().any(|child| match child {
+                                    Ok(InterpreterResult::Bitvector(val, _)) => *val != 0,
+                                    _ => todo!(),
+                                });
+                                result
+                            }
+                            "LogicAnd" => {
+                                // if any of the children are false, the result is false
+                                let result = children.iter().all(|child| match child {
+                                    Ok(InterpreterResult::Bitvector(val, _)) => *val != 0,
+                                    _ => todo!(),
+                                });
+                                result
                             }
                             _ => todo!(),
-                        },
-                        _ => todo!(),
+                        };
+                        Ok(InterpreterResult::Bitvector(result as u64, 1))
                     }
-                }
-                // Unary operations that preserve bitwidth.
-                "Not" => {
-                    assert_eq!(children.len(), 1);
-                    match children[0] {
-                        Ok(InterpreterResult::Bitvector(val, bw)) => {
-                            let result = !val & ((1 << bw) - 1);
-                            Ok(InterpreterResult::Bitvector(result, bw))
+                    // Unary operations that condense to a single bit.
+                    "ReduceOr" | "ReduceAnd" | "LogicNot" => {
+                        assert_eq!(children.len(), 1);
+                        match op.op.as_str() {
+                            "ReduceOr" => {
+                                let value = match children[0] {
+                                    Ok(InterpreterResult::Bitvector(val, _)) => val,
+                                    _ => todo!(),
+                                };
+                                let result = value != 0;
+                                Ok(InterpreterResult::Bitvector(result as u64, 1))
+                            }
+                            "ReduceAnd" => {
+                                // if any bit of children[0] is 0, the result is 0
+                                match children[0] {
+                                    Ok(InterpreterResult::Bitvector(val, bw)) => {
+                                        let result = val == (1 << bw) - 1;
+                                        Ok(InterpreterResult::Bitvector(result as u64, 1))
+                                    }
+                                    _ => todo!(),
+                                }
+                            }
+                            "LogicNot" => match children[0] {
+                                Ok(InterpreterResult::Bitvector(val, _)) => {
+                                    let new_val = if val == 0 { 1 } else { 0 };
+                                    Ok(InterpreterResult::Bitvector(new_val, 1))
+                                }
+                                _ => todo!(),
+                            },
+                            _ => todo!(),
                         }
-                        _ => todo!(),
                     }
-                }
-                // Binary operations that preserve bitwidth.
-                "And" | "Or" | "Shr" | "Xor" | "Add" | "Sub" | "Mul" => {
-                    assert_eq!(children.len(), 2);
-                    match (&children[0], &children[1]) {
+                    // Unary operations that preserve bitwidth.
+                    "Not" => {
+                        assert_eq!(children.len(), 1);
+                        match children[0] {
+                            Ok(InterpreterResult::Bitvector(val, bw)) => {
+                                let result = !val & ((1 << bw) - 1);
+                                Ok(InterpreterResult::Bitvector(result, bw))
+                            }
+                            _ => todo!(),
+                        }
+                    }
+                    // Binary operations that preserve bitwidth.
+                    "And" | "Or" | "Shr" | "Xor" | "Add" | "Sub" | "Mul" => {
+                        assert_eq!(children.len(), 2);
+                        match (&children[0], &children[1]) {
+                            (
+                                Ok(InterpreterResult::Bitvector(a, a_bw)),
+                                Ok(InterpreterResult::Bitvector(b, b_bw)),
+                            ) => {
+                                assert_eq!(a_bw, b_bw);
+                                let result = match op.op.as_str() {
+                                    "And" => a & b,
+                                    "Or" => a | b,
+                                    "Shr" => a >> b,
+                                    "Xor" => a ^ b,
+                                    // TODO(@gussmith23): These might not work -- do we need to simulate lower bitwidths?
+                                    "Add" => (a.overflowing_add(*b).0) & ((1 << a_bw) - 1),
+                                    "Sub" => (a.overflowing_sub(*b).0) & ((1 << a_bw) - 1),
+                                    "Mul" => (a.overflowing_mul(*b).0) & ((1 << a_bw) - 1),
+                                    _ => unreachable!(),
+                                };
+                                Ok(InterpreterResult::Bitvector(result, *a_bw))
+                            }
+                            _ => todo!(),
+                        }
+                    }
+                    "Mux" => {
+                        assert_eq!(children.len(), 3);
+
+                        match children[0] {
+                            Ok(InterpreterResult::Bitvector(cond, _)) => {
+                                if cond == 0 {
+                                    children[1].clone()
+                                } else {
+                                    children[2].clone()
+                                }
+                            }
+                            _ => todo!(),
+                        }
+                    }
+                    "BV" => {
+                        assert_eq!(op.children.len(), 2);
+                        let args = &op
+                            .children
+                            .iter()
+                            .map(|id| {
+                                let (_, node) = egraph
+                                    .nodes
+                                    .iter()
+                                    .find(|(node_id, _)| **node_id == *id)
+                                    .unwrap();
+                                assert_eq!(node.children.len(), 0);
+                                // TODO(@ninehusky): here, reading node.op.parse() as i64, then convert to u64
+                                let val: i64 = node.op.parse().unwrap();
+                                val as u64
+                            })
+                            .collect::<Vec<_>>()[..];
+
+                        assert!(args[1] <= 64);
+                        Ok(InterpreterResult::Bitvector(args[0], args[1]))
+                    }
+                    "Extract" => {
+                        assert_eq!(op.children.len(), 2);
+                        let args = &op
+                            .children
+                            .iter()
+                            .map(|id| {
+                                let (_, node) = egraph
+                                    .nodes
+                                    .iter()
+                                    .find(|(node_id, _)| **node_id == *id)
+                                    .unwrap();
+                                assert_eq!(node.children.len(), 0);
+                                let val: u64 = node.op.parse().unwrap();
+                                val
+                            })
+                            .collect::<Vec<_>>()[..];
+
+                        let i = args[0];
+                        let j = args[1];
+
+                        let val = match children[0].as_ref().unwrap() {
+                            InterpreterResult::Bitvector(val, bw) => {
+                                // from Rosette docs:
+                                // https://docs.racket-lang.org/rosette-guide/sec_bitvectors.html#%28def._%28%28lib._rosette%2Fbase%2Fbase..rkt%29._extract%29%29
+                                // TODO(@ninehusky): here, we should also assert that j >= 0 if churchroad handles signed numbers
+                                assert!(
+                                    *bw > i && i >= j,
+                                    "i is {}, j is {} node has bw {}, has node_id {:?}",
+                                    i,
+                                    j,
+                                    bw,
+                                    node.children[1]
+                                );
+
+                                let mask = (1 << (i - j + 1)) - 1;
+                                (val >> j) & mask
+                            }
+                        };
+                        assert!(i - j < 64);
+                        Ok(InterpreterResult::Bitvector(val, i - j + 1))
+                    }
+                    "Concat" => match (&children[0], &children[1]) {
                         (
                             Ok(InterpreterResult::Bitvector(a, a_bw)),
                             Ok(InterpreterResult::Bitvector(b, b_bw)),
                         ) => {
-                            assert_eq!(a_bw, b_bw);
-                            let result = match op.op.as_str() {
-                                "And" => a & b,
-                                "Or" => a | b,
-                                "Shr" => a >> b,
-                                "Xor" => a ^ b,
-                                // TODO(@gussmith23): These might not work -- do we need to simulate lower bitwidths?
-                                "Add" => (a.overflowing_add(*b).0) & ((1 << a_bw) - 1),
-                                "Sub" => (a.overflowing_sub(*b).0) & ((1 << a_bw) - 1),
-                                "Mul" => (a.overflowing_mul(*b).0) & ((1 << a_bw) - 1),
-                                _ => unreachable!(),
-                            };
-                            Ok(InterpreterResult::Bitvector(result, *a_bw))
+                            let result = (a << b_bw) | b;
+                            assert!(a_bw + b_bw <= 64);
+                            Ok(InterpreterResult::Bitvector(result, a_bw + b_bw))
                         }
                         _ => todo!(),
-                    }
-                }
-                "Mux" => {
-                    assert_eq!(children.len(), 3);
-
-                    match children[0] {
-                        Ok(InterpreterResult::Bitvector(cond, _)) => {
-                            if cond == 0 {
-                                children[1].clone()
-                            } else {
-                                children[2].clone()
+                    },
+                    "ZeroExtend" => {
+                        let extension_bw: u64 = egraph
+                            .nodes
+                            .iter()
+                            .find(|(id, _)| *id == &op.children[0])
+                            .unwrap()
+                            .1
+                            .op
+                            .parse()
+                            .unwrap();
+                        assert!(extension_bw <= 64);
+                        match children[0] {
+                            Ok(InterpreterResult::Bitvector(val, _)) => {
+                                Ok(InterpreterResult::Bitvector(val, extension_bw))
                             }
+                            _ => todo!(),
                         }
-                        _ => todo!(),
                     }
+                    _ => todo!("unimplemented op: {:?}", op.op),
                 }
-                "BV" => {
-                    assert_eq!(op.children.len(), 2);
-                    let args = &op
-                        .children
-                        .iter()
-                        .map(|id| {
-                            let (_, node) = egraph
-                                .nodes
-                                .iter()
-                                .find(|(node_id, _)| **node_id == *id)
-                                .unwrap();
-                            assert_eq!(node.children.len(), 0);
-                            // TODO(@ninehusky): here, reading node.op.parse() as i64, then convert to u64
-                            let val: i64 = node.op.parse().unwrap();
-                            val as u64
-                        })
-                        .collect::<Vec<_>>()[..];
-
-                    assert!(args[1] <= 64);
-                    Ok(InterpreterResult::Bitvector(args[0], args[1]))
-                }
-                "Extract" => {
-                    assert_eq!(op.children.len(), 2);
-                    let args = &op
-                        .children
-                        .iter()
-                        .map(|id| {
-                            let (_, node) = egraph
-                                .nodes
-                                .iter()
-                                .find(|(node_id, _)| **node_id == *id)
-                                .unwrap();
-                            assert_eq!(node.children.len(), 0);
-                            let val: u64 = node.op.parse().unwrap();
-                            val
-                        })
-                        .collect::<Vec<_>>()[..];
-
-                    let i = args[0];
-                    let j = args[1];
-
-                    let val = match children[0].as_ref().unwrap() {
-                        InterpreterResult::Bitvector(val, bw) => {
-                            // from Rosette docs:
-                            // https://docs.racket-lang.org/rosette-guide/sec_bitvectors.html#%28def._%28%28lib._rosette%2Fbase%2Fbase..rkt%29._extract%29%29
-                            // TODO(@ninehusky): here, we should also assert that j >= 0 if churchroad handles signed numbers
-                            assert!(
-                                *bw > i && i >= j,
-                                "i is {}, j is {} node has bw {}, has node_id {:?}",
-                                i,
-                                j,
-                                bw,
-                                node.children[1]
-                            );
-
-                            let mask = (1 << (i - j + 1)) - 1;
-                            (val >> j) & mask
-                        }
-                    };
-                    assert!(i - j < 64);
-                    Ok(InterpreterResult::Bitvector(val, i - j + 1))
-                }
-                "Concat" => match (&children[0], &children[1]) {
-                    (
-                        Ok(InterpreterResult::Bitvector(a, a_bw)),
-                        Ok(InterpreterResult::Bitvector(b, b_bw)),
-                    ) => {
-                        let result = (a << b_bw) | b;
-                        assert!(a_bw + b_bw <= 64);
-                        Ok(InterpreterResult::Bitvector(result, a_bw + b_bw))
-                    }
-                    _ => todo!(),
-                },
-                "ZeroExtend" => {
-                    let extension_bw: u64 = egraph
-                        .nodes
-                        .iter()
-                        .find(|(id, _)| *id == &op.children[0])
-                        .unwrap()
-                        .1
-                        .op
-                        .parse()
-                        .unwrap();
-                    assert!(extension_bw <= 64);
-                    match children[0] {
-                        Ok(InterpreterResult::Bitvector(val, _)) => {
-                            Ok(InterpreterResult::Bitvector(val, extension_bw))
-                        }
-                        _ => todo!(),
-                    }
-                }
-                _ => todo!("unimplemented op: {:?}", op.op),
             }
         }
         _ => todo!("unimplemented node type: {:?}", node.op),
@@ -1320,6 +1657,7 @@ fn interpret_helper(
     if result.is_ok() {
         cache.insert((id.clone(), time), result.clone().unwrap());
     }
+    visiting.remove(&visit_key);
     result
 }
 
@@ -1342,6 +1680,74 @@ impl AnythingExtractor {
     }
 }
 
+#[derive(Default)]
+pub struct RandomExtractor {
+    /// A function which allows the user to make an extraction decision, before
+    /// we randomly choose.
+    pub extract_fn: Option<
+        Box<
+            dyn Fn(
+                &egraph_serialize::EGraph,
+                &egraph_serialize::ClassId,
+            ) -> Option<egraph_serialize::NodeId>,
+        >,
+    >,
+    /// A filter function which allows the user to filter out nodes that should
+    /// not be extracted.
+    pub filter_fn:
+        Option<Box<dyn Fn(&egraph_serialize::EGraph, &egraph_serialize::NodeId) -> bool>>,
+}
+impl RandomExtractor {
+    pub fn extract(
+        &self,
+        egraph: &egraph_serialize::EGraph,
+        _roots: &[egraph_serialize::ClassId],
+    ) -> IndexMap<egraph_serialize::ClassId, egraph_serialize::NodeId> {
+        let mut rng = rand::thread_rng();
+        egraph
+            .classes()
+            .iter()
+            .map(|(id, class)| {
+                let node_id = class
+                    .nodes
+                    .iter()
+                    // Don't extract wires, don't extract subsumed nodes.
+                    .filter(|&node_id| egraph[node_id].op != "Wire" && !egraph[node_id].subsumed)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                // debug!("Number of options: {}", node_id.len());
+
+                // If a filter function is provided, filter the nodes.
+                let node_id = if let Some(filter_fn) = &self.filter_fn {
+                    node_id
+                        .into_iter()
+                        .filter(|node_id| filter_fn(egraph, node_id))
+                        .collect::<Vec<_>>()
+                } else {
+                    node_id
+                };
+
+                let node_id =
+                    if let Some(node_id) = &self.extract_fn.as_ref().and_then(|f| f(egraph, id)) {
+                        node_id.clone()
+                    } else {
+                        // If no extract_fn is provided, choose randomly.
+                        node_id.choose(&mut rng).cloned().unwrap_or_else(|| {
+                            error!("No nodes left to choose from for class ID: {}", id);
+                            debug!("Class: {:?}", class);
+                            debug!("Class nodes:");
+                            for node_id in class.nodes.iter() {
+                                debug!("{}", node_summary(node_id, egraph, 1));
+                            }
+                            panic!("No nodes left to choose from.")
+                        })
+                    };
+                (id.clone(), node_id)
+            })
+            .collect()
+    }
+}
+
 /// - bottom_out_at: maps ClassIds to variable names. Any time we reach a node
 ///   with a class ID in this map, we simply output a variable with the given
 ///   name.
@@ -1355,6 +1761,31 @@ pub fn to_verilog_egraph_serialize(
     outputs: Option<HashMap<ClassId, String>>,
 ) -> String {
     // let mut wires = HashMap::default();
+
+    // Check that everything has a type
+    // Is this really necessary? Can't we just error when we need a type?
+    // {
+    //     let classes_without_hastype = util::missing_hastype(egraph);
+    //     if !classes_without_hastype.is_empty() {
+    //         panic!(
+    //             "Not all classes have type information.\n{}",
+    //             classes_without_hastype
+    //                 .iter()
+    //                 .map(|class_id| format!(
+    //                     "Class ID: {}\n{}",
+    //                     class_id,
+    //                     egraph[class_id]
+    //                         .nodes
+    //                         .iter()
+    //                         .map(|node_id| util::display_enode_serialized(egraph, node_id, 2))
+    //                         .collect::<Vec<_>>()
+    //                         .join("\n")
+    //                 ))
+    //                 .collect::<Vec<_>>()
+    //                 .join("\n")
+    //         );
+    //     }
+    // }
 
     fn id_to_wire_name(id: &ClassId) -> String {
         format!("wire_{}", id.to_string().replace('-', "_"))
@@ -1489,7 +1920,13 @@ pub fn to_verilog_egraph_serialize(
         // expression.
         if let Some(name) = bottom_out_at.get(&id) {
             log::debug!("Bottoming out at node with name {}", name);
-            let bw = get_bitwidth_for_node(egraph, node_id).unwrap();
+            let bw = get_bitwidth_for_node(egraph, node_id).unwrap_or_else(|_| {
+                // TODO(@gussmith23): Should standardize egraph printing fns.
+                panic!(
+                    "No HasType for node {}",
+                    util::display_enode_serialized(egraph, node_id, 3)
+                )
+            });
 
             inputs_str
                 .push_str(format!("input [{bw}-1:0] {name},\n", bw = bw, name = name).as_str());
@@ -1541,6 +1978,22 @@ pub fn to_verilog_egraph_serialize(
                     logic_declarations.push_str(
                         format!(
                             "logic [{bw}-1:0] {this_wire} = {bw}'({value});\n",
+                            this_wire = id_to_wire_name(&id),
+                            value = id_to_wire_name(&egraph[&term.children[1]].eclass)
+
+                        )
+                        .as_str(),
+                    );
+                    maybe_push_expr_on_queue(&mut queue, &done, &egraph[&term.children[1]].eclass);
+
+                    }
+                    "SignExtend" => {
+                        assert_eq!(op_node.children.len(), 1);
+                        assert_eq!(term.children.len(), 2);
+                        let bw = egraph[&op_node.children[0]].op.parse::<i64>().unwrap();
+                        logic_declarations.push_str(
+                        format!(
+                            "logic [{bw}-1:0] {this_wire} = {bw}'($signed({value}));\n",
                             this_wire = id_to_wire_name(&id),
                             value = id_to_wire_name(&egraph[&term.children[1]].eclass)
 
@@ -1684,6 +2137,31 @@ pub fn to_verilog_egraph_serialize(
                     let e1_id = egraph.nid_to_cid(&term.children[2]);
                     logic_declarations.push_str(&format!(
                         "logic [{bw}-1:0] {this_wire} = {e0} << {e1};\n",
+                        bw = get_bitwidth_for_node(egraph, node_id).unwrap(),
+                        this_wire = id_to_wire_name(id),
+                        e0 = id_to_wire_name(e0_id),
+                        e1 = id_to_wire_name(e1_id)
+                    ));
+                    maybe_push_expr_on_queue(&mut queue, &done, e0_id);
+                    maybe_push_expr_on_queue(&mut queue, &done, e1_id);
+                }
+                "Ashr" => {
+                    assert_eq!(term.children.len(), 3);
+
+                    // These only have to hold for structural verilog. These
+                    // checks should be removed in the future once I figure out
+                    // how to deal with shifts in structural Verilog. (namely,
+                    // do we want to allow shifts, or do we want to convert them
+                    // to something else using rewrites and constant
+                    // propagation?)
+                    assert!(egraph[&term.children[2]].op == "Op0");
+                    assert!(egraph[&egraph[&term.children[2]].children[0]].op == "BV");
+
+                    let id = &term.eclass;
+                    let e0_id = egraph.nid_to_cid(&term.children[1]);
+                    let e1_id = egraph.nid_to_cid(&term.children[2]);
+                    logic_declarations.push_str(&format!(
+                        "logic [{bw}-1:0] {this_wire} = {e0} >>> {e1};\n",
                         bw = get_bitwidth_for_node(egraph, node_id).unwrap(),
                         this_wire = id_to_wire_name(id),
                         e0 = id_to_wire_name(e0_id),
@@ -2268,6 +2746,7 @@ pub fn import_churchroad(egraph: &mut EGraph) {
     // the above language definitions, but it's not possible to do it in egglog,
     // hence it's a Rust function.
     add_debruijnify(egraph);
+    add_random_string(egraph); // Also add other useful custom primitives.
 
     // STEP 3: import module enumeration rewrites. These depend on the
     // `debruijnify` primitive.
@@ -2280,6 +2759,60 @@ pub fn import_churchroad(egraph: &mut EGraph) {
             ),
         )
         .unwrap();
+}
+
+/// Add the `random-string` primitive to an [`EGraph`].
+fn add_random_string(egraph: &mut EGraph) {
+    struct RandomString {
+        in_sort: Arc<I64Sort>,
+        out_sort: Arc<StringSort>,
+    }
+
+    impl PrimitiveLike for RandomString {
+        fn name(&self) -> Symbol {
+            "random-string".into()
+        }
+
+        fn get_type_constraints(&self, span: &Span) -> Box<dyn TypeConstraint> {
+            Box::new(SimpleTypeConstraint::new(
+                self.name(),
+                vec![self.in_sort.clone(), self.out_sort.clone()],
+                span.clone(),
+            ))
+        }
+
+        fn apply(
+            &self,
+            values: &[crate::Value],
+            sorts: (&[ArcSort], &ArcSort),
+            egraph: Option<&mut EGraph>,
+        ) -> Option<crate::Value> {
+            assert_eq!(values.len(), 1);
+            assert_eq!(sorts.0.len(), 1);
+            let egraph = egraph.unwrap();
+            let len = {
+                let (_, term) = egraph.extract_value(&sorts.0[0], values[0]).unwrap();
+                match term {
+                    Term::Lit(Literal::Int(len)) => len,
+                    _ => panic!(),
+                }
+            };
+
+            // Generate random string of length `len`.
+            let mut rng = rand::thread_rng();
+            let string: String = std::iter::repeat(())
+                .map(|()| rng.sample(rand::distributions::Alphanumeric) as char)
+                .take(len as usize)
+                .collect();
+
+            Some(egraph.eval_lit(&Literal::String(string.into())))
+        }
+    }
+
+    egraph.add_primitive(RandomString {
+        in_sort: Arc::new(I64Sort),
+        out_sort: Arc::new(StringSort),
+    });
 }
 
 /// Add the `debruijnify` primitive to an [`EGraph`].
@@ -2306,6 +2839,7 @@ fn add_debruijnify(egraph: &mut EGraph) {
         fn apply(
             &self,
             values: &[crate::Value],
+            _sorts: (&[ArcSort], &ArcSort),
             egraph: Option<&mut EGraph>,
         ) -> Option<crate::Value> {
             let in_vec = Vec::<Value>::load(&self.in_sort, &values[0]);
@@ -2318,7 +2852,7 @@ fn add_debruijnify(egraph: &mut EGraph) {
 
             for value in in_vec {
                 // Get representative value.
-                let value = egraph.find(value);
+                let value = egraph.find(&EXPR_SORT, value);
 
                 // If we haven't assinged it a number yet, give it the next one.
                 seen_values.entry(value).or_insert_with(|| {
@@ -2532,7 +3066,7 @@ type Ports = Vec<(String, ArcSort, Value)>;
 
 /// ```
 /// use churchroad::*;
-/// use egglog::{ArcSort, EGraph, Term, TermDag, Value};
+/// use egglog::{ArcSort, EGraph, Value};
 ///
 /// // Get an egraph, load in a simple design.
 /// let mut egraph = EGraph::default();
@@ -2582,8 +3116,7 @@ type Ports = Vec<(String, ArcSort, Value)>;
 /// assert_eq!(inputs.len(), 2);
 ///
 /// fn value_to_string(value: &Value, sort: ArcSort, egraph: &EGraph) -> String {
-///     let mut termdag = TermDag::default();
-///     let (_, term) = egraph.extract(value.clone(), &mut termdag, &sort);
+///     let (termdag, term) = egraph.extract_value(&sort, value.clone()).unwrap();
 ///     termdag.to_string(&term)
 /// }
 ///
@@ -2626,9 +3159,9 @@ pub fn get_inputs_and_outputs(egraph: &mut EGraph) -> (Ports, Ports) {
         let in_or_out = match termdag.get(inout_term) {
             Term::App(in_or_out, v) => {
                 assert_eq!(v.len(), 0);
-                if in_or_out == "Input".into() {
+                if in_or_out.as_str() == "Input" {
                     InOut::Input
-                } else if in_or_out == "Output".into() {
+                } else if in_or_out.as_str() == "Output" {
                     InOut::Output
                 } else {
                     panic!()
@@ -2639,17 +3172,11 @@ pub fn get_inputs_and_outputs(egraph: &mut EGraph) -> (Ports, Ports) {
 
         let churchroad_term = children[3];
 
-        let term_str = termdag.to_string(&termdag.get(churchroad_term));
+        let term_str = termdag.to_string(termdag.get(churchroad_term));
         let (sort, value) = egraph
             .eval_expr(
-                &egglog::ast::parse::ExprParser::new()
-                    .parse(
-                        &Arc::new(SrcFile {
-                            name: "unused".to_owned(),
-                            contents: Some(term_str.clone()),
-                        }),
-                        &term_str,
-                    )
+                &Parser::default()
+                    .get_expr_from_string(None, &term_str)
                     .unwrap(),
             )
             .unwrap();
@@ -2827,17 +3354,7 @@ mod tests {
         // Extract reg from Egraph.
         let mut _termdag = TermDag::default();
         let (_sort, _value) = egraph
-            .eval_expr(&egglog::ast::Expr::Var(
-                Span(
-                    Arc::new(SrcFile {
-                        name: "unused".to_owned(),
-                        contents: None,
-                    }),
-                    0,
-                    0,
-                ),
-                "reg".into(),
-            ))
+            .eval_expr(&egglog::ast::Expr::Var(Span::Panic, "reg".into()))
             .unwrap();
         // This will panic, which is what we were trying to get to.
         // It panics with `No cost for Value { tag: "Expr", bits: 6 }`
@@ -2876,7 +3393,7 @@ mod tests {
             if std::env::var("DEMO_2024_02_06_WRITE_SVGS").is_err() {
                 return;
             }
-            let serialized = egraph.serialize_for_graphviz(true, usize::MAX, usize::MAX);
+            let serialized = egraph.serialize(SerializeConfig::default());
             let svg_path = Path::new(path).with_extension("svg");
             serialized.to_svg_file(svg_path).unwrap();
         }
@@ -3079,11 +3596,11 @@ mod tests {
   
   output [8-1:0] out,
 );
-  assign out = wire_Expr_11;
-  logic [8-1:0] wire_Expr_11 = 0;
+  assign out = wire_Expr_12;
+  logic [8-1:0] wire_Expr_12 = 0;
   
 always @(posedge clk) begin
-                            wire_Expr_11 <= wire_Expr_11;
+                            wire_Expr_12 <= wire_Expr_12;
                         end
 
 
@@ -3111,6 +3628,7 @@ endmodule",
                 (HasType (GetOutput (ModuleInstance "some_module" (StringCons "p" (StringNil)) (ExprCons (Op0 (BV 4 4)) (ExprNil)) (StringCons "a" (StringCons "b" (StringNil))) (ExprCons a (ExprCons b (ExprNil)))) "out")
                          (Bitvector 8))
 
+                (run-schedule (saturate typing))
             "#,
             )
             .unwrap();
@@ -3126,19 +3644,19 @@ endmodule",
   
   output [8-1:0] out,
 );
-  assign out = wire_Expr_28;
-  logic [8-1:0] wire_Expr_28;
-  localparam [4-1:0] wire_Expr_20 = 4'd4;
+  assign out = wire_Expr_27;
+  logic [8-1:0] wire_Expr_27;
+  localparam [4-1:0] wire_Expr_19 = 4'd4;
   logic [8-1:0] wire_Expr_14 = b;
-  logic [8-1:0] wire_Expr_11 = a;
+  logic [8-1:0] wire_Expr_12 = a;
   
 
   some_module #(
-    .p(wire_Expr_20)
-) module_ModuleInstanceSort_27 (
-    .a(wire_Expr_11),
+    .p(wire_Expr_19)
+) module_ModuleInstanceSort_26 (
+    .a(wire_Expr_12),
     .b(wire_Expr_14),
-    .out(wire_Expr_28));
+    .out(wire_Expr_27));
 endmodule",
             to_verilog_egraph_serialize(&serialized, &out, "", [].into(), None)
         );

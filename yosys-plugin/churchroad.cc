@@ -17,18 +17,17 @@
  *
  */
 
-#include "kernel/celltypes.h"
+#include "boost/algorithm/string/join.hpp"
 #include "kernel/json.h"
 #include "kernel/log.h"
 #include "kernel/mem.h"
 #include "kernel/register.h"
 #include "kernel/rtlil.h"
 #include "kernel/sigtools.h"
-#include "kernel/yw.h"
-#include "boost/filesystem.hpp"
-#include "boost/algorithm/string/join.hpp"
-#include <string>
 #include <cassert>
+#include <filesystem>
+#include <random>
+#include <string>
 
 USING_YOSYS_NAMESPACE
 PRIVATE_NAMESPACE_BEGIN
@@ -288,7 +287,7 @@ struct LakeroadWorker
 
 				out_expr = concat_expr;
 			}
-			else if (sig.chunks().size() == 1 && sig.chunks()[0].wire->width != sig.size())
+			else if (sig.chunks().size() == 1 && sig.chunks().at(0).wire->width != sig.size())
 			{
 				// This branch is meant to capture the case where the signal is a
 				// slice/extraction. I'm not quite sure how to check this in Yosys
@@ -298,7 +297,7 @@ struct LakeroadWorker
 				// that this is the only possible case that's left. That would be nice.
 				// Currently, the condition in this else if branch is a little messy.
 
-				auto chunk = sig.chunks()[0];
+				auto chunk = sig.chunks().at(0);
 
 				if (chunk.wire->upto)
 				{
@@ -307,10 +306,12 @@ struct LakeroadWorker
 				}
 
 				// The let-bound ID string of the expression to extract from.
-				auto extract_from_expr = get_expression_for_signal(sig.chunks()[0].wire, -1);
+				auto extract_from_expr = get_expression_for_signal(sig.chunks().at(0).wire, -1);
 				auto new_id = get_new_id_str();
-				auto extract_expr = stringf("(Op1 (Extract %d %d) %s)", (chunk.offset + chunk.width - 1) + chunk.wire->start_offset,
-																		chunk.offset + chunk.wire->start_offset, extract_from_expr.c_str());
+				auto extract_expr = stringf("(Op1 (Extract %d %d) %s)",
+																	 (chunk.offset + chunk.width - 1) + chunk.wire->start_offset,
+																	 chunk.offset + chunk.wire->start_offset,
+																	 extract_from_expr.c_str());
 
 				auto let_expr = let(new_id, extract_expr);
 				f << let_expr << "\n";
@@ -893,10 +894,22 @@ struct ChurchroadPass : public Pass
 		auto top_module_name = module->name.substr(1);
 		// auto module_name = sprintf("%s_synthesized_by_lakeroad", top_module_name.c_str());
 
-		// Who knew getting a named temporary file was so hard in C++? This isn't a
-		// great solution.
-		auto verilog_filename = (boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("%%%%-%%%%-%%%%-%%%%.v")).native();
-		auto out_verilog_filename = (boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("%%%%-%%%%-%%%%-%%%%.v")).native();
+		// Generate a unique temp path for the intermediate Verilog files.
+		auto make_temp_path = [](const std::string &suffix) -> std::filesystem::path {
+			auto dir = std::filesystem::temp_directory_path();
+			std::random_device rd;
+			std::mt19937_64 gen(rd());
+			std::uniform_int_distribution<unsigned long long> dist;
+			for (int i = 0; i < 16; i++)
+			{
+				auto candidate = dir / ("churchroad-" + std::to_string(dist(gen)) + suffix);
+				if (!std::filesystem::exists(candidate))
+					return candidate;
+			}
+			log_error("Failed to create unique temp path.\n");
+		};
+		auto verilog_filename = make_temp_path(".v").string();
+		auto out_verilog_filename = make_temp_path(".v").string();
 		std::vector<std::string> write_verilog_args;
 		write_verilog_args.push_back("write_verilog");
 		write_verilog_args.push_back(verilog_filename);
