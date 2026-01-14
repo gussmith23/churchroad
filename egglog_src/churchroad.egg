@@ -7,6 +7,8 @@
 (sort Expr)
 (sort ExprVec (Vec Expr))
 
+; Used to mark type errors.
+(constructor Bad () Expr)
 
 ; Ops
 (datatype Op
@@ -17,6 +19,7 @@
   (Or)
   (Xor)
   (Shr)
+  (Ashr)
   (Shl)
   ; Returns a bitvector of width 1.
   (Eq)
@@ -73,37 +76,37 @@
 ;;; Module declaration
 (sort Module)
 ;;; IVec is an vector of integers holding De Bruijn indices.
-(function MakeModule (Graph IVec) Module)
+(constructor MakeModule (Graph IVec) Module)
 
 ; Our language. Note that we do not explicitly use IDs as in the Lakeroad paper
 ; (FPGA Technology Mapping via Program Synthesis, Smith et. al., ASPLOS 2024)
 ; formalization. The IDs are still there, though: they're the eclass IDs!
 
 ; (Var name bitwidth)
-(function Var (String i64) Expr)
+(constructor Var (String i64) Expr)
 ;;; I'm unsure whether we need this. This is the variant of Var we use as
 ;;; arguments to `apply` nodes. This prevents the loop induced by putting
 ;;; `(Var a 8) = (apply (MakeModule (Hole) [0]) [(Var a 8)])`
 ;;; into the graph. If we put this in the graph, you could infinitely extract
 ;;; `(apply (MakeModule ...) (apply (MakeModule ...) (apply (MakeModule ...) ...)))`
-;;; (which captures the fact that you can apply the identity function as many
+;;; (which captures the fact that you can apply the identity constructor as many
 ;;; times as you want).
-(function Var_ (String i64) Expr)
+(constructor Var_ (String i64) Expr)
 
 ;;; "Direct" representation of programs:
 ;;; Expressing programs via direct application of Ops to leaf nodes (Vars
 ;;; and Consts).
 ; (OpN op input-expr...)
-(function Op0 (Op) Expr)
-(function Op1 (Op Expr) Expr)
-(function Op2 (Op Expr Expr) Expr)
-(function Op3 (Op Expr Expr Expr) Expr)
+(constructor Op0 (Op) Expr)
+(constructor Op1 (Op Expr) Expr)
+(constructor Op2 (Op Expr Expr) Expr)
+(constructor Op3 (Op Expr Expr Expr) Expr)
 
 
 ; (Wire name bitwidth)
-(function Wire (String i64) Expr)
+(constructor Wire (String i64) Expr)
 
-(function apply (Module ExprVec) Expr)
+(constructor apply (Module ExprVec) Expr)
 
 ;;; TODO(@gussmith23): need cons list instead of using built-in vec.
 ;;; would love to use vec instead.
@@ -121,11 +124,11 @@
 ;;;  parameter values: [Expr],
 ;;;  input port names: [String],
 ;;;  input port values: [Expr]) -> module instance
-(function ModuleInstance (String StringConsList ExprConsList StringConsList ExprConsList) ModuleInstanceSort)
+(constructor ModuleInstance (String StringConsList ExprConsList StringConsList ExprConsList) ModuleInstanceSort)
 ;;; Get the output of a module instance.
 ;;; (module instance: ModuleInstanceSort,
 ;;;  output name: String) -> Churchroad expression
-(function GetOutput (ModuleInstanceSort String) Expr)
+(constructor GetOutput (ModuleInstanceSort String) Expr)
 
 ;;; Types for Churchroad expressions.
 (datatype Type
@@ -159,6 +162,7 @@
 (AllBitwidthsMatch (Or))
 (AllBitwidthsMatch (Xor))
 (AllBitwidthsMatch (Shr))
+(AllBitwidthsMatch (Ashr))
 (AllBitwidthsMatch (Shl))
 (AllBitwidthsMatch (Mul))
 ;;; TODO(@ninehusky): don't we need this here?
@@ -222,6 +226,18 @@
    (AllBitwidthsMatch op))
   ((HasType (Op2 op i0 i1) (Bitvector bw)))
   :ruleset typing)
+; Error checking for the above.
+(rule
+  ((= expr (Op2 op i0 i1))
+   (AllBitwidthsMatch op)
+   (HasType i0 (Bitvector bw))
+   (HasType i1 (Bitvector bw2))
+   (!= bw bw2))
+  (
+   ;(panic "AllBitwidthsMatch Op where inputs are different widths")
+   (union expr (Bad))
+  )
+  :ruleset typing)
 (rule
   ((Op3 op i0 i1 i2)
    (HasType i0 (Bitvector bw))
@@ -272,8 +288,18 @@
   ((HasType (Op1 (Extract high low) expr) (Bitvector (+ 1 (- high low)))))
   :ruleset typing)
 (rule
-  ((Op1 (ZeroExtend bitwidth) expr))
+  ((Op1 (ZeroExtend bitwidth) expr)
+   (HasType expr (Bitvector n))
+   ; Extending a bitwidth must result in a larger or equal bitwidth.
+   (>= bitwidth n))
   ((HasType (Op1 (ZeroExtend bitwidth) expr) (Bitvector bitwidth)))
+  :ruleset typing)
+(rule
+  ((Op1 (SignExtend bitwidth) expr)
+   (HasType expr (Bitvector n))
+   ; Extending a bitwidth must result in a larger or equal bitwidth.
+   (>= bitwidth n))
+  ((HasType (Op1 (SignExtend bitwidth) expr) (Bitvector bitwidth)))
   :ruleset typing)
 (rule
   ((Op1 (LogicNot) expr))
@@ -323,5 +349,15 @@
 
 ; TODO(@gussmith23): Figure out a better interface for these, currently just
 ; adding them as needed.
-(function PrimitiveInterfaceDSP (Expr Expr) Expr)
-(function PrimitiveInterfaceDSP3 (Expr Expr Expr) Expr)
+; 
+; The string argument is a random identifier string that will also be used to
+; construct InputOutputMarker nodes which will be unioned with the input expressions.
+; This is so that we can later identify the eclasses corresponding to the
+; inputs.
+(constructor PrimitiveInterfaceDSP (String Expr Expr) Expr)
+(constructor PrimitiveInterfaceWideAddDSP (String Expr Expr) Expr)
+(constructor PrimitiveInterfaceDSP3 (String Expr Expr Expr) Expr)
+; Used to mark the inputs of a PrimitiveInterfaceDSP. First string is the input
+; name, second string is the random identifier string that will be in the 
+; corresponding PrimitiveInterfaceDSP node.
+(constructor InputOutputMarker (String String) Expr)
